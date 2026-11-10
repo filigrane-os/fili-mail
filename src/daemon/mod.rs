@@ -25,6 +25,10 @@ pub fn run() -> i32 {
     0
 }
 
+fn debug() -> bool {
+    std::env::var_os("FILI_MAIL_DEBUG").is_some()
+}
+
 fn provider_of(account: &str) -> &str {
     account
         .split_once(':')
@@ -128,16 +132,27 @@ async fn serve() {
                     "error": snapshot["error"].as_str().unwrap_or(""),
                 }));
                 state::write(&watched, &counts);
-                if !detector.changed(&account, snapshot) {
+                let changed = detector.changed(&account, snapshot);
+                if debug() {
+                    eprintln!("fili-mail: update {account} unread={} changed={changed}", snapshot["estimate"]);
+                }
+                if !changed {
                     continue;
                 }
                 match unread_messages(&session, &account).await {
                     Ok(unread) => {
                         let email = watched.get(&account).cloned().unwrap_or_default();
+                        let listed = unread.len();
                         let fresh = detector.observe(&account, unread);
+                        if debug() {
+                            eprintln!("fili-mail: listed {listed} unread, {} new", fresh.len());
+                        }
                         notify::announce(&email, &fresh).await;
                     }
-                    Err(_) => detector.retry(&account),
+                    Err(error) => {
+                        eprintln!("fili-mail: cannot list {account}: {error}");
+                        detector.retry(&account);
+                    }
                 }
             }
         }
