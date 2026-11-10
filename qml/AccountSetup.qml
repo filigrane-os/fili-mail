@@ -19,7 +19,9 @@ Rectangle {
     function submit() {
         if (busy || email.text.trim() === "" || password.text === "")
             return;
-        const spec = { email: email.text.trim(), password: password.text, bridge: kind === "bridge" };
+        // Google shows an app password in groups of four letters; the spaces are not part of it
+        const secret = kind === "gmail" ? password.text.replace(/\s+/g, "") : password.text;
+        const spec = { email: email.text.trim(), password: secret, bridge: kind === "bridge" };
         if (kind === "other") {
             if (imapHost.text.trim() !== "") spec.imapHost = imapHost.text.trim();
             if (parseInt(imapPort.text) > 0) spec.imapPort = parseInt(imapPort.text);
@@ -84,6 +86,15 @@ Rectangle {
                 Field { id: smtpPort; width: 80; placeholderText: "465"; inputMethodHints: Qt.ImhDigitsOnly; KeyNavigation.tab: username }
             }
             Field { id: username; width: parent.width; placeholderText: Facteur.tr("User name (if not the address)"); KeyNavigation.tab: email; onAccepted: setup.submit() }
+        }
+        Text {
+            width: parent.width
+            visible: setup.kind === "gmail" && password.text.replace(/\s+/g, "").length > 0 && password.text.replace(/\s+/g, "").length !== 16
+            text: Facteur.tr("An app password has 16 letters; this is not your Google password.")
+            wrapMode: Text.WordWrap
+            font.family: FiliTheme.font
+            font.pixelSize: FiliTheme.sizeList
+            color: FiliTheme.warning
         }
         Text {
             width: parent.width
