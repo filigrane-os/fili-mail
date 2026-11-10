@@ -1,14 +1,10 @@
 //! `fili-mail accounts add-imap`: register an IMAP/SMTP account and keep its password in the
 //! system keyring. Until the application can do this itself, it is how an account (Proton Mail
 //! through Bridge, Fastmail, a server of your own) gets set up.
+use crate::account::setup::ImapSpec;
 use clap::Args;
-use serde_json::{Value, json};
+use serde_json::Value;
 use std::io::{self, BufRead, IsTerminal, Write};
-
-/// Proton Mail Bridge listens on loopback with its own certificate.
-const BRIDGE_HOST: &str = "127.0.0.1";
-const BRIDGE_IMAP: u16 = 1143;
-const BRIDGE_SMTP: u16 = 1025;
 
 #[derive(Args)]
 pub struct AddImap {
@@ -92,62 +88,21 @@ impl AddImap {
         session: &crate::backend::Session,
         runtime: &tokio::runtime::Runtime,
     ) -> Result<Value, &'static str> {
-        let email = self.email.trim().to_lowercase();
-        if !crate::account::valid_email(&email) {
-            return Err("invalid_params");
-        }
-        let password = read_password(self.password_stdin)?;
-        if password.is_empty() {
-            return Err("invalid_params");
-        }
-        let (default_host, default_imap, default_smtp) = if self.bridge {
-            (BRIDGE_HOST.to_owned(), BRIDGE_IMAP, BRIDGE_SMTP)
-        } else {
-            let domain = email.split_once('@').map_or("", |(_, d)| d);
-            (format!("imap.{domain}"), 993, 465)
+        let spec = ImapSpec {
+            email: self.email.clone(),
+            password: String::new(),
+            label: self.label.clone(),
+            username: self.username.clone(),
+            bridge: self.bridge,
+            imap_host: self.imap_host.clone(),
+            imap_port: self.imap_port,
+            smtp_host: self.smtp_host.clone(),
+            smtp_port: self.smtp_port,
         };
-        let imap_host = self.imap_host.clone().unwrap_or(default_host.clone());
-        let smtp_host = self.smtp_host.clone().unwrap_or_else(|| {
-            if self.bridge {
-                default_host.clone()
-            } else {
-                imap_host.replacen("imap.", "smtp.", 1)
-            }
-        });
-        let mut imap = json!({
-            "imapHost": imap_host,
-            "imapPort": self.imap_port.unwrap_or(default_imap),
-            "smtpHost": smtp_host,
-            "smtpPort": self.smtp_port.unwrap_or(default_smtp),
-            "username": self.username.clone().unwrap_or(email.clone()),
-        });
-        if self.bridge {
-            imap["insecure"] = json!(true);
-        }
-        let id = format!("imap:{email}");
-        let entry = json!({"provider":"imap","email":email,"label":self.label,"imap":imap});
-        let read = runtime.block_on(session.dispatch("accounts.read", &json!({})))?;
-        let mut registry = read["registry"].clone();
-        let accounts = registry["accounts"]
-            .as_array_mut()
-            .ok_or("accounts_invalid")?;
-        accounts.retain(|a| {
-            !(a["provider"] == "imap"
-                && a["email"].as_str().map(str::to_lowercase) == Some(email.clone()))
-        });
-        accounts.push(entry);
-        if registry["activeId"].as_str().unwrap_or("").is_empty() {
-            registry["activeId"] = json!(id);
-        }
-        // The password first: an account without one would only fail at the first check.
-        runtime.block_on(session.dispatch(
-            "credentials.put",
-            &json!({"kind":"imap-password","accountId":id,"secret":password}),
-        ))?;
-        runtime.block_on(session.dispatch(
-            "accounts.save",
-            &json!({"registry":registry,"revision":read["revision"]}),
-        ))?;
-        Ok(json!({"added":id}))
+        // Validate the address and the servers before asking for a password.
+        spec.settings()?;
+        let password = read_password(self.password_stdin)?;
+        let spec = ImapSpec { password, ..spec };
+        runtime.block_on(crate::account::setup::add_imap(session, &spec))
     }
 }

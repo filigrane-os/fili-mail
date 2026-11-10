@@ -8,6 +8,7 @@ pub mod conversation;
 pub mod intents;
 pub mod model;
 pub mod senders;
+pub mod setup;
 mod storage;
 #[cfg(test)]
 mod tests;

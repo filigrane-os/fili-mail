@@ -536,7 +536,7 @@ impl Session {
     }
 }
 
-pub(crate) fn runtime() -> std::io::Result<tokio::runtime::Runtime> {
+pub fn runtime() -> std::io::Result<tokio::runtime::Runtime> {
     tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)
         .max_blocking_threads(8)

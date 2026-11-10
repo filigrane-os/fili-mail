@@ -1,4 +1,10 @@
+mod gui;
+
 fn main() {
+    // No argument: the window (Facteur). Everything else is the command line and the daemon, which never start Qt.
+    if std::env::args().len() == 1 {
+        std::process::exit(gui::run());
+    }
     #[cfg(windows)]
     {
         // Windows reserves only 1 MiB for the executable's initial thread.
