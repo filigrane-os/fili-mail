@@ -10,11 +10,16 @@ mod state;
 use crate::backend::Session;
 use detect::{Detector, Message};
 use serde_json::{Value, json};
-use std::{collections::HashMap, time::Duration};
+use std::{
+    collections::{HashMap, VecDeque},
+    time::Duration,
+};
 
 const WATCH_INTERVAL_SEC: u64 = 120;
 const REGISTRY_POLL: Duration = Duration::from_secs(30);
 const LIST_LIMIT: u64 = 25;
+/// Messages kept for the bar's tooltip.
+const RECENT: usize = 8;
 
 pub fn run() -> i32 {
     let Ok(runtime) = crate::backend::runtime() else {
@@ -106,6 +111,7 @@ async fn serve() {
     let mut watched: HashMap<String, String> = HashMap::new();
     let mut counts: HashMap<String, Value> = HashMap::new();
     let mut detector = Detector::default();
+    let mut recent: VecDeque<(String, String)> = VecDeque::new();
     let mut tick = tokio::time::interval(REGISTRY_POLL);
     let mut stop = match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
         Ok(signal) => signal,
@@ -116,7 +122,7 @@ async fn serve() {
             _ = tick.tick() => {
                 sync_watches(&session, &mut watched, &mut detector).await;
                 counts.retain(|id, _| watched.contains_key(id));
-                state::write(&watched, &counts);
+                state::write(&watched, &counts, recent.make_contiguous());
             }
             _ = stop.recv() => break,
             _ = tokio::signal::ctrl_c() => break,
@@ -131,7 +137,7 @@ async fn serve() {
                     "unread": snapshot["estimate"].as_u64().unwrap_or(0),
                     "error": snapshot["error"].as_str().unwrap_or(""),
                 }));
-                state::write(&watched, &counts);
+                state::write(&watched, &counts, recent.make_contiguous());
                 let changed = detector.changed(&account, snapshot);
                 if debug() {
                     eprintln!("fili-mail: update {account} unread={} changed={changed}", snapshot["estimate"]);
@@ -148,6 +154,13 @@ async fn serve() {
                             eprintln!("fili-mail: listed {listed} unread, {} new", fresh.len());
                         }
                         notify::announce(&email, &fresh).await;
+                        for message in &fresh {
+                            recent.push_back((message.from.clone(), message.subject.clone()));
+                            if recent.len() > RECENT {
+                                recent.pop_front();
+                            }
+                        }
+                        state::write(&watched, &counts, recent.make_contiguous());
                     }
                     Err(error) => {
                         eprintln!("fili-mail: cannot list {account}: {error}");

@@ -30,13 +30,46 @@ pub fn render(
     json!({"total":total,"updatedAt":now,"accounts":accounts})
 }
 
-pub fn write(watched: &HashMap<String, String>, counts: &HashMap<String, Value>) {
+/// `~/.local/state/alerts/mail` (one `sender<TAB>subject` line per recent message) and
+/// `mail.count` (the real unread total, which wins): the files the bar's alert module reads.
+fn alerts(total: u64, recent: &[(String, String)]) {
+    let Some(home) = std::env::var_os("HOME").map(PathBuf::from) else {
+        return;
+    };
+    alerts_in(&home.join(".local/state/alerts"), total, recent);
+}
+
+fn alerts_in(dir: &std::path::Path, total: u64, recent: &[(String, String)]) {
+    if fs::create_dir_all(&dir).is_err() {
+        return;
+    }
+    let clean = |text: &str| text.replace(['\t', '\n', '\r'], " ");
+    let lines: String = recent
+        .iter()
+        .map(|(from, subject)| format!("{}\t{}\n", clean(from), clean(subject)))
+        .collect();
+    for (name, body) in [("mail", lines), ("mail.count", format!("{total}\n"))] {
+        let target = dir.join(name);
+        let temporary = dir.join(format!(".{name}.tmp"));
+        if fs::write(&temporary, body).is_ok() {
+            let _ = fs::rename(&temporary, &target);
+        }
+    }
+}
+
+pub fn write(
+    watched: &HashMap<String, String>,
+    counts: &HashMap<String, Value>,
+    recent: &[(String, String)],
+) {
     let Some(path) = path() else { return };
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
-    let body = render(watched, counts, now).to_string();
+    let state = render(watched, counts, now);
+    alerts(state["total"].as_u64().unwrap_or(0), recent);
+    let body = state.to_string();
     let Some(dir) = path.parent() else { return };
     let temporary = path.with_extension("json.tmp");
     if fs::create_dir_all(dir).is_ok() && fs::write(&temporary, body).is_ok() {
@@ -47,6 +80,18 @@ pub fn write(watched: &HashMap<String, String>, counts: &HashMap<String, Value>)
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn alert_files_hold_recent_lines_and_the_total() {
+        let dir = std::env::temp_dir().join(format!("fili-mail-alerts-{}", std::process::id()));
+        alerts_in(&dir, 3, &[("Alice\tM.".into(), "Hi\nthere".into())]);
+        assert_eq!(
+            fs::read_to_string(dir.join("mail")).unwrap(),
+            "Alice M.\tHi there\n"
+        );
+        assert_eq!(fs::read_to_string(dir.join("mail.count")).unwrap(), "3\n");
+        let _ = fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn totals_every_account_and_keeps_errors() {
