@@ -21,7 +21,27 @@ const LIST_LIMIT: u64 = 25;
 /// Messages kept for the bar's tooltip.
 const RECENT: usize = 8;
 
+/// One daemon per session: a second one (niri restarted, a manual run) exits quietly.
+/// The lock lives as long as the returned file is open.
+fn single_instance() -> Option<std::fs::File> {
+    use std::os::fd::AsRawFd;
+    let runtime = std::env::var_os("XDG_RUNTIME_DIR").map(std::path::PathBuf::from)?;
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(false)
+        .open(runtime.join("fili-mail-daemon.lock"))
+        .ok()?;
+    // SAFETY: flock on a descriptor this function owns.
+    let locked = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == 0;
+    locked.then_some(file)
+}
+
 pub fn run() -> i32 {
+    let Some(_lock) = single_instance() else {
+        eprintln!("fili-mail: the daemon is already running");
+        return 0;
+    };
     let Ok(runtime) = crate::backend::runtime() else {
         eprintln!("fili-mail: cannot start the runtime");
         return 1;
