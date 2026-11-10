@@ -1,5 +1,6 @@
 use clap::{CommandFactory, Parser, Subcommand};
 use std::io::{self, Read};
+mod account;
 mod call;
 mod mail;
 mod output;
@@ -53,9 +54,10 @@ enum Command {
     /// Print the executable version
     Version,
     /// Inspect desktop accounts without exposing credentials
+    #[command(alias = "account")]
     Accounts {
         #[command(subcommand)]
-        command: ListCommand,
+        command: AccountsCommand,
     },
     /// Inspect mail provider capabilities
     Providers {
@@ -72,6 +74,14 @@ enum Command {
         long_about = "Call a backend method with JSON parameters on stdin (maximum 1 MiB).\nEmpty stdin means {}. Errors exit 1. With --json, prints an ok/result or\nok/error envelope. Each invocation has its own session; use serve for\nstateful upload sequences. Mutations are never automatically retried."
     )]
     Call { method: String },
+}
+
+#[derive(Subcommand)]
+enum AccountsCommand {
+    /// List available entries
+    List,
+    /// Add an IMAP/SMTP account (password asked on the terminal, kept in the keyring)
+    AddImap(account::AddImap),
 }
 
 #[derive(Subcommand)]
@@ -180,6 +190,9 @@ pub fn run() {
             .params(io::stdin())
             .and_then(|params| runtime.block_on(call::dispatch(&session, "mail.send", &params))),
         Command::Info => runtime.block_on(session.dispatch("system.info", &empty)),
+        Command::Accounts {
+            command: AccountsCommand::AddImap(args),
+        } => args.run(&session, &runtime),
         Command::Accounts { .. } => runtime.block_on(session.dispatch("accounts.list", &empty)),
         Command::Providers { .. } => runtime.block_on(session.dispatch("providers.list", &empty)),
         Command::Message { .. } => parse_message(),
