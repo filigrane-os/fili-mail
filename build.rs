@@ -1,7 +1,12 @@
 // Qt Quick interface of Facteur, compiled into the binary (module Fili.Mail, qrc:/qt/qml/Fili/Mail/qml/);
 // the Rust object it talks to is in src/gui/bridge.rs.
+#[cfg(feature = "gui")]
 use cxx_qt_build::{CxxQtBuilder, QmlFile, QmlModule};
 
+#[cfg(not(feature = "gui"))]
+fn main() {}
+
+#[cfg(feature = "gui")]
 fn main() {
     // Version of the About card: tag or commit of the repository (absent outside a repository)
     if let Ok(o) = std::process::Command::new("git").args(["describe", "--tags", "--always", "--dirty"]).output() {

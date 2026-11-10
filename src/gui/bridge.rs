@@ -37,6 +37,21 @@ pub mod qobject {
         #[qsignal]
         #[cxx_name = "accountAdded"]
         fn account_added(self: Pin<&mut Facteur>, result: &QString);
+        // Google sign-in (OAuth in the browser): whether a Google client is available, keep the client file Google's
+        // console gives ("" or an error code), start the sign-in (the page is opened; `googleStarted` also gives its
+        // address) and `accountAdded` follows once the browser is done
+        #[qinvokable]
+        #[cxx_name = "googleReady"]
+        fn google_ready(self: &Facteur) -> bool;
+        #[qinvokable]
+        #[cxx_name = "saveGoogleClient"]
+        fn save_google_client(self: &Facteur, text: &QString) -> QString;
+        #[qinvokable]
+        #[cxx_name = "googleSignIn"]
+        fn google_sign_in(self: Pin<&mut Facteur>, hint: &QString);
+        #[qsignal]
+        #[cxx_name = "googleStarted"]
+        fn google_started(self: Pin<&mut Facteur>, url: &QString);
         // Messages of a mailbox of an account; answered by `listed` (JSON: {messages, estimate} or {error})
         #[qinvokable]
         fn list(self: Pin<&mut Facteur>, account: &QString, mailbox: &QString);
@@ -58,7 +73,9 @@ use core::pin::Pin;
 use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::QString;
 use fili_mail::{
-    account::setup::{ImapSpec, add_imap},
+    account::setup::{
+        ImapSpec, add_imap, google_begin, google_client_configured, google_poll, save_google_client,
+    },
     backend::{Session, runtime},
 };
 use qobject::*;
@@ -211,6 +228,57 @@ impl qobject::Facteur {
         let (runtime, session) = engine();
         runtime.spawn(async move {
             let out = match add_imap(session, &spec).await {
+                Ok(v) => v.to_string(),
+                Err(e) => error_json(e),
+            };
+            let _ = qt.queue(move |f| f.account_added(&QString::from(&out)));
+        });
+    }
+
+    pub fn google_ready(&self) -> bool {
+        google_client_configured()
+    }
+
+    pub fn save_google_client(&self, text: &QString) -> QString {
+        match save_google_client(&text.to_string()) {
+            Ok(()) => QString::default(),
+            Err(e) => QString::from(e),
+        }
+    }
+
+    pub fn google_sign_in(self: Pin<&mut Self>, hint: &QString) {
+        let hint = hint.to_string();
+        let qt = self.qt_thread();
+        let (runtime, session) = engine();
+        runtime.spawn(async move {
+            let out = async {
+                let started = google_begin(session, &hint).await?;
+                let id = started["id"]
+                    .as_str()
+                    .ok_or("auth_invalid_response")?
+                    .to_owned();
+                let url = started["url"]
+                    .as_str()
+                    .ok_or("auth_invalid_response")?
+                    .to_owned();
+                let _ = std::process::Command::new("xdg-open")
+                    .arg(&url)
+                    .stdin(std::process::Stdio::null())
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .spawn();
+                let shown = QString::from(&url);
+                let _ = qt.queue(move |f| f.google_started(&shown));
+                // The engine gives up after 180 s and answers with an error
+                loop {
+                    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                    if let Some(done) = google_poll(session, &id).await? {
+                        return Ok::<Value, &'static str>(done);
+                    }
+                }
+            }
+            .await;
+            let out = match out {
                 Ok(v) => v.to_string(),
                 Err(e) => error_json(e),
             };

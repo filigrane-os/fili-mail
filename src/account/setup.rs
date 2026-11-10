@@ -93,3 +93,67 @@ pub async fn add_imap(session: &Session, spec: &ImapSpec) -> Result<Value, &'sta
         .await?;
     Ok(json!({"added":id}))
 }
+
+/// OAuth callback port of the desktop client (any loopback port is accepted by Google's desktop clients).
+const GOOGLE_PORT: u16 = 9481;
+/// Mail only; the refresh token is kept in the keyring by the engine itself.
+const GOOGLE_SCOPES: [&str; 2] = [
+    "https://www.googleapis.com/auth/gmail.modify",
+    "https://www.googleapis.com/auth/gmail.send",
+];
+
+pub use crate::providers::gmail_credentials::{
+    client_configured as google_client_configured, save_client as save_google_client,
+};
+
+/// Start the Google sign-in: `{"id","url"}`; the url is the page to open in the browser.
+pub async fn google_begin(session: &Session, login_hint: &str) -> Result<Value, &'static str> {
+    let client = crate::providers::gmail_credentials::read_for_account("")?;
+    session
+        .dispatch(
+            "auth.begin",
+            &json!({
+                "clientId": client.client_id,
+                "clientSecret": client.client_secret,
+                "loginHint": login_hint,
+                "port": GOOGLE_PORT,
+                "scopes": GOOGLE_SCOPES,
+            }),
+        )
+        .await
+}
+
+/// `Ok(None)` while the browser page is still open; `Ok(Some({"added"}))` once signed in, the account registered.
+pub async fn google_poll(session: &Session, id: &str) -> Result<Option<Value>, &'static str> {
+    let done = session.dispatch("auth.poll", &json!({"id": id})).await?;
+    if done["pending"] == true {
+        return Ok(None);
+    }
+    if done["status"] != 200 {
+        return Err("auth_failed");
+    }
+    let email = done["profile"]["emailAddress"]
+        .as_str()
+        .ok_or("auth_invalid_profile")?
+        .to_lowercase();
+    let read = session.dispatch("accounts.read", &json!({})).await?;
+    let mut registry = read["registry"].clone();
+    let accounts = registry["accounts"]
+        .as_array_mut()
+        .ok_or("accounts_invalid")?;
+    accounts.retain(|a| {
+        !(a["provider"].as_str().unwrap_or("gmail") == "gmail"
+            && a["email"].as_str().map(str::to_lowercase).as_deref() == Some(email.as_str()))
+    });
+    accounts.push(json!({"provider":"gmail","email":email,"label":""}));
+    if registry["activeId"].as_str().unwrap_or("").is_empty() {
+        registry["activeId"] = json!(email);
+    }
+    session
+        .dispatch(
+            "accounts.save",
+            &json!({"registry":registry,"revision":read["revision"]}),
+        )
+        .await?;
+    Ok(Some(json!({"added": email})))
+}

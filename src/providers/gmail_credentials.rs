@@ -111,8 +111,8 @@ fn read_file(file: File, account: &str) -> Result<Client, &'static str> {
 /// the binary.
 pub fn builtin() -> Option<Client> {
     builtin_from(
-        option_env!("OMAMAIL_GOOGLE_CLIENT_ID"),
-        option_env!("OMAMAIL_GOOGLE_CLIENT_SECRET"),
+        option_env!("FILI_MAIL_GOOGLE_CLIENT_ID"),
+        option_env!("FILI_MAIL_GOOGLE_CLIENT_SECRET"),
     )
 }
 fn builtin_from(id: Option<&str>, secret: Option<&str>) -> Option<Client> {
@@ -141,6 +141,29 @@ fn read_at(config: &Path, account: &str, builtin: Option<Client>) -> Result<Clie
         result => result,
     }
 }
+/// Whether a Google OAuth client is available: the user's `credentials.json`, else the one a release was built with.
+pub fn client_configured() -> bool {
+    read_for_account("").is_ok()
+}
+
+/// Check the text of a client file as Google's console downloads it ("installed" desktop client) and keep it as
+/// `credentials.json` in the private configuration directory.
+pub fn save_client(text: &str) -> Result<(), &'static str> {
+    parse_client(text.as_bytes(), "")?;
+    let config = crate::platform::dirs::AppDirs::discover()
+        .map_err(|_| "config_home_invalid")?
+        .config;
+    let dir = crate::platform::private_fs::directories(
+        &config,
+        &[crate::platform::dirs::APP_DIRECTORY],
+        true,
+    )
+    .map_err(storage_error)?
+    .ok_or("gmail_client_unreadable")?;
+    crate::platform::private_fs::atomic_replace(&dir, "credentials.json", text.as_bytes())
+        .map_err(storage_error)
+}
+
 pub fn read_for_account(account: &str) -> Result<Client, &'static str> {
     let config = crate::platform::dirs::AppDirs::discover()
         .map_err(|_| "config_home_invalid")?

@@ -9,14 +9,38 @@ Rectangle {
     property bool cancellable: false
     property bool busy: false
     property string error: ""
-    // "gmail", "bridge" or "other"
-    property string kind: "gmail"
+    // "google" (browser sign-in), "gmail" (app password), "bridge" or "other"
+    property string kind: "google"
+    // Google sign-in: a client file is needed once; the browser page is open while this is set
+    property bool googleReady: Facteur.googleReady()
+    property string googleUrl: ""
+    property string clientError: ""
     signal cancelled()
     signal submitted(var spec)
 
     color: FiliTheme.background
 
+    function signInGoogle() {
+        if (busy)
+            return;
+        setup.googleUrl = "";
+        setup.submitted({ google: true, hint: email.text.trim() });
+    }
+
+    function saveClient() {
+        const err = Facteur.saveGoogleClient(clientText.text);
+        setup.clientError = err === "" ? "" : Facteur.tr("This is not a Google desktop client file (the JSON downloaded from the console).");
+        if (err === "") {
+            clientText.text = "";
+            setup.googleReady = Facteur.googleReady();
+        }
+    }
+
     function submit() {
+        if (kind === "google") {
+            signInGoogle();
+            return;
+        }
         if (busy || email.text.trim() === "" || password.text === "")
             return;
         // Google shows an app password in groups of four letters; the spaces are not part of it
@@ -48,7 +72,8 @@ Rectangle {
             spacing: FiliTheme.space1
             Repeater {
                 model: [
-                    { key: "gmail", label: "Gmail" },
+                    { key: "google", label: Facteur.tr("Gmail (Google sign-in)") },
+                    { key: "gmail", label: Facteur.tr("Gmail (app password)") },
                     { key: "bridge", label: "Proton Mail (Bridge)" },
                     { key: "other", label: Facteur.tr("Other IMAP") }
                 ]
@@ -65,12 +90,46 @@ Rectangle {
             font.family: FiliTheme.font
             font.pixelSize: FiliTheme.sizeList
             color: FiliTheme.textSecondary
-            text: setup.kind === "gmail" ? Facteur.tr("Gmail needs an app password: Google account › Security › 2-step verification › App passwords.")
+            text: setup.kind === "google" ? (setup.googleReady ? Facteur.tr("Your browser opens Google's own sign-in page: Facteur never sees your Google password.") : Facteur.tr("Google sign-in needs an OAuth client, created once in the Google Cloud console (APIs & Services › Credentials › OAuth client ID › Desktop app). Paste the JSON file it lets you download."))
+                : setup.kind === "gmail" ? Facteur.tr("Gmail needs an app password: Google account › Security › 2-step verification › App passwords.")
                 : setup.kind === "bridge" ? Facteur.tr("Proton Mail Bridge must be running. Use the password it shows for this account, not your Proton password.")
                 : Facteur.tr("Servers are guessed from the address (imap.domain, smtp.domain); fill them in if they differ.")
         }
         Field { id: email; width: parent.width; placeholderText: Facteur.tr("Email address"); inputMethodHints: Qt.ImhEmailCharactersOnly; KeyNavigation.tab: password; onAccepted: password.forceActiveFocus() }
-        Field { id: password; width: parent.width; placeholderText: Facteur.tr("Password"); secret: true; KeyNavigation.tab: setup.kind === "other" ? imapHost : email; onAccepted: setup.submit() }
+        Field { id: password; visible: setup.kind !== "google"; width: parent.width; placeholderText: Facteur.tr("Password"); secret: true; KeyNavigation.tab: setup.kind === "other" ? imapHost : email; onAccepted: setup.submit() }
+        Column {
+            width: parent.width
+            spacing: FiliTheme.space2
+            visible: setup.kind === "google" && !setup.googleReady
+            Rectangle {
+                width: parent.width
+                height: 110
+                radius: FiliTheme.radiusControl
+                color: FiliTheme.surface
+                border.width: FiliTheme.borderWidth
+                border.color: clientText.activeFocus ? FiliTheme.accentColor : FiliTheme.border
+                TextEdit {
+                    id: clientText
+                    anchors { fill: parent; margins: FiliTheme.space2 }
+                    wrapMode: TextEdit.WrapAnywhere
+                    font.family: FiliTheme.mono
+                    font.pixelSize: FiliTheme.sizeSmall
+                    color: FiliTheme.text
+                    selectionColor: FiliTheme.surfaceActive
+                    clip: true
+                }
+            }
+            Text {
+                visible: setup.clientError !== ""
+                width: parent.width
+                text: setup.clientError
+                wrapMode: Text.WordWrap
+                font.family: FiliTheme.font
+                font.pixelSize: FiliTheme.sizeList
+                color: FiliTheme.danger
+            }
+            TextButton { label: Facteur.tr("Save the client"); primary: true; onClicked: setup.saveClient() }
+        }
         Column {
             width: parent.width
             spacing: FiliTheme.space2
@@ -86,6 +145,15 @@ Rectangle {
                 Field { id: smtpPort; width: 80; placeholderText: "465"; inputMethodHints: Qt.ImhDigitsOnly; KeyNavigation.tab: username }
             }
             Field { id: username; width: parent.width; placeholderText: Facteur.tr("User name (if not the address)"); KeyNavigation.tab: email; onAccepted: setup.submit() }
+        }
+        Text {
+            width: parent.width
+            visible: setup.busy && setup.kind === "google" && setup.googleUrl !== ""
+            text: Facteur.tr("If the page did not open, copy this address into your browser:") + "\n" + setup.googleUrl
+            wrapMode: Text.WrapAnywhere
+            font.family: FiliTheme.mono
+            font.pixelSize: FiliTheme.sizeSmall
+            color: FiliTheme.textSecondary
         }
         Text {
             width: parent.width
@@ -107,7 +175,12 @@ Rectangle {
         }
         Row {
             spacing: FiliTheme.space2
-            TextButton { label: setup.busy ? Facteur.tr("Adding…") : Facteur.tr("Add account"); primary: true; onClicked: setup.submit() }
+            TextButton {
+                visible: setup.kind !== "google" || setup.googleReady
+                label: setup.busy ? (setup.kind === "google" ? Facteur.tr("Waiting for the browser…") : Facteur.tr("Adding…")) : setup.kind === "google" ? Facteur.tr("Sign in with Google") : Facteur.tr("Add account")
+                primary: true
+                onClicked: setup.submit()
+            }
             TextButton { visible: setup.cancellable; label: Facteur.tr("Cancel"); onClicked: setup.cancelled() }
         }
     }

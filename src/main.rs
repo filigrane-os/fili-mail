@@ -1,7 +1,9 @@
+#[cfg(feature = "gui")]
 mod gui;
 
 fn main() {
     // No argument: the window (Facteur). Everything else is the command line and the daemon, which never start Qt.
+    #[cfg(feature = "gui")]
     if std::env::args().len() == 1 {
         std::process::exit(gui::run());
     }

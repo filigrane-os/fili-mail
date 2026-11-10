@@ -37,7 +37,13 @@ ApplicationWindow {
             "mail_network_failed": Facteur.tr("Cannot reach the mail server."),
             "mail_connection_closed": Facteur.tr("The server closed the connection."),
             "mail_auth_failed": Facteur.tr("The server refused the login."),
-            "imap_auth_failed": Facteur.tr("The server refused the login.")
+            "imap_auth_failed": Facteur.tr("The server refused the login."),
+            "gmail_client_missing": Facteur.tr("No Google OAuth client: paste the client file first."),
+            "gmail_client_unreadable": Facteur.tr("No Google OAuth client: paste the client file first."),
+            "auth_port_unavailable": Facteur.tr("Port 9481 is in use: close the program that listens on it."),
+            "auth_timeout": Facteur.tr("Google sign-in took too long. Try again."),
+            "auth_offline_access_missing": Facteur.tr("Google did not grant lasting access. Remove Facteur from your Google account permissions and try again."),
+            "auth_missing_scope": Facteur.tr("Mail access was not granted: tick every permission on Google's page.")
         };
         return known[code] || code;
     }
@@ -95,6 +101,9 @@ ApplicationWindow {
             reader.summary = r.message.summary;
             reader.body = r.message.nativeContent.body.text;
         }
+        function onGoogleStarted(url) {
+            setupPage.googleUrl = url;
+        }
         function onAccountAdded(json) {
             win.addBusy = false;
             const r = JSON.parse(json);
@@ -127,10 +136,14 @@ ApplicationWindow {
         busy: win.addBusy
         error: win.addError
         onCancelled: win.adding = false
+        id: setupPage
         onSubmitted: spec => {
             win.addError = "";
             win.addBusy = true;
-            Facteur.addImap(JSON.stringify(spec));
+            if (spec.google)
+                Facteur.googleSignIn(spec.hint);
+            else
+                Facteur.addImap(JSON.stringify(spec));
         }
     }
 

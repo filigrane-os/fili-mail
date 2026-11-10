@@ -144,13 +144,10 @@ async fn finish_google(mut response: Value, client_id: &str) -> Result<Value, &'
         serde_json::from_str(response["body"].as_str().ok_or("auth_invalid_response")?)
             .map_err(|_| "auth_invalid_response")?;
     let granted = token["scope"].as_str().unwrap_or("");
+    // Mail only: Facteur has no calendar, so it neither asks for nor requires calendar access.
     for required in [
         "https://www.googleapis.com/auth/gmail.modify",
         "https://www.googleapis.com/auth/gmail.send",
-        "https://www.googleapis.com/auth/calendar.events",
-        // Calendar discovery lists the account's calendars; OAuth.SCOPES asks
-        // for it and AuthManager refuses a grant without it, so this does too.
-        "https://www.googleapis.com/auth/calendar.calendarlist.readonly",
     ] {
         if !granted.split_whitespace().any(|scope| scope == required) {
             return Err("auth_missing_scope");
