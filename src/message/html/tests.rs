@@ -199,7 +199,7 @@ fn native_output_cannot_trigger_qt_resource_requests() {
         }
     });
     let directory = std::env::temp_dir().join(format!(
-        "omamail-native-html-{}-{}",
+        "fili-mail-native-html-{}-{}",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)

@@ -16,7 +16,7 @@ fn platform_config_root(root: &Path, home: &Path) -> std::path::PathBuf {
 }
 
 fn isolated_cli(root: &Path, home: &Path) -> Command {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_omamail"));
+    let mut command = Command::new(env!("CARGO_BIN_EXE_fili-mail"));
     command
         .env("HOME", home)
         .env("XDG_CONFIG_HOME", root.join("config"))
@@ -45,7 +45,7 @@ fn cli_reads_only_bounded_regular_files_without_writing() {
     ] {
         std::fs::create_dir_all(directory).unwrap();
     }
-    let directory = platform_config_root(&root, &home).join("omamail");
+    let directory = platform_config_root(&root, &home).join("fili-mail");
     std::fs::create_dir_all(&directory).unwrap();
     let path = directory.join("accounts.json");
     let run = || {

@@ -138,11 +138,11 @@ async fn mail_send_preview_reads_google_identity_without_mutation_or_local_write
             secret: crate::credentials::Secret::new(b"synthetic-refresh-token".to_vec()).unwrap(),
         });
     for root in [&fixture.cache, &fixture.state] {
-        let directory = root.join("omamail");
+        let directory = root.join("fili-mail");
         std::fs::create_dir_all(&directory).unwrap();
         std::fs::write(directory.join("sentinel"), b"unchanged existing state").unwrap();
     }
-    std::fs::write(fixture.state.join("omamail/outbox.json"), b"[]\n").unwrap();
+    std::fs::write(fixture.state.join("fili-mail/outbox.json"), b"[]\n").unwrap();
     // Keep the hostile display name separate from a Windows-valid filename.
     let attachment = fixture.root.join(if cfg!(windows) {
         "attachment-工.txt"

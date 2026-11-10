@@ -198,10 +198,10 @@ where
     if let Some(event) = parent {
         check_owner(event, p)?;
         // An existing native/manual copy belongs to its calendar, not this importer.
-        if event["extendedProperties"]["private"]["omamailMailbox"] != p["mailbox"] {
+        if event["extendedProperties"]["private"]["fili-mailMailbox"] != p["mailbox"] {
             return Ok(json!({"status":"existing"}));
         }
-        if event["extendedProperties"]["private"]["omamailSequence"]
+        if event["extendedProperties"]["private"]["fili-mailSequence"]
             .as_str()
             .and_then(|s| s.parse::<u64>().ok())
             .unwrap_or(0)
@@ -241,7 +241,7 @@ where
             return Err("calendar_invitation_not_found");
         }
         check_owner(&matches[0], p)?;
-        if matches[0]["extendedProperties"]["private"]["omamailSequence"]
+        if matches[0]["extendedProperties"]["private"]["fili-mailSequence"]
             .as_str()
             .and_then(|s| s.parse::<u64>().ok())
             .unwrap_or(0)
@@ -277,7 +277,7 @@ where
             body["attendeesOmitted"] = json!(true);
         }
     }
-    body["extendedProperties"] = json!({"private":{"omamailMailbox":p["mailbox"],"omamailSequence":p["sequence"].to_string()}});
+    body["extendedProperties"] = json!({"private":{"fili-mailMailbox":p["mailbox"],"fili-mailSequence":p["sequence"].to_string()}});
     if let Some(event) = existing {
         request(json!({"source":source,"operation":"update","eventId":super::text(event,"id")?,"ifMatch":super::text(event,"etag")?,"sendUpdates":"none","body":body.to_string()})).await?;
     } else {
@@ -309,7 +309,7 @@ mod tests {
     }
     fn existing() -> Value {
         json!({"id":"copy","etag":"\"version\"","iCalUID":"meeting","organizer":{"email":"host@example.org"},
-            "extendedProperties":{"private":{"omamailMailbox":"imap:me@example.org","omamailSequence":"1"}}})
+            "extendedProperties":{"private":{"fili-mailMailbox":"imap:me@example.org","fili-mailSequence":"1"}}})
     }
     async fn run(p: &Value, replies: Vec<Value>) -> (Result<Value, &'static str>, Vec<Value>) {
         let mut replies = replies.into_iter();
@@ -394,7 +394,7 @@ mod tests {
         let mut manual = existing();
         manual.as_object_mut().unwrap().remove("extendedProperties");
         let mut newer = existing();
-        newer["extendedProperties"]["private"]["omamailSequence"] = json!("3");
+        newer["extendedProperties"]["private"]["fili-mailSequence"] = json!("3");
         for event in [wrong, manual, newer] {
             let (_, calls) = run(&p, vec![json!({"items":[event]})]).await;
             assert_eq!(calls.len(), 1, "no mutation or import");

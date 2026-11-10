@@ -1,6 +1,6 @@
 //! Synthetic attachments only: the tests classify or store bytes, never render
 //! them or invoke the desktop opener.
-use omamail::attachment::openable;
+use fili_mail::attachment::openable;
 
 const INVOICE: &[u8] = include_bytes!("fixtures/attachments/embedded-invoice.pdf");
 
@@ -224,7 +224,7 @@ fn attachment_store_refusal_writes_nothing_and_returns_no_launch_path() {
     let root = std::env::temp_dir()
         .canonicalize()
         .unwrap()
-        .join(format!("omamail-pdf-boundary-{}", std::process::id()));
+        .join(format!("fili-mail-pdf-boundary-{}", std::process::id()));
     fs::create_dir_all(&root).unwrap();
     for bytes in [
         b"%PDF-1.7\n<?xml version='1.0'?><svg/>\n%%EOF\n".to_vec(),
@@ -232,7 +232,7 @@ fn attachment_store_refusal_writes_nothing_and_returns_no_launch_path() {
         replace_object(b"/Length 266", b"/Length 266 /Filter /FlateDecode"),
         INVOICE[..INVOICE.len() - 6].to_vec(),
     ] {
-        let mut child = Command::new(env!("CARGO_BIN_EXE_omamail"))
+        let mut child = Command::new(env!("CARGO_BIN_EXE_fili-mail"))
             .args(["call", "attachment.store", "--json"])
             .env("HOME", &root)
             .env("XDG_RUNTIME_DIR", &root)

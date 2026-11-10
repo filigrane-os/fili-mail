@@ -3,7 +3,7 @@ use super::*;
 use security_framework::passwords::{
     delete_generic_password, get_generic_password, set_generic_password,
 };
-const SERVICE: &str = "org.omamail.credentials.v1";
+const SERVICE: &str = "org.fili-mail.credentials.v1";
 
 fn error(error: security_framework::base::Error) -> Error {
     // errSecItemNotFound. Authorization denial, locked keychains and other
@@ -47,7 +47,7 @@ mod tests {
         use security_framework::passwords::{PasswordOptions, generic_password};
         let mut options = PasswordOptions::new_generic_password(SERVICE, "synthetic-denied-query");
         options.use_protected_keychain();
-        options.set_access_group("org.omamail.synthetic.unentitled");
+        options.set_access_group("org.fili-mail.synthetic.unentitled");
         let failure =
             generic_password(options).expect_err("an unentitled access group must be refused");
         assert_eq!(

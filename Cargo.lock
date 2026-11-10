@@ -603,6 +603,44 @@ dependencies = [
 ]
 
 [[package]]
+name = "fili-mail"
+version = "0.11.3"
+dependencies = [
+ "base64",
+ "chrono",
+ "clap",
+ "encoding_rs",
+ "flate2",
+ "futures-util",
+ "hickory-resolver",
+ "image",
+ "jpeg-encoder",
+ "json5",
+ "libc",
+ "mailparse",
+ "quick-xml",
+ "regex",
+ "reqwest",
+ "rusqlite",
+ "rustls",
+ "rustls-native-certs",
+ "secret-service",
+ "security-framework",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tabled",
+ "tokio",
+ "tokio-rustls",
+ "toml_edit",
+ "unicode-normalization",
+ "webpki-roots",
+ "windows-sys 0.61.2",
+ "zbus",
+ "zeroize",
+]
+
+[[package]]
 name = "find-msvc-tools"
 version = "0.1.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1414,44 +1452,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "071dfc062690e90b734c0b2273ce72ad0ffa95f0c74596bc250dcfd960262841"
 dependencies = [
  "autocfg",
-]
-
-[[package]]
-name = "omamail"
-version = "0.11.3"
-dependencies = [
- "base64",
- "chrono",
- "clap",
- "encoding_rs",
- "flate2",
- "futures-util",
- "hickory-resolver",
- "image",
- "jpeg-encoder",
- "json5",
- "libc",
- "mailparse",
- "quick-xml",
- "regex",
- "reqwest",
- "rusqlite",
- "rustls",
- "rustls-native-certs",
- "secret-service",
- "security-framework",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "tabled",
- "tokio",
- "tokio-rustls",
- "toml_edit",
- "unicode-normalization",
- "webpki-roots",
- "windows-sys 0.61.2",
- "zbus",
- "zeroize",
 ]
 
 [[package]]

@@ -8,7 +8,7 @@ fn serve_lifetime_follows_parent_and_protocol_shutdown() {
     for mode in ["parent-death", "quit", "eof"] {
         let output = std::process::Command::new("python3")
             .arg(root.join("tests/backend_lifetime.py"))
-            .arg(env!("CARGO_BIN_EXE_omamail"))
+            .arg(env!("CARGO_BIN_EXE_fili-mail"))
             .arg(&state)
             .arg(mode)
             .output()

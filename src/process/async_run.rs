@@ -122,7 +122,7 @@ mod tests {
     #[tokio::test]
     async fn requests_overlap_and_cancellation_kills_the_process_group() {
         let root = std::env::temp_dir().join(format!(
-            "omamail-async-overlap-{}-{}",
+            "fili-mail-async-overlap-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)

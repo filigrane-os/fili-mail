@@ -5,7 +5,7 @@ use super::*;
 #[test]
 fn windows_cache_put_read_touch_clear_complete_their_filesystem_operations() {
     let root = std::env::temp_dir().join(format!(
-        "omamail-cache-native-{}-{}",
+        "fili-mail-cache-native-{}-{}",
         std::process::id(),
         SERIAL.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
     ));
@@ -40,7 +40,7 @@ fn windows_cache_put_read_touch_clear_complete_their_filesystem_operations() {
         resource["resource"]
     );
     let readonly_dir =
-        directories_readonly(&root, &["omamail", "bodies", "account-one_40example.org"])
+        directories_readonly(&root, &["fili-mail", "bodies", "account-one_40example.org"])
             .unwrap()
             .unwrap();
     let readonly_file = regular_readonly(&readonly_dir, "mail-one.json")
@@ -70,7 +70,7 @@ fn windows_cache_put_read_touch_clear_complete_their_filesystem_operations() {
             .is_null()
     );
     for kind in ["bodies", "resources"] {
-        let dir = directories_readonly(&root, &["omamail", kind, "account-one_40example.org"])
+        let dir = directories_readonly(&root, &["fili-mail", kind, "account-one_40example.org"])
             .unwrap()
             .unwrap();
         assert!(names(&dir).unwrap().is_empty());

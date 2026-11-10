@@ -16,8 +16,8 @@ static MAIL_LIST_FIXTURE: AtomicU64 = AtomicU64::new(0);
 #[path = "cli/search.rs"]
 mod search;
 
-fn omamail(args: &[&str]) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_omamail"))
+fn fili_mail_cli(args: &[&str]) -> Output {
+    Command::new(env!("CARGO_BIN_EXE_fili-mail"))
         .args(args)
         .output()
         .unwrap()
@@ -25,15 +25,15 @@ fn omamail(args: &[&str]) -> Output {
 
 #[test]
 fn version_commands_have_stable_machine_readable_output() {
-    let plain = omamail(&["--version"]);
+    let plain = fili_mail_cli(&["--version"]);
     assert!(plain.status.success());
     assert_eq!(
         plain.stdout,
-        format!("omamail {}\n", env!("CARGO_PKG_VERSION")).as_bytes()
+        format!("fili-mail {}\n", env!("CARGO_PKG_VERSION")).as_bytes()
     );
     assert!(plain.stderr.is_empty());
 
-    let json = omamail(&["version", "--json"]);
+    let json = fili_mail_cli(&["version", "--json"]);
     assert!(json.status.success());
     assert_eq!(
         serde_json::from_slice::<Value>(&json.stdout).unwrap(),
@@ -44,12 +44,12 @@ fn version_commands_have_stable_machine_readable_output() {
 
 #[test]
 fn no_arguments_print_help_without_starting_a_gui() {
-    let output = omamail(&[]);
+    let output = fili_mail_cli(&[]);
     assert!(output.status.success());
     assert!(
         String::from_utf8(output.stdout)
             .unwrap()
-            .contains("Usage: omamail ")
+            .contains("Usage: fili-mail ")
     );
     assert!(output.stderr.is_empty());
 }
@@ -57,7 +57,7 @@ fn no_arguments_print_help_without_starting_a_gui() {
 #[test]
 fn serve_runs_the_persistent_backend() {
     let fixture = mail_list_fixture(9, false);
-    let mut child = Command::new(env!("CARGO_BIN_EXE_omamail"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_fili-mail"))
         .arg("serve")
         .env("OMAMAIL_INTEGRATION_HOME", &fixture.0)
         .env_remove("HOME")
@@ -86,12 +86,12 @@ fn serve_runs_the_persistent_backend() {
         .collect();
     assert_eq!(replies.len(), 2);
     assert_eq!(replies[0]["id"], 1);
-    assert_eq!(replies[0]["result"]["name"], "omamail");
+    assert_eq!(replies[0]["result"]["name"], "fili-mail");
     assert_eq!(replies[1]["id"], 2);
 }
 
 fn call(method: &str, params: &[u8]) -> Output {
-    let mut child = Command::new(env!("CARGO_BIN_EXE_omamail"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_fili-mail"))
         .args(["call", method, "--json"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -107,12 +107,12 @@ fn call(method: &str, params: &[u8]) -> Output {
 
 fn call_in_empty_home(method: &str, params: &[u8]) -> Output {
     let home = std::env::temp_dir().canonicalize().unwrap().join(format!(
-        "omamail-cli-empty-home-{}-{}",
+        "fili-mail-cli-empty-home-{}-{}",
         std::process::id(),
         EMPTY_HOME.fetch_add(1, Ordering::Relaxed)
     ));
     std::fs::create_dir_all(&home).unwrap();
-    let mut child = Command::new(env!("CARGO_BIN_EXE_omamail"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_fili-mail"))
         .args(["call", method, "--json"])
         .env("OMAMAIL_INTEGRATION_HOME", &home)
         .env("XDG_CONFIG_HOME", &home)
@@ -144,11 +144,11 @@ const M365_ID: &str = "ifau222bi5etembqgayucqkbhu";
 
 fn mail_list_fixture(imap_port: u16, keyring_succeeds: bool) -> MailListFixture {
     let root = std::env::temp_dir().canonicalize().unwrap().join(format!(
-        "omamail-cli-mail-list-{}-{}",
+        "fili-mail-cli-mail-list-{}-{}",
         std::process::id(),
         MAIL_LIST_FIXTURE.fetch_add(1, Ordering::Relaxed)
     ));
-    let config = config_root(&root).join("omamail");
+    let config = config_root(&root).join("fili-mail");
     fs::create_dir_all(&config).unwrap();
     #[cfg(windows)]
     {
@@ -211,7 +211,7 @@ fn state_root(root: &Path) -> PathBuf {
 
 #[cfg(target_os = "macos")]
 fn assert_no_runtime_storage(root: &Path) {
-    assert!(!root.join("home/Library/Caches/omamail").exists());
+    assert!(!root.join("home/Library/Caches/fili-mail").exists());
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -222,7 +222,7 @@ fn assert_no_runtime_storage(root: &Path) {
 }
 
 fn call_mail_list(root: &Path, account: &str) -> Output {
-    let mut child = Command::new(env!("CARGO_BIN_EXE_omamail"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_fili-mail"))
         .args(["call", "mail.list", "--json"])
         .env("OMAMAIL_INTEGRATION_HOME", root)
         .env("XDG_CONFIG_HOME", root.join("config"))
@@ -256,7 +256,7 @@ fn call_mail_list(root: &Path, account: &str) -> Output {
 }
 
 fn call_mail_read(root: &Path, account: &str, id: &str) -> Output {
-    let mut child = Command::new(env!("CARGO_BIN_EXE_omamail"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_fili-mail"))
         .args(["call", "mail.read", "--json"])
         .env("OMAMAIL_INTEGRATION_HOME", root)
         .env("XDG_CONFIG_HOME", root.join("config"))
@@ -376,7 +376,7 @@ fn fixture_snapshot(root: &Path) -> FixtureSnapshot {
 #[test]
 fn malformed_provider_action_previews_refuse_without_credentials_or_writes() {
     let fixture = mail_list_fixture(9, true);
-    let registry = config_root(&fixture.0).join("omamail/accounts.json");
+    let registry = config_root(&fixture.0).join("fili-mail/accounts.json");
     let mut accounts: Value = serde_json::from_slice(&fs::read(&registry).unwrap()).unwrap();
     accounts["accounts"]
         .as_array_mut()
@@ -504,7 +504,7 @@ async fn malformed_final_imap_action_id_prevents_all_network_and_cache_changes()
 #[test]
 fn configured_list_failures_do_not_repair_registry_metadata() {
     let fixture = mail_list_fixture(9, false);
-    let directory = config_root(&fixture.0).join("omamail");
+    let directory = config_root(&fixture.0).join("fili-mail");
     let registry = directory.join("accounts.json");
     let before = (
         metadata(&directory),
@@ -542,7 +542,7 @@ fn configured_list_failures_do_not_repair_registry_metadata() {
 #[test]
 fn configured_read_failures_do_not_repair_registry_metadata() {
     let fixture = mail_list_fixture(9, false);
-    let directory = config_root(&fixture.0).join("omamail");
+    let directory = config_root(&fixture.0).join("fili-mail");
     let registry = directory.join("accounts.json");
     let before = (
         metadata(&directory),
@@ -588,7 +588,7 @@ fn configured_read_failures_do_not_repair_registry_metadata() {
 #[test]
 fn imap_outlook_and_m365_destination_previews_require_readonly_credentials() {
     let fixture = mail_list_fixture(9, false);
-    let directory = config_root(&fixture.0).join("omamail");
+    let directory = config_root(&fixture.0).join("fili-mail");
     let registry = directory.join("accounts.json");
     let before = (
         metadata(&directory),
@@ -680,7 +680,7 @@ fn generic_call_dispatches_and_defaults_empty_input() {
     assert!(output.stderr.is_empty());
     let value: Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(value["ok"], true);
-    assert_eq!(value["result"]["name"], "omamail");
+    assert_eq!(value["result"]["name"], "fili-mail");
 }
 
 #[test]
@@ -800,17 +800,17 @@ fn read_rejects_unknown_accounts_and_unsafe_message_ids_without_writing_config()
 
 #[test]
 fn default_output_is_a_table_and_json_is_global() {
-    let pretty = omamail(&["info"]);
+    let pretty = fili_mail_cli(&["info"]);
     assert!(pretty.status.success());
     let text = String::from_utf8(pretty.stdout).unwrap();
     assert!(text.contains("| Field"), "{text}");
-    assert!(text.contains("omamail"));
+    assert!(text.contains("fili-mail"));
     assert!(serde_json::from_str::<Value>(&text).is_err());
     for args in [["--json", "info"], ["info", "--json"]] {
-        let output = omamail(&args);
+        let output = fili_mail_cli(&args);
         assert!(output.status.success());
         let value: Value = serde_json::from_slice(&output.stdout).unwrap();
-        assert_eq!(value["name"], "omamail");
+        assert_eq!(value["name"], "fili-mail");
         for method in value["methods"].as_array().unwrap() {
             assert!(
                 text.lines()
@@ -819,7 +819,7 @@ fn default_output_is_a_table_and_json_is_global() {
             );
         }
     }
-    let providers = omamail(&["providers", "list"]);
+    let providers = fili_mail_cli(&["providers", "list"]);
     assert!(providers.status.success());
     let text = String::from_utf8(providers.stdout).unwrap();
     assert!(text.contains("Gmail") && text.contains("|"));
@@ -833,23 +833,23 @@ fn clap_help_and_invalid_commands_do_not_start_the_backend() {
         ["serve", "--json"].as_slice(),
         ["nonsense"].as_slice(),
     ] {
-        assert_eq!(omamail(args).status.code(), Some(2));
+        assert_eq!(fili_mail_cli(args).status.code(), Some(2));
     }
-    let help = omamail(&["accounts", "--help"]);
+    let help = fili_mail_cli(&["accounts", "--help"]);
     assert!(help.status.success());
     assert!(String::from_utf8(help.stdout).unwrap().contains("list"));
 }
 
 #[test]
 fn pretty_call_errors_go_to_stderr() {
-    let output = omamail(&["call", "unknown"]);
+    let output = fili_mail_cli(&["call", "unknown"]);
     assert_eq!(output.status.code(), Some(1));
     assert!(output.stdout.is_empty());
-    assert_eq!(output.stderr, b"omamail: unknown_method\n");
+    assert_eq!(output.stderr, b"fili-mail: unknown_method\n");
 }
 
 fn root_mail(root: &Path, args: &[&str], body: &[u8]) -> Output {
-    let mut child = Command::new(env!("CARGO_BIN_EXE_omamail"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_fili-mail"))
         .args(args)
         .env("OMAMAIL_INTEGRATION_HOME", root)
         .env("XDG_CONFIG_HOME", root.join("config"))
@@ -913,14 +913,14 @@ mod windows_process;
 
 #[test]
 fn task_commands_have_only_the_approved_vocabulary_and_execute_switch() {
-    let help = String::from_utf8(omamail(&["--help"]).stdout).unwrap();
+    let help = String::from_utf8(fili_mail_cli(&["--help"]).stdout).unwrap();
     for name in ["list", "read", "mark", "archive", "trash", "spam", "send"] {
         assert!(
             help.lines()
                 .any(|line| line.split_whitespace().next() == Some(name)),
             "missing {name}"
         );
-        let output = omamail(&[name, "--help"]);
+        let output = fili_mail_cli(&[name, "--help"]);
         assert!(output.status.success());
         let text = String::from_utf8(output.stdout).unwrap();
         assert!(text.contains("--account"));
@@ -939,14 +939,14 @@ fn task_commands_have_only_the_approved_vocabulary_and_execute_switch() {
         vec!["read", "m1", "--execute"],
         vec!["send", "--body", "secret"],
     ] {
-        assert_eq!(omamail(&args).status.code(), Some(2), "{args:?}");
+        assert_eq!(fili_mail_cli(&args).status.code(), Some(2), "{args:?}");
     }
 }
 
 #[test]
 fn root_mutations_preview_exact_intent_and_never_touch_storage_or_credentials() {
     let fixture = mail_list_fixture(9, false);
-    let config = config_root(&fixture.0).join("omamail/accounts.json");
+    let config = config_root(&fixture.0).join("fili-mail/accounts.json");
     let before = (metadata(&config), fs::read(&config).unwrap());
     let sentinel = fixture.0.join("credential-touched");
     for operation in [
@@ -1014,7 +1014,7 @@ fn root_mail_errors_use_stable_envelopes_and_never_fall_back_accounts() {
     let output = root_mail(&fixture.0, &["read", "secret\nvalue"], b"");
     assert_eq!(output.status.code(), Some(1));
     assert!(output.stdout.is_empty());
-    assert_eq!(output.stderr, b"omamail: invalid_params\n");
+    assert_eq!(output.stderr, b"fili-mail: invalid_params\n");
 }
 
 #[test]
@@ -1137,7 +1137,7 @@ fn only_send_consumes_stdin_and_human_previews_escape_untrusted_text() {
         vec!["trash", "one"],
         vec!["spam", "one"],
     ] {
-        let mut child = Command::new(env!("CARGO_BIN_EXE_omamail"))
+        let mut child = Command::new(env!("CARGO_BIN_EXE_fili-mail"))
             .args(args)
             .env("OMAMAIL_INTEGRATION_HOME", &fixture.0)
             .env("XDG_CONFIG_HOME", fixture.0.join("config"))
@@ -1240,14 +1240,14 @@ async fn real_smtp_send(generic: bool, acknowledge: bool, owner: bool, crash: bo
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let fixture = mail_list_fixture(9, true);
-    let config = config_root(&fixture.0).join("omamail/accounts.json");
+    let config = config_root(&fixture.0).join("fili-mail/accounts.json");
     let mut registry: Value = serde_json::from_slice(&fs::read(&config).unwrap()).unwrap();
     registry["accounts"][1]["imap"]["smtpHost"] = serde_json::json!("127.0.0.1");
     registry["accounts"][1]["imap"]["smtpPort"] =
         serde_json::json!(listener.local_addr().unwrap().port());
     fs::write(&config, registry.to_string()).unwrap();
     let mut desktop = if owner {
-        let mut child = tokio::process::Command::new(env!("CARGO_BIN_EXE_omamail"))
+        let mut child = tokio::process::Command::new(env!("CARGO_BIN_EXE_fili-mail"))
             .arg("serve")
             .env("OMAMAIL_INTEGRATION_HOME", &fixture.0)
             .env("XDG_CONFIG_HOME", fixture.0.join("config"))
@@ -1309,7 +1309,7 @@ async fn real_smtp_send(generic: bool, acknowledge: bool, owner: bool, crash: bo
         let mut reader = BufReader::new(reader);
         writer.write_all(b"220 ready\r\n").await.unwrap();
         for (prefix, reply) in [
-            ("EHLO omamail", "250 ready\r\n"),
+            ("EHLO fili-mail", "250 ready\r\n"),
             ("AUTH PLAIN ", "235 authenticated\r\n"),
             ("MAIL FROM:<imap@example.org>", "250 sender\r\n"),
             ("RCPT TO:<one@example.org>", "250 recipient\r\n"),
@@ -1396,7 +1396,7 @@ async fn real_smtp_send(generic: bool, acknowledge: bool, owner: bool, crash: bo
         assert_eq!(value["error"]["code"], "outbox_delivery_unknown");
     }
     let durable: Value = serde_json::from_slice(
-        &fs::read(state_root(&fixture.0).join("omamail/outbox.json")).unwrap(),
+        &fs::read(state_root(&fixture.0).join("fili-mail/outbox.json")).unwrap(),
     )
     .unwrap();
     assert_eq!(durable.as_array().unwrap().len(), 1);
@@ -1504,7 +1504,7 @@ async fn imap_action_preview_requires_discovered_destinations_and_execution_uses
         for available in [false, true] {
             let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
             let fixture = mail_list_fixture(listener.local_addr().unwrap().port(), true);
-            let config = config_root(&fixture.0).join("omamail/accounts.json");
+            let config = config_root(&fixture.0).join("fili-mail/accounts.json");
             let before = (
                 metadata(&config),
                 fs::read(&config).unwrap(),
@@ -1728,7 +1728,7 @@ async fn root_list_and_read_use_active_account_and_safe_provider_results() {
     for read in [false, true] {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let fixture = mail_list_fixture(listener.local_addr().unwrap().port(), true);
-        let config = config_root(&fixture.0).join("omamail/accounts.json");
+        let config = config_root(&fixture.0).join("fili-mail/accounts.json");
         let mut registry: Value = serde_json::from_slice(&fs::read(&config).unwrap()).unwrap();
         registry["activeId"] = serde_json::json!("imap:imap@example.org");
         fs::write(&config, registry.to_string()).unwrap();
@@ -1831,10 +1831,10 @@ async fn root_list_and_read_use_active_account_and_safe_provider_results() {
 #[cfg(not(all(feature = "agent", unix)))]
 #[test]
 fn agent_disabled_build_has_no_worker_or_agent_rpc() {
-    let worker = omamail(&["agent-worker", "synthetic-job"]);
+    let worker = fili_mail_cli(&["agent-worker", "synthetic-job"]);
     assert!(!worker.status.success());
     assert!(String::from_utf8_lossy(&worker.stderr).contains("unrecognized subcommand"));
-    let info = omamail(&["info", "--json"]);
+    let info = fili_mail_cli(&["info", "--json"]);
     assert!(info.status.success());
     let info: Value = serde_json::from_slice(&info.stdout).unwrap();
     assert_eq!(info["capabilities"]["agent"], false);
@@ -1855,7 +1855,7 @@ fn agent_disabled_build_has_no_worker_or_agent_rpc() {
         "agent.jobCancel",
         "agent.jobForget",
     ] {
-        let output = omamail(&["call", method, "--json"]);
+        let output = fili_mail_cli(&["call", method, "--json"]);
         assert!(!output.status.success());
         assert_eq!(
             serde_json::from_slice::<Value>(&output.stdout).unwrap()["error"]["code"],

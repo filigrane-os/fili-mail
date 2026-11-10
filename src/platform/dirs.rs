@@ -1,4 +1,4 @@
-//! Platform data roots. Consumers append their existing `omamail` subdirectory,
+//! Platform data roots. Consumers append their existing `fili-mail` subdirectory,
 //! retaining Linux plugin layouts. Discovery never creates or writes directories.
 use std::{
     ffi::OsString,
@@ -7,7 +7,7 @@ use std::{
 
 /// Shared backend/standalone-host contract: every application-owned directory
 /// is this single component below its platform-native root.
-pub const APP_DIRECTORY: &str = "omamail";
+pub const APP_DIRECTORY: &str = "fili-mail";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AppDirs {
@@ -109,7 +109,7 @@ impl AppDirs {
                 FOLDERID_Downloads, FOLDERID_LocalAppData, FOLDERID_RoamingAppData,
             };
             let local = known_folder(&FOLDERID_LocalAppData)?;
-            // Program files install into LocalAppData/omamail. Keep all data
+            // Program files install into LocalAppData/fili-mail. Keep all data
             // outside that replaceable installation directory.
             Self::from_roots(
                 known_folder(&FOLDERID_RoamingAppData)?,
@@ -262,7 +262,7 @@ mod download_tests {
         let root = std::env::temp_dir()
             .canonicalize()
             .unwrap()
-            .join(format!("omamail-user-dirs-{}", std::process::id()));
+            .join(format!("fili-mail-user-dirs-{}", std::process::id()));
         std::fs::create_dir(&root).unwrap();
         let path = root.join("user-dirs.dirs");
         let raw = CString::new(path.as_os_str().as_bytes()).unwrap();
@@ -329,7 +329,7 @@ mod override_tests {
         let root = std::env::temp_dir()
             .canonicalize()
             .unwrap()
-            .join(format!("omamail-dirs-override-{}", std::process::id()));
+            .join(format!("fili-mail-dirs-override-{}", std::process::id()));
         let expected = AppDirs::from_roots(
             root.join("config"),
             root.join("cache"),
@@ -406,7 +406,7 @@ mod windows_tests {
         for root in [&dirs.cache, &dirs.state, &dirs.runtime] {
             assert!(root.is_absolute());
             assert!(root.starts_with(local.join("OmamailData")));
-            assert!(!root.starts_with(local.join("omamail")));
+            assert!(!root.starts_with(local.join("fili-mail")));
         }
     }
 }

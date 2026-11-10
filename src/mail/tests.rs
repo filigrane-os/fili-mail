@@ -103,7 +103,7 @@ fn metadata_state(path: &std::path::Path) -> MetadataState {
 }
 
 fn registry_state(fixture: &AccountFixture) -> RegistryState {
-    let directory = fixture.config.join("omamail");
+    let directory = fixture.config.join("fili-mail");
     let registry = directory.join("accounts.json");
     RegistryState {
         directory: metadata_state(&directory),
@@ -183,7 +183,7 @@ pub(crate) fn account_fixture(registry: Value) -> AccountFixture {
         .lock()
         .unwrap_or_else(|error| error.into_inner());
     let root = env::temp_dir().canonicalize().unwrap().join(format!(
-        "omamail-mail-tests-{}-{}",
+        "fili-mail-mail-tests-{}-{}",
         std::process::id(),
         FIXTURE_SERIAL.fetch_add(1, Ordering::Relaxed)
     ));

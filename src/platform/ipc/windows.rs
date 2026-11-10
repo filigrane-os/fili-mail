@@ -29,14 +29,14 @@ pub(crate) struct LocalEndpoint {
 }
 impl LocalEndpoint {
     pub(crate) fn outbox(root: &Path) -> Result<Self> {
-        let dir = private_fs::directories_readonly(root, &["omamail"])?
+        let dir = private_fs::directories_readonly(root, &["fili-mail"])?
             .ok_or("outbox_owner_unavailable")?;
         private_fs::validate_owned_root(&dir)?;
         let (volume, id, _) = private_fs::file_id(&dir)?;
         let sid = security::sid_text(&security::current_user()?)?;
         Ok(Self {
             dir,
-            name: format!(r"\\.\pipe\omamail-{sid}-{volume:08x}-{id:016x}-outbox"),
+            name: format!(r"\\.\pipe\fili-mail-{sid}-{volume:08x}-{id:016x}-outbox"),
         })
     }
     pub(crate) fn listen(&self) -> Result<LocalListener> {

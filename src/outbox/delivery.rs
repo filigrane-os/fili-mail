@@ -82,7 +82,7 @@ impl HeyAttachments {
                 .and_then(|mut file| file.read_exact(&mut random))
                 .map_err(|_| "outbox_attachment_unavailable")?;
             let directory = std::env::temp_dir()
-                .join(format!("omamail-send-{}", URL_SAFE_NO_PAD.encode(random)));
+                .join(format!("fili-mail-send-{}", URL_SAFE_NO_PAD.encode(random)));
             if !directory.is_absolute() {
                 return Err("outbox_attachment_unavailable");
             }

@@ -8,7 +8,7 @@ impl Sandbox {
     fn new() -> Self {
         static SERIAL: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
         let path = std::env::temp_dir().join(format!(
-            "omamail-stdio-{}-{}",
+            "fili-mail-stdio-{}-{}",
             std::process::id(),
             SERIAL.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
         ));
@@ -24,7 +24,7 @@ impl Sandbox {
         static SPAWN: std::sync::Mutex<()> = std::sync::Mutex::new(());
         #[cfg(target_os = "macos")]
         let _spawn = SPAWN.lock().unwrap();
-        let mut command = Command::new(env!("CARGO_BIN_EXE_omamail"));
+        let mut command = Command::new(env!("CARGO_BIN_EXE_fili-mail"));
         command
             .env("HOME", &self.0)
             .env("XDG_CONFIG_HOME", self.0.join("config"))
@@ -58,7 +58,7 @@ fn fragmented_input_and_bytes_before_eof_are_preserved() {
     assert!(output.status.success());
     let reply: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(reply["id"], "fragment");
-    assert_eq!(reply["result"]["name"], "omamail");
+    assert_eq!(reply["result"]["name"], "fili-mail");
 }
 
 #[test]

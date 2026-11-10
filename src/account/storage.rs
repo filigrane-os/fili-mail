@@ -20,7 +20,7 @@ pub(crate) fn raw_registry() -> Result<Value> {
     Ok(call("accounts.read", &json!({}))?["registry"].clone())
 }
 pub(crate) fn raw_registry_readonly() -> Result<Value> {
-    let Some(dir) = crate::cache::directories_readonly(&home()?, &["omamail"])? else {
+    let Some(dir) = crate::cache::directories_readonly(&home()?, &["fili-mail"])? else {
         return registry(&[]);
     };
     registry(&read_readonly(&dir)?)
@@ -85,7 +85,7 @@ fn call_at(root: &std::path::Path, method: &str, params: &Value) -> Result<Value
     } else {
         Vec::new()
     };
-    let Some(dir) = crate::cache::directories(root, &["omamail"], writing)? else {
+    let Some(dir) = crate::cache::directories(root, &["fili-mail"], writing)? else {
         return Ok(json!({"registry":registry(&[])?,"revision":revision(&[])}));
     };
     // The lock inode remains stable while accounts.json is atomically replaced.
@@ -150,7 +150,7 @@ mod tests {
     #[test]
     fn revisions_prevent_stale_overwrites_and_missing_accounts() {
         let root = std::env::temp_dir().canonicalize().unwrap().join(format!(
-            "omamail-registry-{}-{}",
+            "fili-mail-registry-{}-{}",
             std::process::id(),
             SERIAL.fetch_add(1, Ordering::Relaxed)
         ));
@@ -194,23 +194,23 @@ mod tests {
     #[test]
     fn links_at_registry_lock_and_config_directory_never_change_targets() {
         use std::os::unix::fs::{PermissionsExt, symlink};
-        for link_name in ["accounts.json", ".accounts.lock", "omamail"] {
+        for link_name in ["accounts.json", ".accounts.lock", "fili-mail"] {
             let root = std::env::temp_dir().canonicalize().unwrap().join(format!(
-                "omamail-registry-security-{}-{}",
+                "fili-mail-registry-security-{}-{}",
                 std::process::id(),
                 SERIAL.fetch_add(1, Ordering::Relaxed)
             ));
             std::fs::create_dir(&root).unwrap();
             let outside = root.join("outside");
-            if link_name == "omamail" {
+            if link_name == "fili-mail" {
                 std::fs::create_dir(&outside).unwrap();
                 std::fs::write(outside.join("sentinel"), b"secret").unwrap();
-                symlink(&outside, root.join("omamail")).unwrap();
+                symlink(&outside, root.join("fili-mail")).unwrap();
             } else {
-                std::fs::create_dir(root.join("omamail")).unwrap();
+                std::fs::create_dir(root.join("fili-mail")).unwrap();
                 std::fs::write(&outside, b"secret").unwrap();
                 std::fs::set_permissions(&outside, std::fs::Permissions::from_mode(0o644)).unwrap();
-                symlink(&outside, root.join("omamail").join(link_name)).unwrap();
+                symlink(&outside, root.join("fili-mail").join(link_name)).unwrap();
             }
             let result = call_at(
                 &root,
@@ -233,7 +233,7 @@ mod tests {
     #[test]
     fn released_identity_never_authorizes_an_unrelated_removal_or_stale_write() {
         let root = std::env::temp_dir().canonicalize().unwrap().join(format!(
-            "omamail-registry-release-{}-{}",
+            "fili-mail-registry-release-{}-{}",
             std::process::id(),
             SERIAL.fetch_add(1, Ordering::Relaxed)
         ));
@@ -302,7 +302,7 @@ mod lock_tests {
     #[test]
     fn guard_unlocks_even_while_duplicate_description_is_alive() {
         let dir = std::env::temp_dir().canonicalize().unwrap().join(format!(
-            "omamail-lock-{}-{}",
+            "fili-mail-lock-{}-{}",
             std::process::id(),
             SERIAL.fetch_add(1, Ordering::Relaxed)
         ));

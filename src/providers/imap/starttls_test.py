@@ -38,7 +38,7 @@ with socket.socket() as listener:
         if not implicit:
             greeting(connection)
             if smtp:
-                assert line(connection) == b"EHLO omamail\r\n"
+                assert line(connection) == b"EHLO fili-mail\r\n"
                 connection.sendall(b"250-localhost\r\n250 STARTTLS\r\n")
             assert line(connection) == (b"STARTTLS\r\n" if smtp else b"O1 STARTTLS\r\n")
             if mode == "refuse":

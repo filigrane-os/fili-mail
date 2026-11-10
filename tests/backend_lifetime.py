@@ -29,8 +29,8 @@ for key, leaf in [('XDG_CONFIG_HOME', 'config'), ('XDG_CACHE_HOME', 'cache'),
     path = ROOT / 'isolated' / leaf
     path.mkdir(parents=True, exist_ok=True, mode=0o700)
     env[key] = str(path)
-(ROOT / 'isolated/config/omamail').mkdir(exist_ok=True)
-(ROOT / 'isolated/config/omamail/accounts.json').write_text(
+(ROOT / 'isolated/config/fili-mail').mkdir(exist_ok=True)
+(ROOT / 'isolated/config/fili-mail/accounts.json').write_text(
     '{"version":1,"accounts":[],"activeId":""}')
 
 in_r, in_w = os.pipe()
@@ -62,7 +62,7 @@ def info(number):
     os.write(in_w, (json.dumps({'jsonrpc': '2.0', 'id': number,
                              'method': 'system.info'}) + '\n').encode())
     reply = json.loads(read_line(out_r))
-    assert reply['id'] == number and reply['result']['name'] == 'omamail', reply
+    assert reply['id'] == number and reply['result']['name'] == 'fili-mail', reply
     return reply['result']
 
 def reap(pid):

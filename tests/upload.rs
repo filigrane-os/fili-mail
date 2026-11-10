@@ -1,5 +1,5 @@
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use omamail::backend::Session;
+use fili_mail::backend::Session;
 use serde_json::json;
 
 #[tokio::test]
@@ -96,7 +96,7 @@ async fn invalid_chunks_never_mutate_upload_and_sessions_are_isolated() {
 #[tokio::test]
 async fn declared_sizes_reserve_capacity_before_receiving_bytes() {
     let session = Session::default();
-    let size = omamail::backend::upload::MAX_UPLOAD;
+    let size = fili_mail::backend::upload::MAX_UPLOAD;
     let first = session
         .dispatch("upload.begin", &json!({"size":size}))
         .await
@@ -149,7 +149,7 @@ async fn uploaded_requests_cannot_bypass_shutdown_or_nest_uploads() {
         )
         .await
         .unwrap();
-    assert_eq!(answer["name"], "omamail");
+    assert_eq!(answer["name"], "fili-mail");
     assert_eq!(
         session
             .dispatch("upload.discard", &json!({"upload":upload}))

@@ -1,5 +1,5 @@
 [package]
-name = "omamail"
+name = "fili-mail"
 version = "0.11.3"
 edition = "2024"
 publish = false

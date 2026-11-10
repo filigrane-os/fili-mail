@@ -73,7 +73,7 @@ fn credentials_preserve_linux_scope_and_native_key_is_unambiguous() {
 #[ignore = "requires an unlocked native credential store; run explicitly on each native runner"]
 fn credentials_native_contract() {
     let id = format!(
-        "omamail-native-{}-{}@example.invalid",
+        "fili-mail-native-{}-{}@example.invalid",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -239,7 +239,7 @@ fn credentials_native_linux_retains_legacy_attribute_scopes() {
     use ::secret_service::{EncryptionType, blocking::SecretService};
     use std::collections::HashMap;
     let account = format!(
-        "omamail-legacy-{}-{}@example.invalid",
+        "fili-mail-legacy-{}-{}@example.invalid",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -252,7 +252,7 @@ fn credentials_native_linux_retains_legacy_attribute_scopes() {
         .create_item(
             "Omamail synthetic legacy fixture",
             HashMap::from([
-                ("service", "omamail"),
+                ("service", "fili-mail"),
                 ("kind", "refresh-token"),
                 ("client-id", "synthetic-client"),
                 ("account", account.as_str()),

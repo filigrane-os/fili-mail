@@ -225,7 +225,7 @@ pub fn store(params: &Value, bytes: &[u8]) -> Result<Value, &'static str> {
         let base = crate::platform::dirs::AppDirs::discover()?.runtime;
         let mut found = None;
         for n in 0..1000 {
-            let path = base.join(format!("omamail-attachment-{}-{n}", std::process::id()));
+            let path = base.join(format!("fili-mail-attachment-{}-{n}", std::process::id()));
             match fs::DirBuilder::new().mode(0o700).create(&path) {
                 Ok(()) => {
                     found = Some(path);
@@ -286,7 +286,7 @@ mod tests {
         let root = std::env::temp_dir()
             .canonicalize()
             .unwrap()
-            .join(format!("omamail-attachment-test-{}", std::process::id()));
+            .join(format!("fili-mail-attachment-test-{}", std::process::id()));
         fs::create_dir_all(&root).unwrap();
         let victim = root.join("victim");
         fs::write(&victim, b"keep").unwrap();
@@ -343,7 +343,7 @@ mod tests {
 pub fn forget(params: &Value) -> Result<Value, &'static str> {
     let base = crate::platform::dirs::AppDirs::discover()?.cache;
     forget_in(
-        &base.join("omamail/compose"),
+        &base.join("fili-mail/compose"),
         params["path"].as_str().ok_or("invalid_params")?,
     )
 }
@@ -390,7 +390,7 @@ mod forget_tests {
         let root = std::env::temp_dir()
             .canonicalize()
             .unwrap()
-            .join(format!("omamail-forget-test-{}", std::process::id()));
+            .join(format!("fili-mail-forget-test-{}", std::process::id()));
         let staging = root.join("compose");
         fs::create_dir_all(&staging).unwrap();
         #[cfg(unix)]
@@ -446,7 +446,7 @@ pub fn store(params: &Value, bytes: &[u8]) -> Result<Value, &'static str> {
     }
     let dirs = crate::platform::dirs::AppDirs::discover()?;
     let directory = if opening {
-        crate::platform::private_fs::directories(&dirs.runtime, &["omamail", "attachments"], true)
+        crate::platform::private_fs::directories(&dirs.runtime, &["fili-mail", "attachments"], true)
     } else {
         crate::platform::private_fs::directories(&dirs.downloads, &[], true)
     }

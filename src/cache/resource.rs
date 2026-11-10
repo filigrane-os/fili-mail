@@ -47,7 +47,7 @@ pub(super) fn call_at(root: &Path, method: &str, params: &Value) -> Result<Value
         return Err("method_not_found");
     }
     let account = account_name(field(params, "accountId")?)?;
-    let Some(dir) = directories(root, &["omamail", "resources", &account], false)? else {
+    let Some(dir) = directories(root, &["fili-mail", "resources", &account], false)? else {
         return Ok(if method == "cache.resourceClear" {
             json!({"cleared":true})
         } else {
@@ -105,7 +105,7 @@ fn put_at(root: &Path, params: &Value, live: &Mutex<bool>) -> Result<Value> {
     let account = account_name(field(params, "accountId")?)?;
     let name = body_name(id)?;
     let dir =
-        directories(root, &["omamail", "resources", &account], true)?.ok_or("cache_unavailable")?;
+        directories(root, &["fili-mail", "resources", &account], true)?.ok_or("cache_unavailable")?;
     regular(&dir, &name, false)?;
     let mut files = entries(&dir)?;
     if !*live.lock().map_err(|_| "cache_unavailable")? {
@@ -156,7 +156,7 @@ mod tests {
         assert!(
             !temp
                 .0
-                .join("omamail/resources/account-imap_3atwo_40example.org")
+                .join("fili-mail/resources/account-imap_3atwo_40example.org")
                 .exists()
         );
         other["resource"]["id"] = json!("different");
@@ -166,7 +166,7 @@ mod tests {
         );
         let path = temp
             .0
-            .join("omamail/resources")
+            .join("fili-mail/resources")
             .join(account_name(params["accountId"].as_str().unwrap()).unwrap())
             .join(body_name("12:INBOX").unwrap());
         std::fs::write(&path, b"{invalid").unwrap();

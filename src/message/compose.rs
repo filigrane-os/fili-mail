@@ -260,10 +260,10 @@ fn message_id(v: &Value) -> Result<String> {
         host = domain(field(v, "accountAddress"));
     }
     if host.is_empty() {
-        host = "omamail.invalid".into();
+        host = "fili-mail.invalid".into();
     }
     let random = boundary("")?.replace('=', "");
-    Ok(format!("<{}.omamail@{host}>", random))
+    Ok(format!("<{}.fili-mail@{host}>", random))
 }
 fn date(v: &Value) -> String {
     let raw = header(field(v, "date")).unwrap_or_default();

@@ -218,7 +218,7 @@ pub fn inline_parts(source: &str, prefix: &str) -> Value {
     let stem = if prefix.is_empty() { "sig" } else { prefix };
     let mut parts = Vec::new();
     let result = INLINE.replace_all(source, |c: &regex::Captures<'_>| {
-        let id = format!("{stem}{}@omamail", parts.len() + 1);
+        let id = format!("{stem}{}@fili-mail", parts.len() + 1);
         parts.push(json!({"cid":id,"mimeType":c[1].to_lowercase(),"data":&c[2]}));
         format!("src=\"cid:{id}\"")
     });

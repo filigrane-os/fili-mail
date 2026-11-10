@@ -13,7 +13,7 @@ mod unix {
     impl Temp {
         fn new() -> Self {
             let root = std::env::temp_dir().canonicalize().unwrap().join(format!(
-                "omamail-platform-{}-{}",
+                "fili-mail-platform-{}-{}",
                 std::process::id(),
                 SERIAL.fetch_add(1, Ordering::Relaxed)
             ));
@@ -68,7 +68,7 @@ mod unix {
     #[test]
     fn operations_refuse_traversal_symlinks_hardlinks_and_unsafe_ancestors() {
         let temp = Temp::new();
-        let dir = directories(&temp.0, &["omamail"], true).unwrap().unwrap();
+        let dir = directories(&temp.0, &["fili-mail"], true).unwrap().unwrap();
         let victim = temp.0.join("victim");
         fs::write(&victim, b"outside").unwrap();
         for name in ["../victim", "/victim", "a/b", ".", "..", "nul\0name"] {
@@ -77,7 +77,7 @@ mod unix {
             assert!(remove_owned(&dir, name).is_err());
         }
         for hard in [false, true] {
-            let path = temp.0.join("omamail/linked");
+            let path = temp.0.join("fili-mail/linked");
             if hard {
                 fs::hard_link(&victim, &path).unwrap();
             } else {
@@ -90,9 +90,9 @@ mod unix {
             fs::remove_file(path).unwrap();
         }
         let link = temp.0.join("alias");
-        symlink(temp.0.join("omamail"), &link).unwrap();
+        symlink(temp.0.join("fili-mail"), &link).unwrap();
         assert!(directories(&link, &["escape"], true).is_err());
-        assert!(!temp.0.join("omamail/escape").exists());
+        assert!(!temp.0.join("fili-mail/escape").exists());
         let unsafe_root = temp.0.join("unsafe");
         fs::create_dir(&unsafe_root).unwrap();
         fs::set_permissions(&unsafe_root, fs::Permissions::from_mode(0o777)).unwrap();
@@ -106,47 +106,47 @@ mod unix {
     fn reading_already_private_entries_leaves_their_change_time_alone() {
         use std::os::unix::fs::MetadataExt;
         let temp = Temp::new();
-        let dir = directories(&temp.0, &["omamail"], true).unwrap().unwrap();
+        let dir = directories(&temp.0, &["fili-mail"], true).unwrap().unwrap();
         atomic_replace(&dir, "record", b"{}").unwrap();
         let before = (
-            fs::metadata(temp.0.join("omamail")).unwrap().ctime_nsec(),
-            fs::metadata(temp.0.join("omamail/record"))
+            fs::metadata(temp.0.join("fili-mail")).unwrap().ctime_nsec(),
+            fs::metadata(temp.0.join("fili-mail/record"))
                 .unwrap()
                 .ctime_nsec(),
         );
         std::thread::sleep(std::time::Duration::from_millis(20));
-        let dir = directories(&temp.0, &["omamail"], false).unwrap().unwrap();
+        let dir = directories(&temp.0, &["fili-mail"], false).unwrap().unwrap();
         open_private(&dir, "record", false).unwrap().unwrap();
         let after = (
-            fs::metadata(temp.0.join("omamail")).unwrap().ctime_nsec(),
-            fs::metadata(temp.0.join("omamail/record"))
+            fs::metadata(temp.0.join("fili-mail")).unwrap().ctime_nsec(),
+            fs::metadata(temp.0.join("fili-mail/record"))
                 .unwrap()
                 .ctime_nsec(),
         );
         assert_eq!(before, after);
         for wrong in [0o644, 0o2600] {
             fs::set_permissions(
-                temp.0.join("omamail/record"),
+                temp.0.join("fili-mail/record"),
                 fs::Permissions::from_mode(wrong),
             )
             .unwrap();
             open_private(&dir, "record", false).unwrap().unwrap();
             assert_eq!(
-                fs::metadata(temp.0.join("omamail/record")).unwrap().mode() & 0o7777,
+                fs::metadata(temp.0.join("fili-mail/record")).unwrap().mode() & 0o7777,
                 0o600
             );
         }
-        fs::set_permissions(temp.0.join("omamail"), fs::Permissions::from_mode(0o2700)).unwrap();
-        directories(&temp.0, &["omamail"], false).unwrap().unwrap();
+        fs::set_permissions(temp.0.join("fili-mail"), fs::Permissions::from_mode(0o2700)).unwrap();
+        directories(&temp.0, &["fili-mail"], false).unwrap().unwrap();
         assert_eq!(
-            fs::metadata(temp.0.join("omamail")).unwrap().mode() & 0o7777,
+            fs::metadata(temp.0.join("fili-mail")).unwrap().mode() & 0o7777,
             0o700
         );
     }
     #[test]
     fn atomic_writers_keep_whole_records_and_pinned_roots_survive_rename() {
         let temp = Temp::new();
-        let dir = directories(&temp.0, &["omamail"], true).unwrap().unwrap();
+        let dir = directories(&temp.0, &["fili-mail"], true).unwrap().unwrap();
         std::thread::scope(|scope| {
             for byte in 0..8 {
                 let dir = &dir;
@@ -165,10 +165,10 @@ mod unix {
             .unwrap();
         assert_eq!(bytes.len(), 8192);
         assert!(bytes.iter().all(|byte| *byte == bytes[0]));
-        fs::rename(temp.0.join("omamail"), temp.0.join("moved")).unwrap();
+        fs::rename(temp.0.join("fili-mail"), temp.0.join("moved")).unwrap();
         let outside = temp.0.join("outside");
         fs::create_dir(&outside).unwrap();
-        symlink(&outside, temp.0.join("omamail")).unwrap();
+        symlink(&outside, temp.0.join("fili-mail")).unwrap();
         atomic_replace(&dir, "資料.json", b"anchored").unwrap();
         remove_owned(&dir, "資料.json").unwrap();
         assert!(!outside.join("資料.json").exists());
@@ -179,7 +179,7 @@ mod unix {
     fn exclusive_lock_releases_while_duplicate_descriptor_is_alive() {
         use std::os::fd::AsRawFd;
         let temp = Temp::new();
-        let dir = directories(&temp.0, &["omamail"], true).unwrap().unwrap();
+        let dir = directories(&temp.0, &["fili-mail"], true).unwrap().unwrap();
         let lock = lock_exclusive(&dir, "lease").unwrap();
         assert!(matches!(
             lock_exclusive(&dir, "lease"),
@@ -194,7 +194,7 @@ mod unix {
         }
         drop(successor);
         assert_eq!(
-            fs::metadata(temp.0.join("omamail/lease"))
+            fs::metadata(temp.0.join("fili-mail/lease"))
                 .unwrap()
                 .permissions()
                 .mode()
@@ -212,7 +212,7 @@ mod unix {
             std::thread::scope(|scope| {
                 let claim = || {
                     start.wait();
-                    let dir = directories(&root, &["omamail"], true)
+                    let dir = directories(&root, &["fili-mail"], true)
                         .expect("concurrent reminder directory creation")
                         .expect("created reminder directory");
                     let _lock = match lock_exclusive(&dir, "lease") {
@@ -237,11 +237,11 @@ mod unix {
     #[test]
     fn existing_lock_entries_are_validated_without_modifying_them() {
         let temp = Temp::new();
-        let dir = directories(&temp.0, &["omamail"], true).unwrap().unwrap();
+        let dir = directories(&temp.0, &["fili-mail"], true).unwrap().unwrap();
         let victim = temp.0.join("victim");
         fs::write(&victim, b"private marker").unwrap();
         fs::set_permissions(&victim, fs::Permissions::from_mode(0o600)).unwrap();
-        let lock_path = temp.0.join("omamail/lease");
+        let lock_path = temp.0.join("fili-mail/lease");
         symlink(&victim, &lock_path).unwrap();
         assert!(matches!(
             lock_exclusive(&dir, "lease"),
@@ -280,7 +280,7 @@ mod unix {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
         let temp = Temp::new();
         let long = temp.0.join("資料".repeat(25));
-        let dir = directories(&long, &["omamail"], true).unwrap().unwrap();
+        let dir = directories(&long, &["fili-mail"], true).unwrap().unwrap();
         let _lease = lock_exclusive(&dir, "lease").unwrap();
         let endpoint = LocalEndpoint::outbox(&long).unwrap();
         let cwd = std::env::current_dir().unwrap();
@@ -297,17 +297,17 @@ mod unix {
         fs::rename(&long, &moved).unwrap();
         fs::create_dir(&long).unwrap();
         drop(endpoint.listen().unwrap());
-        assert!(!long.join("omamail/outbox.sock").exists());
-        assert!(moved.join("omamail/outbox.sock").exists());
+        assert!(!long.join("fili-mail/outbox.sock").exists());
+        assert!(moved.join("fili-mail/outbox.sock").exists());
         assert_eq!(std::env::current_dir().unwrap(), cwd);
     }
     #[tokio::test]
     async fn ipc_never_removes_foreign_entries_or_nonprivate_sockets() {
         use crate::platform::ipc::LocalEndpoint;
         let temp = Temp::new();
-        directories(&temp.0, &["omamail"], true).unwrap();
+        directories(&temp.0, &["fili-mail"], true).unwrap();
         let endpoint = LocalEndpoint::outbox(&temp.0).unwrap();
-        let socket = temp.0.join("omamail/outbox.sock");
+        let socket = temp.0.join("fili-mail/outbox.sock");
         let victim = temp.0.join("outside");
         fs::write(&victim, b"keep").unwrap();
         symlink(&victim, &socket).unwrap();
@@ -332,11 +332,11 @@ mod unix {
     fn macos_inherited_acl_cannot_expose_private_data_or_authorize_mutation() {
         use std::process::Command;
         let temp = Temp::new();
-        let dir = directories(&temp.0, &["omamail"], true).unwrap().unwrap();
+        let dir = directories(&temp.0, &["fili-mail"], true).unwrap().unwrap();
         atomic_replace(&dir, "record", b"private").unwrap();
-        let path = temp.0.join("omamail/record");
+        let path = temp.0.join("fili-mail/record");
         drop(lock_exclusive(&dir, "lease").unwrap());
-        let lease_path = temp.0.join("omamail/lease");
+        let lease_path = temp.0.join("fili-mail/lease");
         assert!(
             Command::new("/bin/chmod")
                 .args(["+a", "everyone allow read,write"])

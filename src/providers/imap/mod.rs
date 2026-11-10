@@ -361,7 +361,7 @@ async fn handshake(
     }
     if transport == Transport::StartTls {
         if smtp {
-            smtp_cmd(&mut w, "EHLO omamail", 250).await?;
+            smtp_cmd(&mut w, "EHLO fili-mail", 250).await?;
             smtp_cmd(&mut w, "STARTTLS", 220).await?;
         } else {
             command(&mut w, "STARTTLS").await?;
@@ -861,7 +861,7 @@ async fn send(p: &Value) -> Result<Value> {
     let encoded = smtp_data(&body)?;
     let (user, secret) = credentials(p)?;
     let mut w = connect(&p["settings"], true).await?;
-    smtp_cmd(&mut w, "EHLO omamail", 250).await?;
+    smtp_cmd(&mut w, "EHLO fili-mail", 250).await?;
     let auth = if p["oauth"] == true {
         format!(
             "AUTH XOAUTH2 {}",

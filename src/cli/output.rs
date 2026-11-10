@@ -23,7 +23,7 @@ pub(super) fn print_result(result: Result<Value, &'static str>, json: bool, enve
             }
             if let Some(code) = failure {
                 if !json {
-                    eprintln!("omamail: {code}");
+                    eprintln!("fili-mail: {code}");
                 }
                 std::process::exit(1);
             }
@@ -36,7 +36,7 @@ pub(super) fn print_result(result: Result<Value, &'static str>, json: bool, enve
                         .unwrap()
                 );
             } else {
-                eprintln!("omamail: {code}");
+                eprintln!("fili-mail: {code}");
             }
             std::process::exit(1);
         }

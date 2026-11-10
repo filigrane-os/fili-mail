@@ -5,9 +5,9 @@ fn main() {
         // The shared CLI/backend dispatch futures need the same stack budget
         // as the Unix entry point, including in unoptimized native test builds.
         let result = std::thread::Builder::new()
-            .name("omamail-main".into())
+            .name("fili-mail-main".into())
             .stack_size(8 * 1024 * 1024)
-            .spawn(omamail::cli::run)
+            .spawn(fili_mail::cli::run)
             .expect("start backend entry thread")
             .join();
         if let Err(panic) = result {
@@ -15,5 +15,5 @@ fn main() {
         }
     }
     #[cfg(not(windows))]
-    omamail::cli::run();
+    fili_mail::cli::run();
 }

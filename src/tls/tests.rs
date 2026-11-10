@@ -33,7 +33,7 @@ fn the_system_store_is_added_to_the_bundled_list_and_bad_entries_are_skipped() {
 }
 
 fn tempdir() -> std::path::PathBuf {
-    let dir = std::env::temp_dir().join(format!("omamail-tls-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("fili-mail-tls-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     dir
 }

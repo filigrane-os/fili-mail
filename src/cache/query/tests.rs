@@ -135,7 +135,7 @@ fn ttl_clock_reversal_and_quoted_imap_scope() {
 #[tokio::test]
 async fn live_query_mutation_restore_disk_and_account_boundary() {
     let root = std::env::temp_dir().canonicalize().unwrap().join(format!(
-        "omamail-query-cache-{}-{}",
+        "fili-mail-query-cache-{}-{}",
         std::process::id(),
         SERIAL.fetch_add(1, Ordering::Relaxed)
     ));
@@ -215,7 +215,7 @@ async fn account_limit_refuses_eviction_of_live_references() {
 #[tokio::test]
 async fn shutdown_flushes_debounced_writes_and_restores_legacy_direction() {
     let root = std::env::temp_dir().canonicalize().unwrap().join(format!(
-        "omamail-query-shutdown-{}-{}",
+        "fili-mail-query-shutdown-{}-{}",
         std::process::id(),
         SERIAL.fetch_add(1, Ordering::Relaxed)
     ));

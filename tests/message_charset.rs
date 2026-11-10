@@ -3,7 +3,7 @@ use base64::{
     Engine,
     engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD},
 };
-use omamail::{backend, message};
+use fili_mail::{backend, message};
 use serde_json::{Value, json};
 
 const GREETING: &str = "Добрый день!";
@@ -218,7 +218,7 @@ fn cached_reader_redecodes_original_octets_instead_of_reusing_mojibake() {
     // macOS puts TMPDIR under /var, a symlink the private_fs path walk
     // refuses (O_NOFOLLOW), so resolve it first like the other CLI tests.
     let root = std::env::temp_dir().canonicalize().unwrap().join(format!(
-        "omamail-charset-cache-{}-{}",
+        "fili-mail-charset-cache-{}-{}",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -235,7 +235,7 @@ fn cached_reader_redecodes_original_octets_instead_of_reusing_mojibake() {
     }
     let _cleanup = Cleanup(root.clone());
     let config = config_root(&root);
-    let registry = config.join("omamail/accounts.json");
+    let registry = config.join("fili-mail/accounts.json");
     fs::create_dir_all(registry.parent().unwrap()).unwrap();
     fs::set_permissions(&config, fs::Permissions::from_mode(0o700)).unwrap();
     fs::set_permissions(
@@ -246,7 +246,7 @@ fn cached_reader_redecodes_original_octets_instead_of_reusing_mojibake() {
     fs::write(&registry, r#"{"version":1,"activeId":"synthetic@example.org","accounts":[{"email":"synthetic@example.org"}]}"#).unwrap();
     fs::set_permissions(&registry, fs::Permissions::from_mode(0o600)).unwrap();
     let call = |method: &str, params: Value| -> Value {
-        let mut child = Command::new(env!("CARGO_BIN_EXE_omamail"))
+        let mut child = Command::new(env!("CARGO_BIN_EXE_fili-mail"))
             .args(["call", method, "--json"])
             .env_clear()
             .env("HOME", &root)

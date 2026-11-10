@@ -378,7 +378,7 @@ fn credentials_native_linux_denial_and_unavailability_are_not_missing() {
         Err(Error::Missing)
     ));
     let failed = async {
-        zbus::connection::Builder::address("unix:path=/omamail-no-such-synthetic-bus/socket")
+        zbus::connection::Builder::address("unix:path=/fili-mail-no-such-synthetic-bus/socket")
             .unwrap()
             .build()
             .await

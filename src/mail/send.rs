@@ -258,7 +258,7 @@ impl Prepared {
             )
         );
         fields["boundary"] = json!(format!("=_Omamail_{}", &digest[..40]));
-        fields["messageId"] = json!(format!("<{digest}@omamail.invalid>"));
+        fields["messageId"] = json!(format!("<{digest}@fili-mail.invalid>"));
         fields["date"] = json!(
             chrono::DateTime::from_timestamp_millis(
                 i64::try_from(stamp).map_err(|_| "invalid_params")?

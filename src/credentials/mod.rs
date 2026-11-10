@@ -161,7 +161,7 @@ impl CredentialKey {
             return Err(Error::InvalidKey);
         }
         let mut attrs = BTreeMap::from([
-            ("service".into(), "omamail".into()),
+            ("service".into(), "fili-mail".into()),
             ("kind".into(), kind.into()),
         ]);
         if provider == "caldav" {
@@ -203,7 +203,7 @@ impl CredentialKey {
                 hash.update(field.as_bytes());
             }
         }
-        Ok(format!("omamail:v1:{:x}", hash.finalize()))
+        Ok(format!("fili-mail:v1:{:x}", hash.finalize()))
     }
 }
 

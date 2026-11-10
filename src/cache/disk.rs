@@ -23,7 +23,7 @@ fn reserve_limit(
     let mut files = Vec::new();
     let mut bytes = incoming;
     for kind in ["bodies", "resources"] {
-        let Some(base) = directories(root, &["omamail", kind], false)? else {
+        let Some(base) = directories(root, &["fili-mail", kind], false)? else {
             continue;
         };
         for account in names(&base)? {
@@ -77,8 +77,8 @@ mod tests {
     #[test]
     fn abandoned_temporary_bytes_count_toward_the_same_budget() {
         let temp = super::super::tests::Temp::new();
-        directories(&temp.0, &["omamail", "resources", "account-one"], true).unwrap();
-        let path = temp.0.join("omamail/resources/account-one/.tmp.123.1");
+        directories(&temp.0, &["fili-mail", "resources", "account-one"], true).unwrap();
+        let path = temp.0.join("fili-mail/resources/account-one/.tmp.123.1");
         std::fs::write(&path, vec![0; 90]).unwrap();
         reserve_limit(&temp.0, 20, None, 100).unwrap();
         assert!(!path.exists());
@@ -86,10 +86,10 @@ mod tests {
     #[test]
     fn production_budget_evicts_old_body_on_resource_write_and_rejects_links_before_deletion() {
         let temp = super::super::tests::Temp::new();
-        let dir = directories(&temp.0, &["omamail", "bodies", "account-old"], true)
+        let dir = directories(&temp.0, &["fili-mail", "bodies", "account-old"], true)
             .unwrap()
             .unwrap();
-        let path = temp.0.join("omamail/bodies/account-old/huge.json");
+        let path = temp.0.join("fili-mail/bodies/account-old/huge.json");
         File::create(&path)
             .unwrap()
             .set_len(MAX_DISK_BYTES)
@@ -102,7 +102,7 @@ mod tests {
         std::fs::write(&outside, b"outside content").unwrap();
         std::os::unix::fs::symlink(
             &outside,
-            temp.0.join("omamail/bodies/account-old/link.json"),
+            temp.0.join("fili-mail/bodies/account-old/link.json"),
         )
         .unwrap();
         assert_eq!(
@@ -121,10 +121,10 @@ mod tests {
             ("bodies", "account-one", "old.json", 1),
             ("resources", "account-two", "recent.json", 20),
         ] {
-            let dir = directories(&temp.0, &["omamail", kind, account], true)
+            let dir = directories(&temp.0, &["fili-mail", kind, account], true)
                 .unwrap()
                 .unwrap();
-            let path = temp.0.join("omamail").join(kind).join(account).join(name);
+            let path = temp.0.join("fili-mail").join(kind).join(account).join(name);
             std::fs::write(path, vec![b'x'; 60]).unwrap();
             regular(&dir, name, false)
                 .unwrap()
@@ -132,14 +132,14 @@ mod tests {
                 .set_modified(SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(stamp))
                 .unwrap();
         }
-        let untouched = temp.0.join("omamail/outbox");
+        let untouched = temp.0.join("fili-mail/outbox");
         std::fs::create_dir_all(&untouched).unwrap();
         std::fs::write(untouched.join("job.json"), b"must survive").unwrap();
         reserve_limit(&temp.0, 40, None, 100).unwrap();
-        assert!(!temp.0.join("omamail/bodies/account-one/old.json").exists());
+        assert!(!temp.0.join("fili-mail/bodies/account-one/old.json").exists());
         assert!(
             temp.0
-                .join("omamail/resources/account-two/recent.json")
+                .join("fili-mail/resources/account-two/recent.json")
                 .exists()
         );
         assert_eq!(

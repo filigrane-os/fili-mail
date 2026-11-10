@@ -238,13 +238,13 @@ fn discover(home: &Path, config: &Path, cached: &Path) -> Value {
     for name in [".thunderbird", ".betterbird"] {
         thunderbird(&mut book, &home.join(name))
     }
-    cache(&mut book, &cached.join("omamail"));
-    if let Some(raw) = read(&config.join("omamail/contacts.json"))
+    cache(&mut book, &cached.join("fili-mail"));
+    if let Some(raw) = read(&config.join("fili-mail/contacts.json"))
         .and_then(|s| serde_json::from_str::<Value>(&s).ok())
     {
         json_book(&mut book, &raw)
     }
-    if let Some(text) = read(&config.join("omamail/contacts.vcf")) {
+    if let Some(text) = read(&config.join("fili-mail/contacts.vcf")) {
         vcard(&mut book, &text)
     }
     sorted(book)
@@ -276,7 +276,7 @@ mod tests {
     #[test]
     fn reads_real_sqlite_and_cache_without_writing_sources() {
         let root =
-            std::env::temp_dir().join(format!("omamail-contacts-test-{}", std::process::id()));
+            std::env::temp_dir().join(format!("fili-mail-contacts-test-{}", std::process::id()));
         let profile = root.join(".thunderbird/profile");
         fs::create_dir_all(&profile).unwrap();
         let database = profile.join("abook.sqlite");
@@ -285,11 +285,11 @@ mod tests {
             db.execute_batch("CREATE TABLE properties(card TEXT,name TEXT,value TEXT); INSERT INTO properties VALUES ('1','DisplayName','Alice'),('1','PrimaryEmail','alice@example.com');").unwrap();
         }
         let before = fs::read(&database).unwrap();
-        fs::create_dir_all(root.join("cache/omamail")).unwrap();
+        fs::create_dir_all(root.join("cache/fili-mail")).unwrap();
         let bulk: Vec<_> = (0..6)
             .map(|n| json!({"email":format!("bulk{n}@example.com")}))
             .collect();
-        fs::write(root.join("cache/omamail/account-a.json"),json!({"queries":{"inbox":{"summaries":[{"from":{"email":"bob@example.com","name":"bob"},"bcc":[{"email":"hidden@example.com"}],"to":bulk}]}}}).to_string()).unwrap();
+        fs::write(root.join("cache/fili-mail/account-a.json"),json!({"queries":{"inbox":{"summaries":[{"from":{"email":"bob@example.com","name":"bob"},"bcc":[{"email":"hidden@example.com"}],"to":bulk}]}}}).to_string()).unwrap();
         let result = discover(&root, &root.join("config"), &root.join("cache"));
         assert_eq!(result.as_array().unwrap().len(), 2);
         assert_eq!(result[0]["name"], "Alice");

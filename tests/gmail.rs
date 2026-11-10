@@ -26,10 +26,10 @@ fn config_root(home: &Path, xdg: &Path) -> PathBuf {
 
 #[test]
 fn gmail_config_directory_uses_the_shared_platform_contract() {
-    let dirs = omamail::platform::dirs::AppDirs::discover().unwrap();
+    let dirs = fili_mail::platform::dirs::AppDirs::discover().unwrap();
     assert_eq!(
         dirs.config_directory(),
-        dirs.config.join(omamail::platform::dirs::APP_DIRECTORY)
+        dirs.config.join(fili_mail::platform::dirs::APP_DIRECTORY)
     );
 }
 
@@ -40,7 +40,7 @@ fn mail_gmail_actions_default_to_preview_and_keep_credential_failures_explicit()
     let dir = PathBuf::from(String::from_utf8(temp.stdout).unwrap().trim())
         .canonicalize()
         .unwrap();
-    let config = config_root(&dir, &dir).join("omamail");
+    let config = config_root(&dir, &dir).join("fili-mail");
     fs::create_dir_all(&config).unwrap();
     fs::write(config.join("accounts.json"),br#"{"version":1,"activeId":"a@example.org","accounts":[{"provider":"gmail","email":"a@example.org"}]}"#).unwrap();
     fs::set_permissions(&config, fs::Permissions::from_mode(0o700)).unwrap();
@@ -58,7 +58,7 @@ fn mail_gmail_actions_default_to_preview_and_keep_credential_failures_explicit()
             if let Some(execute) = execute {
                 params["execute"] = serde_json::json!(execute);
             }
-            let mut child = Command::new(env!("CARGO_BIN_EXE_omamail"))
+            let mut child = Command::new(env!("CARGO_BIN_EXE_fili-mail"))
                 .args(["call", "mail.act", "--json"])
                 .env("XDG_CONFIG_HOME", &dir)
                 .env("HOME", &dir)
@@ -134,7 +134,7 @@ fn malformed_gmail_requests_are_refused_before_credentials_or_network() {
             serde_json::json!({"accountId":"a@example.org","id":"x","token":"synthetic-secret"}),
         ),
     ] {
-        let mut child = Command::new(env!("CARGO_BIN_EXE_omamail"))
+        let mut child = Command::new(env!("CARGO_BIN_EXE_fili-mail"))
             .args(["call", method, "--json"])
             .env_remove("HOME")
             .env_remove("XDG_CONFIG_HOME")
@@ -163,14 +163,14 @@ fn malformed_gmail_requests_are_refused_before_credentials_or_network() {
 #[test]
 fn gmail_registry_and_private_credentials_gate_keyring_access() {
     let dir = std::env::temp_dir().canonicalize().unwrap().join(format!(
-        "omamail-gmail-boundary-{}-{}",
+        "fili-mail-gmail-boundary-{}-{}",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos()
     ));
-    let config = config_root(&dir, &dir.join(".config")).join("omamail");
+    let config = config_root(&dir, &dir.join(".config")).join("fili-mail");
     fs::create_dir_all(&config).unwrap();
     let accounts = config.join("accounts.json");
     fs::write(
@@ -192,7 +192,7 @@ fn gmail_registry_and_private_credentials_gate_keyring_access() {
         if private_client {
             fs::set_permissions(&credentials, fs::Permissions::from_mode(0o600)).unwrap();
         }
-        let mut child = Command::new(env!("CARGO_BIN_EXE_omamail"))
+        let mut child = Command::new(env!("CARGO_BIN_EXE_fili-mail"))
             .args(["call", "gmail.read", "--json"])
             .env("HOME", &dir)
             .env("XDG_CONFIG_HOME", dir.join(".config"))
@@ -233,7 +233,7 @@ fn gmail_registry_and_private_credentials_gate_keyring_access() {
 
 #[test]
 fn persistent_gmail_invalidation_needs_no_credentials() {
-    let mut backend = Command::new(env!("CARGO_BIN_EXE_omamail"))
+    let mut backend = Command::new(env!("CARGO_BIN_EXE_fili-mail"))
         .arg("serve")
         .env_remove("HOME")
         .env_remove("XDG_CONFIG_HOME")

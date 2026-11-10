@@ -26,7 +26,7 @@ fn mail_actions_use_bound_official_cli_batches_and_never_retry_refusals() {
     let dir = std::path::PathBuf::from(String::from_utf8(temp.stdout).unwrap().trim())
         .canonicalize()
         .unwrap();
-    let config = config_root(&dir, &dir).join("omamail");
+    let config = config_root(&dir, &dir).join("fili-mail");
     fs::create_dir_all(&config).unwrap();
     fs::write(config.join("accounts.json"),br#"{"version":1,"activeId":"hey:a@example.org","accounts":[{"provider":"hey","email":"a@example.org"}]}"#).unwrap();
     fs::set_permissions(&config, fs::Permissions::from_mode(0o700)).unwrap();
@@ -55,7 +55,7 @@ fi
     .unwrap();
     fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
     let invoke = |operation: &str, execute: bool, ids: serde_json::Value| {
-        let mut child = Command::new(env!("CARGO_BIN_EXE_omamail"))
+        let mut child = Command::new(env!("CARGO_BIN_EXE_fili-mail"))
             .args(["call", "mail.act", "--json"])
             .env("XDG_CONFIG_HOME", &dir)
             .env("HOME", &dir)
@@ -156,7 +156,7 @@ printf '%s\n' '{"ok":true}'
     let invoke = |account: &str| {
         let params = serde_json::json!({"program":executable,"accountId":account,
             "to":"b@example.org","subject":"Unicode world","body":body});
-        let mut child = Command::new(env!("CARGO_BIN_EXE_omamail"))
+        let mut child = Command::new(env!("CARGO_BIN_EXE_fili-mail"))
             .args(["call", "hey.send", "--json"])
             .env("PATH", &dir)
             .env("HEY_BODY_FILE", &body_file)
@@ -206,7 +206,7 @@ fn hey_adapter_uses_official_argv_and_refuses_invalid_ids_before_process() {
     fs::write(&executable,b"#!/bin/sh\n[ \"$*\" = 'auth status --json' ] || exit 8\nprintf called > \"$HEY_TEST_MARKER\"\nprintf '%s\\n' '{\"ok\":true,\"data\":{\"authenticated\":true}}'\n").unwrap();
     fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
     let invoke = |method: &str, input: &[u8]| {
-        let mut child = Command::new(env!("CARGO_BIN_EXE_omamail"))
+        let mut child = Command::new(env!("CARGO_BIN_EXE_fili-mail"))
             .args(["call", method, "--json"])
             .env("PATH", &dir)
             .env("HEY_TEST_MARKER", &marker)
@@ -274,7 +274,7 @@ esac
     )
     .unwrap();
     fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
-    let mut child = Command::new(env!("CARGO_BIN_EXE_omamail"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_fili-mail"))
         .args(["call", "hey.read", "--json"])
         .env("PATH", &dir)
         .env("HEY_TEST_CALLS", dir.join("calls"))
@@ -317,7 +317,7 @@ esac
         2
     );
     fs::write(dir.join("calls"), "").unwrap();
-    let mut child = Command::new(env!("CARGO_BIN_EXE_omamail"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_fili-mail"))
         .args(["call", "hey.read", "--json"])
         .env("PATH", &dir)
         .env("HEY_TEST_CALLS", dir.join("calls"))

@@ -4,7 +4,7 @@ struct Temp(PathBuf);
 impl Temp {
     fn new() -> Self {
         let p = std::env::temp_dir().canonicalize().unwrap().join(format!(
-            "omamail-compose-test-{}-{}",
+            "fili-mail-compose-test-{}-{}",
             std::process::id(),
             SERIAL.fetch_add(1, Ordering::Relaxed)
         ));
@@ -128,7 +128,7 @@ fn invalid_or_oversized_reply_quote_never_writes_recovery() {
                 ),
                 Err(error)
             );
-            assert!(!temp.0.join("omamail").exists());
+            assert!(!temp.0.join("fili-mail").exists());
         }
     }
 }
@@ -178,7 +178,7 @@ fn malformed_edit_history_never_writes_recovery() {
             ),
             Err("recovery_invalid_user_modified")
         );
-        assert!(!temp.0.join("omamail").exists());
+        assert!(!temp.0.join("fili-mail").exists());
     }
 }
 
@@ -231,7 +231,7 @@ fn snapshots_are_private_atomic_and_stale_clear_cannot_erase_newer_draft() {
         second
     );
     assert_eq!(
-        std::fs::metadata(temp.0.join("omamail/compose.json"))
+        std::fs::metadata(temp.0.join("fili-mail/compose.json"))
             .unwrap()
             .permissions()
             .mode()
@@ -253,11 +253,11 @@ fn links_never_read_write_or_modify_outside_target() {
     for name in ["compose.json", ".compose.lock"] {
         for hard in [false, true] {
             let temp = Temp::new();
-            std::fs::create_dir(temp.0.join("omamail")).unwrap();
+            std::fs::create_dir(temp.0.join("fili-mail")).unwrap();
             let outside = temp.0.join("outside");
             std::fs::write(&outside, b"secret").unwrap();
             std::fs::set_permissions(&outside, std::fs::Permissions::from_mode(0o644)).unwrap();
-            let path = temp.0.join("omamail").join(name);
+            let path = temp.0.join("fili-mail").join(name);
             if hard {
                 std::fs::hard_link(&outside, path).unwrap();
             } else {
@@ -308,7 +308,7 @@ fn attachment_metadata_never_opens_paths_and_invalid_paths_write_nothing() {
             Err("recovery_attachment_path_invalid")
         );
     }
-    assert!(!temp.0.join("omamail").exists());
+    assert!(!temp.0.join("fili-mail").exists());
 }
 #[test]
 fn js_oracle_parity_for_normalized_drafts() {

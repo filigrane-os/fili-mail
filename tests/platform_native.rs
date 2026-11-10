@@ -8,7 +8,7 @@ mod platform;
 #[path = "../src/cache/mod.rs"]
 mod cache;
 #[cfg(windows)]
-pub use omamail::message;
+pub use fili_mail::message;
 
 #[cfg(windows)]
 #[path = "support/windows_process.rs"]
@@ -29,7 +29,7 @@ fn windows_process_command_line_query_reads_live_child_arguments() {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    let marker = format!("omamail-argv-probe-{}-{nonce}", std::process::id());
+    let marker = format!("fili-mail-argv-probe-{}-{nonce}", std::process::id());
     let script = format!("Start-Sleep -Seconds 30 # {marker}");
     let child = Child(
         std::process::Command::new("powershell.exe")
@@ -48,9 +48,9 @@ fn windows_process_command_line_query_reads_live_child_arguments() {
 #[cfg(all(windows, not(feature = "integration-test-credentials")))]
 #[test]
 fn production_directories_ignore_integration_root_hint_without_writes() {
-    use omamail::platform::dirs::AppDirs;
+    use fili_mail::platform::dirs::AppDirs;
     let root = std::env::temp_dir().canonicalize().unwrap()
-        .join(format!("omamail-forbidden-integration-root-{}", std::process::id()));
+        .join(format!("fili-mail-forbidden-integration-root-{}", std::process::id()));
     if std::env::var_os("OMAMAIL_DIRECTORY_PROBE_CHILD").is_some() {
         let hint = std::path::PathBuf::from(std::env::var_os("OMAMAIL_INTEGRATION_HOME").unwrap());
         assert!(!AppDirs::discover().unwrap().config.starts_with(&hint));

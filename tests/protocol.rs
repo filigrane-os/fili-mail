@@ -1,4 +1,4 @@
-use omamail::backend::protocol::{MAX_FRAME, serve};
+use fili_mail::backend::protocol::{MAX_FRAME, serve};
 use serde_json::{Value, json};
 
 fn run(input: &[u8]) -> Vec<Value> {

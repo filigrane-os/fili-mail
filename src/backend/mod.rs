@@ -556,7 +556,7 @@ pub fn dispatch(method: &str, params: &Value) -> Result<Value, &'static str> {
     }
     match method {
         "system.info" => Ok(json!({
-            "name": "omamail", "version": env!("CARGO_PKG_VERSION"),
+            "name": "fili-mail", "version": env!("CARGO_PKG_VERSION"),
             "protocol": 1, "apiVersion": 10, "methods": methods::available(),
             "capabilities": {"agent": cfg!(all(feature = "agent", unix))}
         })),
@@ -596,7 +596,7 @@ mod cache_lifecycle_tests {
     #[tokio::test]
     async fn successful_clear_invalidates_only_its_account_and_refused_clear_preserves_cache() {
         let root = std::env::temp_dir().canonicalize().unwrap().join(format!(
-            "omamail-backend-cache-clear-{}",
+            "fili-mail-backend-cache-clear-{}",
             std::process::id()
         ));
         std::fs::create_dir_all(&root).unwrap();

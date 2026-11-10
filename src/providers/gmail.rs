@@ -44,7 +44,7 @@ impl Token {
 // that tolerates short bursts. Every call is paced below that line here so a
 // screen of trashed conversations — one 5-unit call per message — reaches
 // Google as a stream rather than a burst it answers with 403 rateLimitExceeded.
-// The margin leaves room for another omamail process on the same account.
+// The margin leaves room for another fili-mail process on the same account.
 const QUOTA_UNITS_PER_SECOND: f64 = 200.0;
 const QUOTA_BURST: f64 = 200.0;
 // A call whose turn would come after the IPC deadline fails now, as rate

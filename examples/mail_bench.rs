@@ -14,12 +14,12 @@ fn main() {
         for phase in input["phases"].as_array().unwrap() {
             let operation = || -> Result<Value, &'static str> {
                 match phase.as_str().unwrap() {
-                    "mime" => omamail::message::parse(black_box(&raw)),
-                    "html" => omamail::message::html::sanitize(
+                    "mime" => fili_mail::message::parse(black_box(&raw)),
+                    "html" => fili_mail::message::html::sanitize(
                         black_box(item["html"].as_str().unwrap()),
                         &json!({}),
                     ),
-                    "readprep" => omamail::message::html::sanitize(
+                    "readprep" => fili_mail::message::html::sanitize(
                         black_box(item["html"].as_str().unwrap()),
                         &json!({"withPlainText":true,"withReader":true}),
                     ),

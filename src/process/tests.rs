@@ -52,7 +52,7 @@ async fn streams_are_separate_and_individually_bounded() {
 }
 #[test]
 fn hostile_arguments_are_one_unchanged_argument() {
-    let marker = std::env::temp_dir().join(format!("omamail-argv-{}", std::process::id()));
+    let marker = std::env::temp_dir().join(format!("fili-mail-argv-{}", std::process::id()));
     let hostile = format!(
         "\"; touch '{}'; $(touch '{}') & echo injected > \"{}\" \\ 日本語\n",
         marker.display(),
@@ -116,7 +116,7 @@ fn managed_termination_closes_descendant_pipes() {
 }
 #[tokio::test]
 async fn cancellation_terminates_descendants_before_their_side_effect() {
-    let root = std::env::temp_dir().join(format!("omamail-process-cancel-{}", std::process::id()));
+    let root = std::env::temp_dir().join(format!("fili-mail-process-cancel-{}", std::process::id()));
     std::fs::create_dir(&root).unwrap();
     let ready = root.join("ready");
     let forbidden = root.join("forbidden");

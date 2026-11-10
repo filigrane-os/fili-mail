@@ -250,7 +250,7 @@ mod tests {
     impl Fixture {
         fn new() -> Self {
             let root = std::env::temp_dir().canonicalize().unwrap().join(format!(
-                "omamail-client-test-{}-{}",
+                "fili-mail-client-test-{}-{}",
                 std::process::id(),
                 SERIAL.fetch_add(1, Ordering::Relaxed)
             ));
@@ -310,7 +310,7 @@ mod tests {
             fixture.root.join("downloads"),
         )
         .unwrap();
-        assert_eq!(dirs.config_directory(), fixture.config.join("omamail"));
+        assert_eq!(dirs.config_directory(), fixture.config.join("fili-mail"));
         let _override =
             crate::platform::dirs::install_test_override(dirs, fixture.root.join("different-home"))
                 .unwrap();
