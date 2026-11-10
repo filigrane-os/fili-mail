@@ -7,6 +7,7 @@ pub mod content;
 pub mod direction;
 pub(crate) mod envelope;
 pub mod html;
+pub mod picture;
 pub mod rich;
 pub mod signature;
 

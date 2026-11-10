@@ -20,6 +20,12 @@ ApplicationWindow {
     property var accounts: []
     property string account: ""
     property string mailbox: "inbox"
+    // Search text applied to the list (typed text waits a moment in the toolbar field)
+    property string query: ""
+    // Places visited (account, mailbox, search) for the back and forward buttons
+    property var history: []
+    property int hindex: -1
+    property bool navigating: false
     property bool adding: false
     property bool addBusy: false
     property string addError: ""
@@ -98,12 +104,47 @@ ApplicationWindow {
             account = accounts.some(a => a.id === r.activeId) ? r.activeId : accounts[0].id;
     }
 
+    function visit() {
+        if (navigating || account === "")
+            return;
+        const here = { account: account, mailbox: mailbox, query: query };
+        const kept = history.slice(0, hindex + 1);
+        const last = kept.length > 0 ? kept[kept.length - 1] : null;
+        if (last && last.account === here.account && last.mailbox === here.mailbox && last.query === here.query)
+            return;
+        kept.push(here);
+        history = kept.slice(-50);
+        hindex = history.length - 1;
+    }
+    function go(step) {
+        const i = hindex + step;
+        if (i < 0 || i >= history.length)
+            return;
+        navigating = true;
+        hindex = i;
+        const p = history[i];
+        if (searchInput.text !== p.query) searchInput.text = p.query;
+        query = p.query;
+        account = p.account;
+        mailbox = p.mailbox;
+        navigating = false;
+    }
+    function boxLabel() {
+        const names = { inbox: Facteur.tr("Inbox"), unread: Facteur.tr("Unread"), starred: Facteur.tr("Starred"), sent: Facteur.tr("Sent"), drafts: Facteur.tr("Drafts"), archive: Facteur.tr("Archive"), spam: Facteur.tr("Spam"), trash: Facteur.tr("Trash") };
+        return names[mailbox] || mailbox;
+    }
+    function unreadCount() {
+        let n = 0;
+        for (let i = 0; i < messages.count; i++)
+            if (messages.get(i).unread) n++;
+        return n;
+    }
     function refresh() {
         if (account === "")
             return;
         loading = true;
         listError = "";
-        Facteur.list(account, mailbox);
+        Facteur.list(account, mailbox, query);
     }
 
     function rowOf(id) {
@@ -147,14 +188,15 @@ ApplicationWindow {
         reader.summary = null;
         reader.body = "";
         reader.rich = "";
+        reader.remoteImages = 0;
         reader.error = "";
         Facteur.openMessage(account, id);
     }
 
     Connections {
         target: Facteur
-        function onListed(acc, box, json) {
-            if (acc !== win.account || box !== win.mailbox)
+        function onListed(acc, box, qry, json) {
+            if (acc !== win.account || box !== win.mailbox || qry !== win.query)
                 return;
             win.loading = false;
             const r = JSON.parse(json);
@@ -200,6 +242,8 @@ ApplicationWindow {
             reader.summary = r.message.summary;
             reader.body = r.message.nativeContent.body.text;
             reader.rich = r.message.rich || "";
+            reader.remoteImages = r.message.remoteImages || 0;
+            reader.loadingImages = false;
         }
         function onActed(acc, operation, ids, json) {
             if (acc !== win.account)
@@ -242,13 +286,18 @@ ApplicationWindow {
 
     Component.onCompleted: {
         loadAccounts();
+        visit();
         refresh();
     }
-    onAccountChanged: { messages.clear(); selectedId = ""; reader.summary = null; refresh() }
-    onMailboxChanged: { messages.clear(); selectedId = ""; reader.summary = null; refresh() }
+    onAccountChanged: { messages.clear(); selectedId = ""; reader.summary = null; visit(); refresh() }
+    onMailboxChanged: { messages.clear(); selectedId = ""; reader.summary = null; visit(); refresh() }
+    onQueryChanged: { messages.clear(); selectedId = ""; reader.summary = null; visit(); refresh() }
 
     Shortcut { sequences: ["Ctrl+Q", "Ctrl+W"]; onActivated: Qt.quit() }
     Shortcut { sequences: ["F5", "Ctrl+R"]; enabled: !win.adding && win.account !== ""; onActivated: win.refresh() }
+    Shortcut { sequences: ["Alt+Left"]; enabled: !win.adding && win.hindex > 0; onActivated: win.go(-1) }
+    Shortcut { sequences: ["Alt+Right"]; enabled: !win.adding && win.hindex < win.history.length - 1; onActivated: win.go(1) }
+    Shortcut { sequences: ["Ctrl+F"]; enabled: !win.adding && win.account !== "" && !win.composing; onActivated: searchInput.forceActiveFocus() }
     Shortcut { sequences: ["Ctrl+N"]; enabled: !win.adding && win.account !== ""; onActivated: win.startCompose("new") }
     Shortcut { sequences: ["Ctrl+Shift+R"]; enabled: !win.adding && !win.composing; onActivated: win.startCompose("reply") }
     Shortcut { sequences: ["Ctrl+Shift+F"]; enabled: !win.adding && !win.composing; onActivated: win.startCompose("forward") }
@@ -272,8 +321,109 @@ ApplicationWindow {
         }
     }
 
+    // Toolbar: back and forward (places visited), title and counts, search, refresh, new message
+    Rectangle {
+        id: toolbar
+        visible: !win.adding && win.accounts.length > 0
+        width: parent.width
+        height: FiliTheme.toolbarHeight
+        color: FiliTheme.background
+        Rectangle {
+            x: FiliTheme.margin
+            anchors.verticalCenter: nav.verticalCenter
+            width: nav.width + 2 * FiliTheme.space1 + 2
+            height: 30
+            radius: 8
+            color: FiliTheme.surface
+            border.width: FiliTheme.borderWidth
+            border.color: FiliTheme.border
+        }
+        Row {
+            id: nav
+            x: FiliTheme.margin + FiliTheme.space1 + 1
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: FiliTheme.space1
+            IconButton { glyph: "\uf053"; enabledState: win.hindex > 0; onClicked: win.go(-1) }
+            IconButton { glyph: "\uf054"; enabledState: win.hindex < win.history.length - 1; onClicked: win.go(1) }
+        }
+        Column {
+            anchors { left: nav.right; leftMargin: FiliTheme.space5; right: tools.left; rightMargin: FiliTheme.space3; verticalCenter: parent.verticalCenter }
+            Text {
+                width: parent.width
+                text: win.boxLabel() + (win.query !== "" ? "  ·  " + Facteur.tr("Search: %1").replace("%1", win.query) : "")
+                elide: Text.ElideRight
+                font.family: FiliTheme.font
+                font.pixelSize: FiliTheme.size
+                font.weight: FiliTheme.weightAccent
+                color: FiliTheme.text
+            }
+            Text {
+                width: parent.width
+                text: win.loading ? "…" : win.listError !== "" ? "" : Facteur.tr("%1 messages, %2 unread").replace("%1", messages.count).replace("%2", win.unreadCount())
+                elide: Text.ElideRight
+                font.family: FiliTheme.font
+                font.pixelSize: FiliTheme.sizeList
+                color: FiliTheme.textSecondary
+            }
+        }
+        Row {
+            id: tools
+            anchors { right: search.left; rightMargin: FiliTheme.space3; verticalCenter: parent.verticalCenter }
+            spacing: FiliTheme.space1
+            IconButton { glyph: "\uf021"; onClicked: win.refresh() }
+            IconButton { glyph: "\uf040"; onClicked: win.startCompose("new") }
+        }
+        Rectangle {
+            id: search
+            anchors { right: parent.right; rightMargin: FiliTheme.margin; verticalCenter: parent.verticalCenter }
+            width: 200
+            height: 26
+            radius: FiliTheme.radiusControl
+            color: FiliTheme.surface
+            border.width: FiliTheme.borderWidth
+            border.color: searchInput.activeFocus ? FiliTheme.accentColor : FiliTheme.border
+            Text {
+                anchors { left: parent.left; leftMargin: FiliTheme.space2; verticalCenter: parent.verticalCenter }
+                visible: searchInput.text === ""
+                text: Facteur.tr("Search")
+                font.family: FiliTheme.font
+                font.pixelSize: FiliTheme.size
+                color: FiliTheme.muted
+            }
+            TextInput {
+                id: searchInput
+                anchors { fill: parent; leftMargin: FiliTheme.space2; rightMargin: FiliTheme.space2 }
+                verticalAlignment: TextInput.AlignVCenter
+                clip: true
+                font.family: FiliTheme.font
+                font.pixelSize: FiliTheme.size
+                color: FiliTheme.text
+                selectionColor: FiliTheme.surfaceActive
+                selectedTextColor: FiliTheme.text
+                onTextChanged: searchWait.restart()
+                Keys.onEscapePressed: { text = ""; win.query = ""; focus = false }
+                Keys.onReturnPressed: { searchWait.stop(); win.query = text.trim(); focus = false }
+                Keys.onDownPressed: focus = false
+            }
+            // The list follows the typing after a short pause
+            Timer {
+                id: searchWait
+                interval: 450
+                onTriggered: win.query = searchInput.text.trim()
+            }
+        }
+    }
+    Rectangle {
+        id: toolbarLine
+        visible: toolbar.visible
+        anchors.top: toolbar.bottom
+        width: parent.width
+        height: FiliTheme.borderWidth
+        color: FiliTheme.border
+    }
+
     Row {
-        anchors.fill: parent
+        anchors { top: toolbar.visible ? toolbarLine.bottom : parent.top; bottom: parent.bottom; left: parent.left; right: parent.right }
         visible: !win.adding && win.accounts.length > 0
         Sidebar {
             width: FiliTheme.sidebarWidth
@@ -283,7 +433,6 @@ ApplicationWindow {
             mailbox: win.mailbox
             onAccountChosen: id => win.account = id
             onMailboxChosen: key => win.mailbox = key
-            onCompose: win.startCompose("new")
             onAddAccount: { win.addError = ""; win.adding = true }
             onRemoveRequested: id => win.removing = id
         }
@@ -303,6 +452,7 @@ ApplicationWindow {
             onAct: operation => win.doAct(operation, win.selectedId)
             onReply: win.startCompose("reply")
             onForward: win.startCompose("forward")
+            onLoadImages: { reader.loadingImages = true; Facteur.loadImages(win.account, win.selectedId) }
             width: parent.width - FiliTheme.sidebarWidth - 340 - 2 * FiliTheme.borderWidth
             height: parent.height
             Compose {

@@ -10,7 +10,6 @@ Rectangle {
     signal accountChosen(string id)
     signal mailboxChosen(string key)
     signal addAccount()
-    signal compose()
     signal removeRequested(string id)
 
     color: FiliTheme.backgroundDeep
@@ -27,7 +26,7 @@ Rectangle {
     ]
 
     Flickable {
-        anchors { fill: parent; bottomMargin: FiliTheme.statusHeight + FiliTheme.space2; topMargin: FiliTheme.statusHeight + FiliTheme.space3 }
+        anchors { fill: parent; bottomMargin: FiliTheme.statusHeight + FiliTheme.space2; topMargin: FiliTheme.space3 }
         contentHeight: column.height
         clip: true
         Column {
@@ -86,11 +85,5 @@ Rectangle {
         anchors { left: parent.left; bottom: parent.bottom; leftMargin: FiliTheme.space3; bottomMargin: FiliTheme.space2 }
         label: "+ " + Facteur.tr("Add account")
         onClicked: side.addAccount()
-    }
-    TextButton {
-        anchors { left: parent.left; top: parent.top; leftMargin: FiliTheme.space3; topMargin: FiliTheme.space2 }
-        label: Facteur.tr("New message")
-        primary: true
-        onClicked: side.compose()
     }
 }

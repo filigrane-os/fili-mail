@@ -71,17 +71,27 @@ pub mod qobject {
             ids: &QString,
             result: &QString,
         );
-        // Messages of a mailbox of an account; answered by `listed` (JSON: {messages, estimate} or {error})
+        // Messages of a mailbox of an account, narrowed by a search text (may be empty); answered by `listed` (JSON: {messages, estimate} or {error})
         #[qinvokable]
-        fn list(self: Pin<&mut Facteur>, account: &QString, mailbox: &QString);
+        fn list(self: Pin<&mut Facteur>, account: &QString, mailbox: &QString, query: &QString);
         #[qsignal]
-        fn listed(self: Pin<&mut Facteur>, account: &QString, mailbox: &QString, result: &QString);
+        fn listed(
+            self: Pin<&mut Facteur>,
+            account: &QString,
+            mailbox: &QString,
+            query: &QString,
+            result: &QString,
+        );
         // One message; answered by `opened` (JSON)
         #[qinvokable]
         #[cxx_name = "openMessage"]
         fn open_message(self: Pin<&mut Facteur>, account: &QString, id: &QString);
         #[qsignal]
         fn opened(self: Pin<&mut Facteur>, id: &QString, result: &QString);
+        // The same message with its remote pictures loaded (the user asked for them); answered by `opened`
+        #[qinvokable]
+        #[cxx_name = "loadImages"]
+        fn load_images(self: Pin<&mut Facteur>, account: &QString, id: &QString);
         // Send a message: fields = JSON {to, cc, bcc, subject, body} (address lists as strings);
         // answered by `sent` (JSON result or {error})
         #[qinvokable]
@@ -365,12 +375,12 @@ impl qobject::Facteur {
         });
     }
 
-    pub fn list(self: Pin<&mut Self>, account: &QString, mailbox: &QString) {
-        let (account, mailbox) = (account.to_string(), mailbox.to_string());
+    pub fn list(self: Pin<&mut Self>, account: &QString, mailbox: &QString, query: &QString) {
+        let (account, mailbox, query) = (account.to_string(), mailbox.to_string(), query.to_string());
         let qt = self.qt_thread();
         let (runtime, session) = engine();
         runtime.spawn(async move {
-            let params = json!({"account": account, "mailbox": mailbox, "limit": 50});
+            let params = json!({"account": account, "mailbox": mailbox, "query": query, "limit": 50});
             let out = match session.dispatch("mail.list", &params).await {
                 Ok(v) => v.to_string(),
                 Err(e) => error_json(e),
@@ -379,6 +389,7 @@ impl qobject::Facteur {
                 f.listed(
                     &QString::from(&account),
                     &QString::from(&mailbox),
+                    &QString::from(&query),
                     &QString::from(&out),
                 )
             });
@@ -390,17 +401,21 @@ impl qobject::Facteur {
         let qt = self.qt_thread();
         let (runtime, session) = engine();
         runtime.spawn(async move {
-            let params = json!({"account": account, "id": id});
-            let out = match session.dispatch("mail.read", &params).await {
-                Ok(mut v) => {
-                    // HTML mail: the sanitized tree becomes rich text (see message::rich)
-                    let message = &mut v["message"];
-                    if message["nativeContent"]["body"]["source"] == "html" {
-                        let rich = fili_mail::message::rich::rich_text(&message["nativeRender"], &message["links"]);
-                        message["rich"] = json!(rich);
-                    }
-                    v.to_string()
-                }
+            let out = match read_message(session, &account, &id, false).await {
+                Ok(v) => v.to_string(),
+                Err(e) => error_json(e),
+            };
+            let _ = qt.queue(move |f| f.opened(&QString::from(&id), &QString::from(&out)));
+        });
+    }
+
+    pub fn load_images(self: Pin<&mut Self>, account: &QString, id: &QString) {
+        let (account, id) = (account.to_string(), id.to_string());
+        let qt = self.qt_thread();
+        let (runtime, session) = engine();
+        runtime.spawn(async move {
+            let out = match read_message(session, &account, &id, true).await {
+                Ok(v) => v.to_string(),
                 Err(e) => error_json(e),
             };
             let _ = qt.queue(move |f| f.opened(&QString::from(&id), &QString::from(&out)));
@@ -465,4 +480,99 @@ async fn send_message(session: &Session, account: &str, fields: &str) -> Result<
     let mut result = session.dispatch("mail.send", &params).await?;
     session.finish_cli_send(&mut result).await?;
     Ok(result)
+}
+
+fn host_is_local(url: &reqwest::Url) -> bool {
+    use std::net::IpAddr;
+    let Some(host) = url.host_str() else { return true };
+    let host = host.trim_start_matches('[').trim_end_matches(']').to_ascii_lowercase();
+    match host.parse::<IpAddr>() {
+        Ok(IpAddr::V4(ip)) => ip.is_private() || ip.is_loopback() || ip.is_link_local() || ip.is_unspecified(),
+        Ok(IpAddr::V6(ip)) => {
+            let first = ip.segments()[0];
+            ip.is_loopback() || ip.is_unspecified() || first & 0xfe00 == 0xfc00 || first & 0xffc0 == 0xfe80
+        }
+        Err(_) => host == "localhost" || host.ends_with(".localhost") || host.ends_with(".local") || host.ends_with(".internal"),
+    }
+}
+
+/// Remote pictures of a message as data URIs, fetched by this program (never by the interface): the public
+/// http(s) sources the engine vetted, redirects limited and kept away from the local network, small
+/// pictures only. Anything that is not a real picture is left out.
+async fn fetch_pictures(sources: &[String]) -> Value {
+    use base64::{Engine, engine::general_purpose::STANDARD};
+    use fili_mail::message::picture::{MAX_PICTURE, describe};
+    let policy = reqwest::redirect::Policy::custom(|attempt| {
+        if attempt.previous().len() >= 3 || host_is_local(attempt.url()) {
+            attempt.stop()
+        } else {
+            attempt.follow()
+        }
+    });
+    let Ok(client) = reqwest::Client::builder()
+        .redirect(policy)
+        .timeout(std::time::Duration::from_secs(10))
+        .user_agent("Mozilla/5.0")
+        .build()
+    else {
+        return json!({});
+    };
+    let mut jobs = tokio::task::JoinSet::new();
+    for source in sources.iter().take(24) {
+        let (client, source) = (client.clone(), source.clone());
+        jobs.spawn(async move {
+            let url = reqwest::Url::parse(&source).ok().filter(|u| matches!(u.scheme(), "http" | "https") && !host_is_local(u))?;
+            let mut response = client.get(url).send().await.ok()?.error_for_status().ok()?;
+            let mut bytes = Vec::new();
+            while let Some(chunk) = response.chunk().await.ok()? {
+                bytes.extend_from_slice(&chunk);
+                if bytes.len() > MAX_PICTURE {
+                    return None;
+                }
+            }
+            let (ext, _, _) = describe(&bytes)?;
+            let mime = if ext == "jpg" { "jpeg" } else { ext };
+            Some((source, format!("data:image/{mime};base64,{}", STANDARD.encode(&bytes))))
+        });
+    }
+    let mut out = serde_json::Map::new();
+    let mut total = 0;
+    while let Some(Ok(Some((source, uri)))) = jobs.join_next().await {
+        total += uri.len();
+        if total <= 24 * 1024 * 1024 {
+            out.insert(source, json!(uri));
+        }
+    }
+    Value::Object(out)
+}
+
+/// One message for the window: the engine's read, its HTML as rich text (pictures stored in the cache) and, when
+/// the sender's remote pictures were held back, how many there are. `load`: fetch them and read again with them.
+async fn read_message(session: &Session, account: &str, id: &str, load: bool) -> Result<Value, &'static str> {
+    let mut params = json!({"account": account, "id": id});
+    let mut value = session.dispatch("mail.read", &params).await?;
+    let sources: Vec<String> = value["message"]["nativeRender"]["remoteImageSources"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|s| s.as_str().map(str::to_owned))
+        .collect();
+    let mut pending = sources.len();
+    if load && !sources.is_empty() {
+        params["allowRemoteImages"] = json!(true);
+        params["remoteImageData"] = fetch_pictures(&sources).await;
+        value = session.dispatch("mail.read", &params).await?;
+        pending = 0;
+    }
+    let message = &mut value["message"];
+    if message["nativeContent"]["body"]["source"] == "html" {
+        let rich = fili_mail::message::rich::rich_text(&message["nativeRender"], &message["links"], &|uri| {
+            fili_mail::message::picture::store_data_uri(uri)
+        });
+        message["rich"] = json!(rich);
+    }
+    message["remoteImages"] = json!(pending);
+    // The document tree (with picture data) stays on this side
+    message["nativeRender"] = Value::Null;
+    Ok(value)
 }

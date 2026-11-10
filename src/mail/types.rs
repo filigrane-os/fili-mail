@@ -1,5 +1,5 @@
 use crate::mail::resolve_account;
-use serde_json::{Map, Value};
+use serde_json::{Map, Value, json};
 use std::path::PathBuf;
 
 const MAX_ID: usize = 8192;
@@ -113,6 +113,8 @@ pub struct ListRequest {
 pub struct ReadRequest {
     pub account: Account,
     pub id: String,
+    /// Optional {"allowRemoteImages": bool, "remoteImageData": {url: data URI}} for the reader (Null: no remote image)
+    pub images: Value,
 }
 
 pub struct ActRequest {
@@ -268,14 +270,19 @@ impl TryFrom<&Value> for ReadRequest {
     type Error = &'static str;
 
     fn try_from(value: &Value) -> Result<Self, Self::Error> {
-        let object = params_object(value, &["account", "id"])?;
+        let object = params_object(value, &["account", "id", "allowRemoteImages", "remoteImageData"])?;
         let id = object
             .get("id")
             .and_then(Value::as_str)
             .ok_or("invalid_params")?;
+        let data = object.get("remoteImageData").cloned().unwrap_or_else(|| json!({}));
+        if !data.is_object() || object.get("allowRemoteImages").is_some_and(|v| !v.is_boolean()) {
+            return Err("invalid_params");
+        }
         Ok(Self {
             account: account(object)?,
             id: opaque_id(id)?,
+            images: json!({"allowRemoteImages":object.get("allowRemoteImages").unwrap_or(&json!(false)),"remoteImageData":data}),
         })
     }
 }

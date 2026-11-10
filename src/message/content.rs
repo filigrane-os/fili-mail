@@ -479,6 +479,42 @@ pub(crate) fn prepare_for_render(message: &Value, now: i64) -> Result<Value> {
     prepare_content(message, now, false)
 }
 
+/// Embedded images of the message by Content-ID: data: URIs of the parts that carry their bytes
+/// (a provider that gives only an attachment id has them fetched first, see backend::reader).
+fn inline_images(part: &Value, depth: usize, out: &mut Vec<(String, String)>) {
+    if depth > 12 || out.len() >= 64 {
+        return;
+    }
+    if embedded_image(part) {
+        let id = part_header(part, "Content-ID");
+        let id = id.trim().trim_start_matches('<').trim_end_matches('>');
+        let data = text(&part["body"]["data"]);
+        if !id.is_empty() && !data.is_empty() && data.len() <= 8 * 1024 * 1024 {
+            use base64::{Engine, engine::general_purpose::STANDARD};
+            let mime = text(&part["mimeType"]).split(';').next().unwrap_or("").trim().to_ascii_lowercase();
+            out.push((id.to_owned(), format!("data:{mime};base64,{}", STANDARD.encode(bytes64(data)))));
+        }
+    }
+    for child in part["parts"].as_array().into_iter().flatten() {
+        inline_images(child, depth + 1, out);
+    }
+}
+/// Attachment ids of the embedded images that still lack their bytes (small ones only).
+pub(crate) fn inline_images_missing(part: &Value, depth: usize, out: &mut Vec<String>) {
+    if depth > 12 || out.len() >= 16 {
+        return;
+    }
+    if embedded_image(part)
+        && text(&part["body"]["data"]).is_empty()
+        && !text(&part["body"]["attachmentId"]).is_empty()
+        && number(&part["body"]["size"]) <= 2.0 * 1024.0 * 1024.0
+    {
+        out.push(text(&part["body"]["attachmentId"]).to_owned());
+    }
+    for child in part["parts"].as_array().into_iter().flatten() {
+        inline_images_missing(child, depth + 1, out);
+    }
+}
 fn prepare_content(message: &Value, now: i64, read_html: bool) -> Result<Value> {
     let mut plain = String::new();
     let mut html = String::new();
@@ -491,6 +527,13 @@ fn prepare_content(message: &Value, now: i64, read_html: bool) -> Result<Value> 
         &mut html,
         &mut files,
     )?;
+    if !html.is_empty() && html.to_ascii_lowercase().contains("cid:") {
+        let mut images = Vec::new();
+        inline_images(&message["payload"], 0, &mut images);
+        for (id, uri) in images {
+            html = html.replace(&format!("cid:{id}"), &uri);
+        }
+    }
     let source = if !plain.is_empty() && !(markup_as_text(&plain) && !html.is_empty()) {
         "plain"
     } else if !html.is_empty() {

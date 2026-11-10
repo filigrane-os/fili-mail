@@ -828,6 +828,7 @@ mod tests {
                     provider: Provider::Gmail,
                 },
                 id: "message-1".into(),
+                images: serde_json::Value::Null,
             },
             &ReaderProjectionAdapter {
                 opened,
@@ -841,7 +842,8 @@ mod tests {
             expected_text
         );
         assert!(result["message"]["nativeRender"]["document"].is_object());
-        let serialized = result.to_string();
+        // The document draws no remote source; the sources are listed apart, for the window to fetch on request
+        let serialized = result["message"]["nativeRender"]["document"].to_string();
         assert!(!serialized.contains(tracker));
         assert!(!serialized.contains(data_script));
         assert_eq!(&*calls.lock().unwrap(), &["reader.open"]);
@@ -874,7 +876,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn mail_read_drops_inline_raster_data_from_actual_reader_document() {
+    async fn mail_read_keeps_inline_raster_data_for_the_window() {
         let image = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL6fQAAAABJRU5ErkJggg==";
         let opened = super::super::reader::projection(
             &reader_resource(
@@ -904,6 +906,7 @@ mod tests {
                     provider: Provider::Gmail,
                 },
                 id: "message-1".into(),
+                images: serde_json::Value::Null,
             },
             &ReaderProjectionAdapter {
                 opened,
@@ -921,10 +924,9 @@ mod tests {
         assert_eq!(document["children"][0]["name"], "p");
         assert!(document.to_string().contains("Visible image text"));
         assert_eq!(document["children"][1]["name"], "img");
-        assert_eq!(document["children"][1]["attrs"], json!([]));
-        let serialized = result.to_string();
-        assert!(!serialized.contains(image));
-        assert!(!serialized.contains("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ"));
+        // Embedded raster pictures stay in the document (the window stores them); remote ones never do
+        assert_eq!(document["children"][1]["attrs"][0]["name"], "src");
+        assert_eq!(document["children"][1]["attrs"][0]["value"], image);
         assert_eq!(&*calls.lock().unwrap(), &["reader.open"]);
     }
 
@@ -948,6 +950,7 @@ mod tests {
                     provider: Provider::Gmail,
                 },
                 id: "message-1".into(),
+                images: serde_json::Value::Null,
             },
             &ReaderProjectionAdapter {
                 opened: opened.clone(),

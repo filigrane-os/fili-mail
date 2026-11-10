@@ -37,6 +37,7 @@ fn request() -> ReadRequest {
             provider: Provider::Gmail,
         },
         id: "message-1".into(),
+        images: serde_json::Value::Null,
     }
 }
 
@@ -113,7 +114,7 @@ async fn read_returns_only_safe_reader_content_without_conversation_metadata() {
     assert_eq!(calls[0].1["cacheOnly"], false);
     assert_eq!(
         calls[0].1["options"],
-        json!({"allowRemoteImages":false,"withReader":true})
+        json!({"allowRemoteImages":false,"remoteImageData":{},"withReader":true,"keepColors":true})
     );
 }
 

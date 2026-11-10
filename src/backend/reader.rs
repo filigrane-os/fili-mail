@@ -144,7 +144,41 @@ async fn registered(account: &str) -> Result<String, &'static str> {
         .map(str::to_owned)
         .ok_or("reader_account_unknown")
 }
+fn put_part_data(part: &mut Value, attachment_id: &str, data: &str, depth: usize) {
+    if depth > 12 {
+        return;
+    }
+    if part["body"]["attachmentId"] == attachment_id {
+        part["body"]["data"] = json!(data);
+    }
+    if let Some(children) = part["parts"].as_array_mut() {
+        for child in children {
+            put_part_data(child, attachment_id, data, depth + 1);
+        }
+    }
+}
 impl Session {
+    /// Gmail: fetch the bytes of the (few, small) embedded images so that `cid:` sources can become pictures.
+    /// A failure leaves the image out; the message still reads.
+    async fn fetch_inline_images(&self, account: &str, id: &str, resource: &mut Value) {
+        let mut missing = Vec::new();
+        message::content::inline_images_missing(&resource["payload"], 0, &mut missing);
+        for attachment in missing {
+            let Ok(answer) = self
+                .gmail
+                .call(
+                    "gmail.attachment",
+                    &json!({"accountId":account,"messageId":id,"attachmentId":attachment}),
+                )
+                .await
+            else {
+                continue;
+            };
+            if let Some(data) = answer["data"].as_str() {
+                put_part_data(&mut resource["payload"], &attachment, data, 0);
+            }
+        }
+    }
     /// Internal full-resource read shared with AI context; never an IPC result.
     pub(crate) async fn fetch_resource(
         &self,
@@ -306,7 +340,8 @@ impl Session {
             Duration::from_secs(25)
         };
         let operation = async {
-            registered(&account).await?;
+            // Gmail gives embedded images as attachment ids only; the other providers send the bytes with the message
+            let is_gmail = registered(&account).await? == "gmail";
             job.current()?;
             let resource = if cache_only {
                 cache::resource::read(&account, &id).await?
@@ -322,6 +357,10 @@ impl Session {
                 // writes cannot land after an explicit reader cancellation.
                 let _ =
                     cache::resource::put_guarded(&account, &id, &resource, job.live.clone()).await;
+            }
+            let mut resource = resource;
+            if !cache_only && is_gmail {
+                self.fetch_inline_images(&account, &id, &mut resource).await;
             }
             let renders = self.renders.clone();
             let store = self.reader.clone();

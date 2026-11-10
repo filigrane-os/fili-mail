@@ -36,7 +36,69 @@ fn collapse(s: &str) -> String {
     out
 }
 
+/// Presentation of an element, read from its attributes and its inline style (each value validated).
+#[derive(Default)]
+struct Look {
+    color: Option<String>,
+    background: Option<String>,
+    align: Option<&'static str>,
+    bold: bool,
+    italic: bool,
+    underline: bool,
+}
+
+fn colour(value: &str) -> Option<String> {
+    let v = value.trim().to_ascii_lowercase();
+    let hex = v.strip_prefix('#').is_some_and(|h| matches!(h.len(), 3 | 6) && h.bytes().all(|b| b.is_ascii_hexdigit()));
+    let named = !v.is_empty() && v.len() <= 20 && v.bytes().all(|b| b.is_ascii_lowercase()) && !matches!(v.as_str(), "transparent" | "inherit" | "initial" | "currentcolor");
+    let rgb = v.starts_with("rgb(") && v.ends_with(')') && v.bytes().all(|b| b.is_ascii_digit() || b" (),rgb.%".contains(&b));
+    (hex || named || rgb).then_some(v)
+}
+
+fn attr<'a>(node: &'a Value, name: &str) -> &'a str {
+    node["attrs"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|a| a["name"] == name)
+        .and_then(|a| a["value"].as_str())
+        .unwrap_or("")
+}
+
+fn look(node: &Value) -> Look {
+    let mut l = Look { color: colour(attr(node, "color")), background: colour(attr(node, "bgcolor")), ..Look::default() };
+    let aligned = |v: &str| match v.trim().to_ascii_lowercase().as_str() {
+        "left" => Some("left"),
+        "right" => Some("right"),
+        "center" => Some("center"),
+        "justify" => Some("justify"),
+        _ => None,
+    };
+    l.align = aligned(attr(node, "align"));
+    for declaration in attr(node, "style").split(';') {
+        let Some((key, value)) = declaration.split_once(':') else { continue };
+        let value = value.trim();
+        match key.trim().to_ascii_lowercase().as_str() {
+            "color" => l.color = colour(value).or(l.color),
+            "background-color" | "background" => l.background = colour(value).or(l.background),
+            "text-align" => l.align = aligned(value).or(l.align),
+            "font-weight" => l.bold = value == "bold" || value.parse::<u32>().is_ok_and(|w| w >= 600),
+            "font-style" => l.italic = value == "italic",
+            "text-decoration" => l.underline = value.contains("underline"),
+            _ => {}
+        }
+    }
+    l
+}
+
+/// Widest picture, in pixels, drawn in the reader
+const MAX_WIDTH: u32 = 560;
+
+/// Picture store: data: URI to (file url, width, height).
+pub type Store<'a> = &'a dyn Fn(&str) -> Option<(String, u32, u32)>;
+
 struct Writer<'a> {
+    store: Store<'a>,
     links: &'a [Value],
     used: Vec<bool>,
     out_len: usize,
@@ -56,7 +118,10 @@ impl Writer<'_> {
             return escape(&text).replace('\n', "<br>");
         }
         let name = node["name"].as_str().unwrap_or("").to_ascii_lowercase();
-        if matches!(name.as_str(), "head" | "script" | "style" | "title" | "meta" | "link" | "img" | "svg" | "object" | "iframe") {
+        if name == "img" {
+            return self.picture(node);
+        }
+        if matches!(name.as_str(), "head" | "script" | "style" | "title" | "meta" | "link" | "svg" | "object" | "iframe") {
             return String::new();
         }
         if name == "br" {
@@ -75,7 +140,37 @@ impl Writer<'_> {
         for child in node["children"].as_array().into_iter().flatten() {
             inner.push_str(&self.node(child, pre_children));
         }
-        let shown = !inner.replace("<br>", "").replace("<hr>", "").trim().is_empty();
+        let shown = !inner.replace("<br>", "").replace("<hr>", "").trim().is_empty()
+            || inner.contains("<img");
+        let look = look(node);
+        if shown && name != "a" {
+            let mut style = String::new();
+            if let Some(c) = &look.color {
+                style += &format!("color:{c};");
+            }
+            if let Some(c) = &look.background {
+                style += &format!("background-color:{c};");
+            }
+            if !style.is_empty() {
+                inner = format!("<span style=\"{style}\">{inner}</span>");
+            }
+            if look.bold {
+                inner = format!("<b>{inner}</b>");
+            }
+            if look.italic {
+                inner = format!("<i>{inner}</i>");
+            }
+            if look.underline {
+                inner = format!("<u>{inner}</u>");
+            }
+        }
+        let block = matches!(
+            name.as_str(),
+            "p" | "div" | "section" | "article" | "header" | "footer" | "tr" | "table" | "center" | "td" | "th" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "li" | "blockquote"
+        );
+        if shown && block && let Some(align) = look.align {
+            inner = format!("<div align=\"{align}\">{inner}</div>");
+        }
         let wrap = |tag: &str, inner: &str| format!("<{tag}>{inner}</{tag}>");
         match name.as_str() {
             "a" => match anchor.flatten() {
@@ -100,6 +195,15 @@ impl Writer<'_> {
         }
     }
 
+    /// A picture: only a stored data: image is drawn (remote ones arrive as data once the reader allowed them).
+    fn picture(&mut self, node: &Value) -> String {
+        let Some((url, w, h)) = (self.store)(attr(node, "src")) else { return String::new() };
+        let wanted = attr(node, "width").trim_end_matches("px").parse::<u32>().ok().filter(|w| *w > 0).unwrap_or(w);
+        let width = wanted.min(MAX_WIDTH);
+        let height = (u64::from(h) * u64::from(width) / u64::from(w.max(1))).max(1);
+        format!("<img src=\"{}\" width=\"{width}\" height=\"{height}\">", escape(&url).replace('"', "&quot;"))
+    }
+
     /// First unused vetted link whose text is `text`.
     fn link(&mut self, text: &str) -> Option<String> {
         let i = self
@@ -116,9 +220,9 @@ impl Writer<'_> {
 
 /// Rich text of a message: `render` is `nativeRender`, `links` the vetted link list of the message.
 /// Empty when the document shows nothing.
-pub fn rich_text(render: &Value, links: &Value) -> String {
+pub fn rich_text(render: &Value, links: &Value, store: Store<'_>) -> String {
     let links = links.as_array().map_or(&[][..], Vec::as_slice);
-    let mut writer = Writer { links, used: vec![false; links.len()], out_len: 0 };
+    let mut writer = Writer { store, links, used: vec![false; links.len()], out_len: 0 };
     let mut html = writer.node(&render["document"], false);
     // Runs of line breaks (empty layout cells) shrink to one blank line
     while html.contains("<br><br><br>") {
@@ -143,19 +247,19 @@ mod tests {
     #[test]
     fn keeps_basic_formatting_and_decodes_entities() {
         let doc = json!({"document": {"type":"root","children":[el("p",vec![tx("It&#39;s "),el("strong",vec![tx("bold")])])]}});
-        assert_eq!(rich_text(&doc, &json!([])), "<p>It's <b>bold</b></p>");
+        assert_eq!(rich_text(&doc, &json!([]), &|_| None), "<p>It's <b>bold</b></p>");
     }
 
     #[test]
     fn drops_scripts_styles_and_head() {
         let doc = json!({"document": {"type":"root","children":[el("head",vec![el("style",vec![tx("p{}")])]),el("script",vec![tx("alert(1)")]),el("p",vec![tx("ok")])]}});
-        assert_eq!(rich_text(&doc, &json!([])), "<p>ok</p>");
+        assert_eq!(rich_text(&doc, &json!([]), &|_| None), "<p>ok</p>");
     }
 
     #[test]
     fn markup_in_text_is_escaped() {
         let doc = json!({"document": {"type":"root","children":[el("p",vec![tx("&lt;img src=x onerror=1&gt; &amp; <b>")])]}});
-        let out = rich_text(&doc, &json!([]));
+        let out = rich_text(&doc, &json!([]), &|_| None);
         assert!(!out.contains("<img") && !out.contains("<b>"), "{out}");
         assert!(out.contains("&lt;img") && out.contains("&amp;"), "{out}");
     }
@@ -165,15 +269,35 @@ mod tests {
         let doc = json!({"document": {"type":"root","children":[
             el("p",vec![el("a",vec![tx("Open")]),tx(" "),el("a",vec![tx("Evil")])])]}});
         let links = json!([{"text":"Open","url":"https://example.org/a?x=1&y=2"},{"text":"Evil","url":"javascript:alert(1)"}]);
-        let out = rich_text(&doc, &links);
+        let out = rich_text(&doc, &links, &|_| None);
         assert!(out.contains("<a href=\"https://example.org/a?x=1&amp;y=2\">Open</a>"), "{out}");
         assert!(!out.contains("javascript"), "{out}");
         assert!(out.contains("Evil"), "{out}");
     }
 
     #[test]
+    fn colors_and_alignment_are_validated() {
+        let mut p = el("p", vec![tx("hi")]);
+        p["attrs"] = json!([{"name":"style","value":"color:#ff0000; text-align:center; background-color:expression(alert(1))"}]);
+        let out = rich_text(&json!({"document": {"type":"root","children":[p]}}), &json!([]), &|_| None);
+        assert!(out.contains("color:#ff0000;") && out.contains("align=\"center\""), "{out}");
+        assert!(!out.contains("expression"), "{out}");
+    }
+
+    #[test]
+    fn pictures_come_from_the_store_and_are_scaled() {
+        let mut img = el("img", vec![]);
+        img["attrs"] = json!([{"name":"src","value":"data:image/png;base64,AAAA"},{"name":"width","value":"1200"}]);
+        let doc = json!({"document": {"type":"root","children":[el("p",vec![img])]}});
+        let out = rich_text(&doc, &json!([]), &|_| Some(("file:///c/a.png".into(), 1200, 600)));
+        assert!(out.contains("<img src=\"file:///c/a.png\" width=\"560\" height=\"280\">"), "{out}");
+        // Not a stored picture: nothing is drawn
+        assert_eq!(rich_text(&doc, &json!([]), &|_| None), "");
+    }
+
+    #[test]
     fn empty_document_gives_nothing() {
         let doc = json!({"document": {"type":"root","children":[el("div",vec![tx("  ")])]}});
-        assert_eq!(rich_text(&doc, &json!([])), "");
+        assert_eq!(rich_text(&doc, &json!([]), &|_| None), "");
     }
 }

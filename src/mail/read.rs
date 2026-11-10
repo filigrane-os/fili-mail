@@ -82,6 +82,26 @@ fn safe_body(value: &Value) -> Result<Value, &'static str> {
     Ok(json!({"text":text,"source":source,"bodyDirection":direction}))
 }
 
+/// The few presentation attributes the window draws: image source and size, colors, alignment, width.
+/// Values are only data for the rich-text writer, which validates each one again.
+fn shown_attrs(name: &str, attrs: Option<&Value>) -> Vec<Value> {
+    attrs
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|attr| {
+            let key = attr["name"].as_str()?;
+            let value = attr["value"].as_str()?;
+            let allowed = match key {
+                "src" => name == "img" && value.len() <= 12 * 1024 * 1024 && value.to_ascii_lowercase().starts_with("data:image/"),
+                "width" | "height" | "align" | "bgcolor" | "color" | "style" | "alt" => value.len() <= 2048,
+                _ => false,
+            };
+            (allowed && !value.chars().any(|c| c.is_control())).then(|| json!({"name":key,"value":value}))
+        })
+        .collect()
+}
+
 fn safe_render(value: &Value) -> Result<(Value, Vec<Value>), &'static str> {
     let render = value.as_object().ok_or("mail_read_invalid_reader")?;
     if render.contains_key("html")
@@ -146,14 +166,25 @@ fn safe_render(value: &Value) -> Result<(Value, Vec<Value>), &'static str> {
             "type":"element",
             "name":name,
             "selfClosing":node.get("selfClosing").and_then(Value::as_bool).unwrap_or(false),
-            "attrs":[],
+            "attrs":shown_attrs(name, node.get("attrs")),
             "children":children,
         }))
     }
     let mut nodes_left = MAX_NODES;
     let mut links = Vec::new();
     let document = document_node(document, 0, &mut nodes_left, &mut links)?;
-    Ok((json!({"document":document}), links))
+    let sources: Vec<&str> = render
+        .get("remoteImageSources")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .take(32)
+        .collect();
+    Ok((
+        json!({"document":document,"remoteImageSources":sources,"blockedImages":render.get("blockedImages").and_then(Value::as_u64).unwrap_or(0)}),
+        links,
+    ))
 }
 
 fn safe_message(request: &ReadRequest, value: Value) -> Result<(Value, Vec<String>), &'static str> {
@@ -268,7 +299,12 @@ pub(crate) async fn read_with(
                 "requestId":request_id(),
                 "cacheOnly":false,
                 "now":now(),
-                "options":{"allowRemoteImages":false,"withReader":true},
+                "options":{
+                    "allowRemoteImages":request.images["allowRemoteImages"] == true,
+                    "remoteImageData":request.images.get("remoteImageData").cloned().unwrap_or_else(|| json!({})),
+                    "withReader":true,
+                    "keepColors":true,
+                },
             }),
         )
         .await?;
