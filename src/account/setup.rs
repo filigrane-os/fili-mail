@@ -157,3 +157,49 @@ pub async fn google_poll(session: &Session, id: &str) -> Result<Option<Value>, &
         .await?;
     Ok(Some(json!({"added": email})))
 }
+
+/// Remove an account: its registry entry, then its secret in the keyring (a missing secret is not an error).
+pub async fn remove_account(session: &Session, id: &str) -> Result<Value, &'static str> {
+    let read = session.dispatch("accounts.read", &json!({})).await?;
+    let mut registry = read["registry"].clone();
+    let summary = session.dispatch("accounts.list", &json!({})).await?;
+    let provider = summary["accounts"]
+        .as_array()
+        .and_then(|list| list.iter().find(|a| a["id"] == id))
+        .and_then(|a| a["provider"].as_str())
+        .ok_or("mail_account_unknown")?
+        .to_owned();
+    let email = id
+        .strip_prefix(&format!("{provider}:"))
+        .unwrap_or(id)
+        .to_owned();
+    let accounts = registry["accounts"]
+        .as_array_mut()
+        .ok_or("accounts_invalid")?;
+    accounts.retain(|a| {
+        let same = a["provider"].as_str().unwrap_or("gmail") == provider
+            && a["email"].as_str().map(str::to_lowercase).as_deref() == Some(email.as_str());
+        !same
+    });
+    if registry["activeId"] == id {
+        registry["activeId"] = json!("");
+    }
+    session
+        .dispatch(
+            "accounts.save",
+            &json!({"registry":registry,"revision":read["revision"],"releasedIds":[id]}),
+        )
+        .await?;
+    let secret = match provider.as_str() {
+        "imap" => Some(json!({"kind":"imap-password","accountId":id})),
+        "gmail" => crate::providers::gmail_credentials::read_for_account(id)
+            .ok()
+            .map(|client| json!({"kind":"google-refresh-token","accountId":id,"clientId":client.client_id})),
+        _ => None,
+    };
+    if let Some(secret) = secret {
+        // The account is gone either way; a keyring that fails here only leaves an orphan secret.
+        let _ = session.dispatch("credentials.delete", &secret).await;
+    }
+    Ok(json!({"removed": id}))
+}

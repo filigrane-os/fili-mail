@@ -10,6 +10,7 @@ Rectangle {
     signal accountChosen(string id)
     signal mailboxChosen(string key)
     signal addAccount()
+    signal removeRequested(string id)
 
     color: FiliTheme.backgroundDeep
 
@@ -42,14 +43,20 @@ Rectangle {
                         color: head.containsMouse ? FiliTheme.surfaceHover : "transparent"
                         Text {
                             anchors { left: parent.left; right: parent.right; leftMargin: FiliTheme.margin / 2; rightMargin: FiliTheme.space2; verticalCenter: parent.verticalCenter }
-                            text: modelData.label !== "" ? modelData.label : modelData.email
+                            text: (modelData.label !== "" ? modelData.label : modelData.email) + (modelData.provider === "imap" ? "  ·  IMAP" : modelData.provider === "gmail" ? "  ·  Gmail" : "")
                             elide: Text.ElideRight
                             font.family: FiliTheme.font
                             font.pixelSize: FiliTheme.sizeSmall
                             font.weight: FiliTheme.weightAccent
                             color: current ? FiliTheme.text : FiliTheme.muted
                         }
-                        MouseArea { id: head; anchors.fill: parent; hoverEnabled: true; onClicked: side.accountChosen(modelData.id) }
+                        MouseArea {
+                            id: head
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            acceptedButtons: Qt.LeftButton | Qt.RightButton
+                            onClicked: mouse => mouse.button === Qt.RightButton ? side.removeRequested(modelData.id) : side.accountChosen(modelData.id)
+                        }
                     }
                     Repeater {
                         model: current ? side.boxes : []

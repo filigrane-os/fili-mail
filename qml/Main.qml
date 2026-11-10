@@ -26,6 +26,10 @@ ApplicationWindow {
     property string selectedId: ""
     property string listError: ""
     property bool loading: false
+    // Account the user is asked to confirm the removal of
+    property string removing: ""
+    // A short word under the list when an action failed
+    property string notice: ""
 
     ListModel { id: messages }
 
@@ -67,8 +71,44 @@ ApplicationWindow {
         Facteur.list(account, mailbox);
     }
 
-    function choose(id) {
+    function rowOf(id) {
+        for (let i = 0; i < messages.count; i++)
+            if (messages.get(i).id === id)
+                return i;
+        return -1;
+    }
+
+    // Change a message: the list answers at once, the server follows; a refusal reloads the list
+    function doAct(operation, id) {
+        const i = rowOf(id);
+        if (i < 0 || account === "")
+            return;
+        if (operation === "archive" || operation === "trash" || operation === "spam") {
+            // The next message takes the place of the one that leaves
+            const next = i + 1 < messages.count ? messages.get(i + 1).id : i > 0 ? messages.get(i - 1).id : "";
+            messages.remove(i);
+            if (id === selectedId) {
+                if (next !== "") choose(next, true); else { selectedId = ""; reader.summary = null; }
+            }
+        } else if (operation === "read" || operation === "unread") {
+            messages.setProperty(i, "unread", operation === "unread");
+            if (id === selectedId) reader.unread = operation === "unread";
+        } else if (operation === "star" || operation === "unstar") {
+            messages.setProperty(i, "starred", operation === "star");
+            if (id === selectedId) reader.starred = operation === "star";
+        }
+        notice = "";
+        Facteur.act(account, operation, JSON.stringify([id]));
+    }
+
+    function choose(id, quiet) {
         selectedId = id;
+        const row = rowOf(id);
+        reader.unread = row >= 0 ? messages.get(row).unread : false;
+        reader.starred = row >= 0 ? messages.get(row).starred : false;
+        // Opening a message reads it
+        if (row >= 0 && messages.get(row).unread)
+            doAct("read", id);
         reader.summary = null;
         reader.body = "";
         reader.error = "";
@@ -88,7 +128,7 @@ ApplicationWindow {
                 return;
             }
             for (const m of r.messages)
-                messages.append({ id: m.id, from: m.from.display || m.from.email || "", subject: m.subject, time: m.time, unread: m.unread });
+                messages.append({ id: m.id, from: m.from.display || m.from.email || "", subject: m.subject, time: m.time, unread: m.unread, starred: m.starred });
         }
         function onOpened(id, json) {
             if (id !== win.selectedId)
@@ -100,6 +140,28 @@ ApplicationWindow {
             }
             reader.summary = r.message.summary;
             reader.body = r.message.nativeContent.body.text;
+        }
+        function onActed(acc, operation, ids, json) {
+            if (acc !== win.account)
+                return;
+            const r = JSON.parse(json);
+            if (r.error) {
+                win.notice = win.errorText(r.error);
+                win.refresh();
+            }
+        }
+        function onAccountRemoved(json) {
+            const r = JSON.parse(json);
+            win.removing = "";
+            if (r.error) {
+                win.notice = win.errorText(r.error);
+                return;
+            }
+            win.loadAccounts();
+            messages.clear();
+            win.selectedId = "";
+            reader.summary = null;
+            win.refresh();
         }
         function onGoogleStarted(url) {
             setupPage.googleUrl = url;
@@ -159,6 +221,7 @@ ApplicationWindow {
             onAccountChosen: id => win.account = id
             onMailboxChosen: key => win.mailbox = key
             onAddAccount: { win.addError = ""; win.adding = true }
+            onRemoveRequested: id => win.removing = id
         }
         Rectangle { width: FiliTheme.borderWidth; height: parent.height; color: FiliTheme.border }
         MessageList {
@@ -166,14 +229,47 @@ ApplicationWindow {
             height: parent.height
             model: messages
             selectedId: win.selectedId
+            onAct: operation => { if (win.selectedId !== "") win.doAct(operation, win.selectedId) }
             emptyText: win.listError !== "" ? win.listError : win.loading ? "…" : Facteur.tr("No message")
             onChosen: id => win.choose(id)
         }
         Rectangle { width: FiliTheme.borderWidth; height: parent.height; color: FiliTheme.border }
         Reader {
             id: reader
+            onAct: operation => win.doAct(operation, win.selectedId)
             width: parent.width - FiliTheme.sidebarWidth - 340 - 2 * FiliTheme.borderWidth
             height: parent.height
         }
+    }
+
+    // Removal asks first: the account and its password leave this computer, the mailbox itself is untouched
+    Rectangle {
+        visible: win.removing !== ""
+        anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+        height: FiliTheme.statusHeight + FiliTheme.space2
+        color: FiliTheme.surface
+        border.width: FiliTheme.borderWidth
+        border.color: FiliTheme.border
+        Text {
+            anchors { left: parent.left; leftMargin: FiliTheme.margin; verticalCenter: parent.verticalCenter }
+            text: Facteur.tr("Remove %1? Its password is forgotten; the mailbox itself is not touched.").replace("%1", win.removing.replace(/^[a-z]+:/, ""))
+            font.family: FiliTheme.font
+            font.pixelSize: FiliTheme.size
+            color: FiliTheme.text
+        }
+        Row {
+            anchors { right: parent.right; rightMargin: FiliTheme.margin; verticalCenter: parent.verticalCenter }
+            spacing: FiliTheme.space2
+            TextButton { label: Facteur.tr("Remove"); primary: true; onClicked: Facteur.removeAccount(win.removing) }
+            TextButton { label: Facteur.tr("Cancel"); onClicked: win.removing = "" }
+        }
+    }
+    Text {
+        visible: win.notice !== "" && win.removing === ""
+        anchors { right: parent.right; bottom: parent.bottom; margins: FiliTheme.space3 }
+        text: win.notice
+        font.family: FiliTheme.font
+        font.pixelSize: FiliTheme.sizeList
+        color: FiliTheme.danger
     }
 }

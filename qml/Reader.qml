@@ -9,6 +9,9 @@ Rectangle {
     property var summary: null
     property string body: ""
     property string error: ""
+    property bool starred: false
+    property bool unread: false
+    signal act(string operation)
     color: FiliTheme.backgroundDeep
 
     Text {
@@ -30,8 +33,20 @@ Rectangle {
         font.pixelSize: FiliTheme.size
         color: FiliTheme.danger
     }
+    Row {
+        id: tools
+        visible: reader.summary !== null
+        x: FiliTheme.space2
+        y: FiliTheme.space2
+        spacing: FiliTheme.space1
+        TextButton { label: Facteur.tr("Archive"); onClicked: reader.act("archive") }
+        TextButton { label: Facteur.tr("Trash"); onClicked: reader.act("trash") }
+        TextButton { label: Facteur.tr("Spam"); onClicked: reader.act("spam") }
+        TextButton { label: reader.starred ? Facteur.tr("Unstar") : Facteur.tr("Star"); onClicked: reader.act(reader.starred ? "unstar" : "star") }
+        TextButton { label: reader.unread ? Facteur.tr("Mark as read") : Facteur.tr("Mark as unread"); onClicked: reader.act(reader.unread ? "read" : "unread") }
+    }
     ScrollView {
-        anchors.fill: parent
+        anchors { fill: parent; topMargin: tools.visible ? tools.height + 2 * FiliTheme.space2 : 0 }
         visible: reader.summary !== null
         contentWidth: availableWidth
         clip: true

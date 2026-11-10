@@ -52,6 +52,25 @@ pub mod qobject {
         #[qsignal]
         #[cxx_name = "googleStarted"]
         fn google_started(self: Pin<&mut Facteur>, url: &QString);
+        // Remove an account (registry entry and keyring secret); answered by `accountRemoved` ({"removed"} or {"error"})
+        #[qinvokable]
+        #[cxx_name = "removeAccount"]
+        fn remove_account(self: Pin<&mut Facteur>, id: &QString);
+        #[qsignal]
+        #[cxx_name = "accountRemoved"]
+        fn account_removed(self: Pin<&mut Facteur>, result: &QString);
+        // Change messages: operation read, unread, star, unstar, archive, trash or spam; ids = JSON array.
+        // Answered by `acted` (account, operation, ids, JSON result)
+        #[qinvokable]
+        fn act(self: Pin<&mut Facteur>, account: &QString, operation: &QString, ids: &QString);
+        #[qsignal]
+        fn acted(
+            self: Pin<&mut Facteur>,
+            account: &QString,
+            operation: &QString,
+            ids: &QString,
+            result: &QString,
+        );
         // Messages of a mailbox of an account; answered by `listed` (JSON: {messages, estimate} or {error})
         #[qinvokable]
         fn list(self: Pin<&mut Facteur>, account: &QString, mailbox: &QString);
@@ -74,7 +93,8 @@ use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::QString;
 use fili_mail::{
     account::setup::{
-        ImapSpec, add_imap, google_begin, google_client_configured, google_poll, save_google_client,
+        ImapSpec, add_imap, google_begin, google_client_configured, google_poll, remove_account,
+        save_google_client,
     },
     backend::{Session, runtime},
 };
@@ -283,6 +303,43 @@ impl qobject::Facteur {
                 Err(e) => error_json(e),
             };
             let _ = qt.queue(move |f| f.account_added(&QString::from(&out)));
+        });
+    }
+
+    pub fn remove_account(self: Pin<&mut Self>, id: &QString) {
+        let id = id.to_string();
+        let qt = self.qt_thread();
+        let (runtime, session) = engine();
+        runtime.spawn(async move {
+            let out = match remove_account(session, &id).await {
+                Ok(v) => v.to_string(),
+                Err(e) => error_json(e),
+            };
+            let _ = qt.queue(move |f| f.account_removed(&QString::from(&out)));
+        });
+    }
+
+    pub fn act(self: Pin<&mut Self>, account: &QString, operation: &QString, ids: &QString) {
+        let (account, operation, ids) =
+            (account.to_string(), operation.to_string(), ids.to_string());
+        let qt = self.qt_thread();
+        let (runtime, session) = engine();
+        runtime.spawn(async move {
+            let list: Value = serde_json::from_str(&ids).unwrap_or_default();
+            let params =
+                json!({"account": account, "operation": operation, "ids": list, "execute": true});
+            let out = match session.dispatch("mail.act", &params).await {
+                Ok(v) => v.to_string(),
+                Err(e) => error_json(e),
+            };
+            let _ = qt.queue(move |f| {
+                f.acted(
+                    &QString::from(&account),
+                    &QString::from(&operation),
+                    &QString::from(&ids),
+                    &QString::from(&out),
+                )
+            });
         });
     }
 

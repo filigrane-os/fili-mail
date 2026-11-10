@@ -8,6 +8,8 @@ Rectangle {
     property string selectedId: ""
     property string emptyText: ""
     signal chosen(string id)
+    // Keyboard action on the current message: archive, trash, star, unread
+    signal act(string operation)
 
     color: FiliTheme.background
 
@@ -43,6 +45,14 @@ Rectangle {
                 color: FiliTheme.text
             }
             Text {
+                visible: model.starred
+                anchors { right: when.left; rightMargin: FiliTheme.space1 }
+                y: 8
+                text: "★"
+                font.pixelSize: FiliTheme.sizeList
+                color: FiliTheme.warning
+            }
+            Text {
                 id: when
                 anchors { right: parent.right; rightMargin: FiliTheme.space3 }
                 y: 9
@@ -71,6 +81,22 @@ Rectangle {
                 view.currentIndex = Math.max(0, view.currentIndex - 1);
             } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
                 if (view.currentItem) list.chosen(view.model.get(view.currentIndex).id);
+                return;
+            } else if (event.key === Qt.Key_E) {
+                list.act("archive");
+                event.accepted = true;
+                return;
+            } else if (event.key === Qt.Key_NumberSign || event.key === Qt.Key_Delete) {
+                list.act("trash");
+                event.accepted = true;
+                return;
+            } else if (event.key === Qt.Key_S) {
+                list.act("star");
+                event.accepted = true;
+                return;
+            } else if (event.key === Qt.Key_U) {
+                list.act("unread");
+                event.accepted = true;
                 return;
             } else {
                 return;
