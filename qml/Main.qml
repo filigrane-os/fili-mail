@@ -146,6 +146,7 @@ ApplicationWindow {
             doAct("read", id);
         reader.summary = null;
         reader.body = "";
+        reader.rich = "";
         reader.error = "";
         Facteur.openMessage(account, id);
     }
@@ -198,6 +199,7 @@ ApplicationWindow {
             }
             reader.summary = r.message.summary;
             reader.body = r.message.nativeContent.body.text;
+            reader.rich = r.message.rich || "";
         }
         function onActed(acc, operation, ids, json) {
             if (acc !== win.account)

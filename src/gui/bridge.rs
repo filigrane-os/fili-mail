@@ -392,7 +392,15 @@ impl qobject::Facteur {
         runtime.spawn(async move {
             let params = json!({"account": account, "id": id});
             let out = match session.dispatch("mail.read", &params).await {
-                Ok(v) => v.to_string(),
+                Ok(mut v) => {
+                    // HTML mail: the sanitized tree becomes rich text (see message::rich)
+                    let message = &mut v["message"];
+                    if message["nativeContent"]["body"]["source"] == "html" {
+                        let rich = fili_mail::message::rich::rich_text(&message["nativeRender"], &message["links"]);
+                        message["rich"] = json!(rich);
+                    }
+                    v.to_string()
+                }
                 Err(e) => error_json(e),
             };
             let _ = qt.queue(move |f| f.opened(&QString::from(&id), &QString::from(&out)));

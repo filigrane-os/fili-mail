@@ -8,9 +8,13 @@ Rectangle {
     // summary and body of the open message (empty: nothing selected)
     property var summary: null
     property string body: ""
+    // Sanitized rich text of an HTML message (empty: show body as plain text)
+    property string rich: ""
     property string error: ""
     property bool starred: false
     property bool unread: false
+    // Link under the pointer, shown at the bottom
+    property string hovered: ""
     signal act(string operation)
     signal reply()
     signal forward()
@@ -80,14 +84,37 @@ Rectangle {
             Rectangle { width: parent.width; height: FiliTheme.borderWidth; color: FiliTheme.border }
             Text {
                 width: parent.width
-                text: reader.body
+                text: reader.rich !== "" ? reader.rich : reader.body
                 wrapMode: Text.Wrap
-                textFormat: Text.PlainText
+                textFormat: reader.rich !== "" ? Text.RichText : Text.PlainText
+                linkColor: FiliTheme.accentColor
+                onLinkActivated: link => Qt.openUrlExternally(link)
+                HoverHandler { cursorShape: parent.hoveredLink !== "" ? Qt.PointingHandCursor : Qt.ArrowCursor }
+                onHoveredLinkChanged: reader.hovered = hoveredLink
                 font.family: FiliTheme.font
                 font.pixelSize: FiliTheme.size
                 lineHeight: 1.25
                 color: FiliTheme.text
             }
+        }
+    }
+    Rectangle {
+        visible: reader.hovered !== ""
+        anchors { left: parent.left; bottom: parent.bottom }
+        width: Math.min(parent.width, hoverText.implicitWidth + 2 * FiliTheme.space2)
+        height: hoverText.implicitHeight + FiliTheme.space2
+        color: FiliTheme.surface
+        border.width: FiliTheme.borderWidth
+        border.color: FiliTheme.border
+        Text {
+            id: hoverText
+            anchors { fill: parent; leftMargin: FiliTheme.space2; rightMargin: FiliTheme.space2 }
+            verticalAlignment: Text.AlignVCenter
+            text: reader.hovered
+            elide: Text.ElideMiddle
+            font.family: FiliTheme.font
+            font.pixelSize: FiliTheme.sizeList
+            color: FiliTheme.textSecondary
         }
     }
 }
