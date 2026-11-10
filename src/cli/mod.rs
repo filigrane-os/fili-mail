@@ -46,6 +46,8 @@ enum Command {
     #[cfg(all(feature = "agent", unix))]
     #[command(hide = true)]
     AgentOpencodeServer,
+    /// Watch every account and notify of new mail (long-running)
+    Daemon,
     /// Report backend version and implemented methods
     Info,
     /// Print the executable version
@@ -114,6 +116,9 @@ pub fn run() {
             std::process::exit(1);
         }
         return;
+    }
+    if matches!(command, Command::Daemon) {
+        std::process::exit(crate::daemon::run());
     }
     #[cfg(all(feature = "agent", unix))]
     if let Command::AgentWorker { ref id } = command {
@@ -187,7 +192,7 @@ pub fn run() {
         }
         Command::Call { method } => call::read_params(io::stdin())
             .and_then(|params| runtime.block_on(call::dispatch(&session, &method, &params))),
-        Command::Serve => unreachable!(),
+        Command::Serve | Command::Daemon => unreachable!(),
         #[cfg(all(feature = "agent", unix))]
         Command::AgentWorker { .. } => unreachable!(),
         #[cfg(all(feature = "agent", unix))]

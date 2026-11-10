@@ -55,6 +55,20 @@ impl Default for Session {
 }
 
 impl Session {
+    /// New-mail check results, for in-process consumers such as the daemon.
+    pub(crate) fn mail_events(&self) -> tokio::sync::broadcast::Receiver<crate::sync::Event> {
+        self.mail.subscribe()
+    }
+
+    pub(crate) fn mail_is_current(&self, event: &crate::sync::Event) -> bool {
+        self.mail.is_current(event)
+    }
+
+    pub(crate) async fn shutdown_mail(&self) {
+        self.mail.shutdown().await;
+        self.gmail.shutdown();
+    }
+
     // Keep provider state machines behind heap indirection. Uploaded requests
     // re-enter this dispatcher; embedding every provider future here overflowed
     // the worker stack in the real Quickshell large-request integration test.
