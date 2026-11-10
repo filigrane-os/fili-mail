@@ -22,6 +22,8 @@ fn main() {
                 "qml/Sidebar.qml",
                 "qml/MessageList.qml",
                 "qml/Reader.qml",
+                "qml/FiliScrollBar.qml",
+                "qml/KineticScroll.qml",
                 "qml/Compose.qml",
                 "qml/AboutCard.qml",
                 "qml/Icon.qml",

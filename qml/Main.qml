@@ -224,7 +224,8 @@ ApplicationWindow {
                 return;
             }
             for (const m of r.messages)
-                messages.append({ id: m.id, from: m.from.display || m.from.email || "", subject: m.subject, time: m.time, unread: m.unread, starred: m.starred });
+                if (!messageList.unreadOnly || m.unread)
+                    messages.append({ id: m.id, from: m.from.display || m.from.email || "", subject: m.subject, time: m.time, unread: m.unread, starred: m.starred });
         }
         // Menu of the fili-bar (fili-mail ctl action NAME)
         function onCommand(name) {
@@ -464,6 +465,7 @@ ApplicationWindow {
         Rectangle { width: FiliTheme.borderWidth; height: parent.height; color: FiliTheme.border }
         MessageList {
             id: messageList
+            onUnreadOnlyChanged: { messages.clear(); win.selectedId = ""; win.refresh() }
             width: Math.max(250, Math.min(340, win.width * 0.34))
             height: parent.height
             model: messages

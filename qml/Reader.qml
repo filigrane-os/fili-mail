@@ -51,12 +51,17 @@ Rectangle {
         font.pixelSize: FiliTheme.size
         color: FiliTheme.danger
     }
-    ScrollView {
+    Flickable {
+        id: scroller
         anchors.fill: parent
         visible: reader.summary !== null
-        contentWidth: availableWidth
+        contentWidth: width
+        contentHeight: content.height
+        boundsBehavior: Flickable.StopAtBounds
         clip: true
+        KineticScroll {}
         Column {
+            id: content
             x: FiliTheme.margin
             width: parent.width - 2 * FiliTheme.margin
             topPadding: FiliTheme.margin
@@ -259,6 +264,11 @@ Rectangle {
                 color: FiliTheme.text
             }
         }
+    }
+    FiliScrollBar {
+        flick: scroller
+        visible: needed && reader.summary !== null
+        anchors { top: scroller.top; bottom: scroller.bottom; right: scroller.right }
     }
     Rectangle {
         visible: reader.hovered !== ""

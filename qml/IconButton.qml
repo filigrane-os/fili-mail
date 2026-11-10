@@ -11,12 +11,14 @@ Rectangle {
     property bool filled: false
     property string tip
     property bool enabledState: true
+    // Toggle state (filter on): drawn with the active surface
+    property bool toggled: false
     signal clicked()
 
     width: 28
     height: 24
     radius: FiliTheme.radiusControl
-    color: !enabledState ? "transparent" : area.pressed ? FiliTheme.surfaceActive : area.containsMouse ? FiliTheme.surfaceHover : "transparent"
+    color: !enabledState ? "transparent" : area.pressed || toggled ? FiliTheme.surfaceActive : area.containsMouse ? FiliTheme.surfaceHover : "transparent"
     activeFocusOnTab: false
 
     Icon {

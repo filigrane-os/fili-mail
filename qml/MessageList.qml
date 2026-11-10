@@ -18,6 +18,8 @@ Rectangle {
     property string position: ""
     property bool canPrev: false
     property bool canNext: false
+    // Only unread messages (the list is filtered when loaded)
+    property bool unreadOnly: false
 
     color: FiliTheme.background
 
@@ -51,6 +53,7 @@ Rectangle {
                 font.pixelSize: FiliTheme.sizeList
                 color: FiliTheme.textSecondary
             }
+            IconButton { name: "mail"; toggled: list.unreadOnly; tip: Facteur.tr("Unread only"); onClicked: list.unreadOnly = !list.unreadOnly }
             IconButton { name: "chevron-left"; tip: Facteur.tr("Previous message"); enabledState: list.canPrev; onClicked: list.step(-1) }
             IconButton { name: "chevron-right"; tip: Facteur.tr("Next message"); enabledState: list.canNext; onClicked: list.step(1) }
         }
@@ -65,6 +68,7 @@ Rectangle {
         activeFocusOnTab: true
         currentIndex: -1
         boundsBehavior: Flickable.StopAtBounds
+        KineticScroll {}
         delegate: Rectangle {
             id: row
             width: view.width
@@ -149,6 +153,10 @@ Rectangle {
             event.accepted = true;
         }
         FocusRing { target: view; gap: -2; shown: view.activeFocus }
+    }
+    FiliScrollBar {
+        flick: view
+        anchors { top: view.top; bottom: view.bottom; right: view.right }
     }
     Text {
         anchors.centerIn: parent
