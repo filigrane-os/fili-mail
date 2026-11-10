@@ -796,7 +796,7 @@ dependencies = [
 
 [[package]]
 name = "fili-mail"
-version = "0.11.3"
+version = "0.1.0"
 dependencies = [
  "base64",
  "chrono",

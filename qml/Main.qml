@@ -165,6 +165,19 @@ ApplicationWindow {
             for (const m of r.messages)
                 messages.append({ id: m.id, from: m.from.display || m.from.email || "", subject: m.subject, time: m.time, unread: m.unread, starred: m.starred });
         }
+        // Menu of the fili-bar (fili-mail ctl action NAME)
+        function onCommand(name) {
+            const boxes = { "inbox": "inbox", "unread-box": "unread", "starred": "starred", "sent": "sent", "drafts": "drafts", "archive-box": "archive", "spam-box": "spam", "trash-box": "trash" };
+            const onMessage = !win.adding && !win.composing && win.selectedId !== "";
+            if (name === "about") aboutCard.show();
+            else if (name === "close") Qt.quit();
+            else if (name === "add-account") { win.addError = ""; win.adding = true }
+            else if (name === "new-message") win.startCompose("new");
+            else if (name === "reply" || name === "forward") win.startCompose(name);
+            else if (name === "refresh") win.refresh();
+            else if (boxes[name]) { win.adding = false; win.mailbox = boxes[name] }
+            else if (onMessage) win.doAct(name, win.selectedId);
+        }
         function onSent(json) {
             win.sending = false;
             const r = JSON.parse(json);
@@ -332,4 +345,5 @@ ApplicationWindow {
         font.pixelSize: FiliTheme.sizeList
         color: FiliTheme.danger
     }
+    AboutCard { id: aboutCard; anchors.fill: parent }
 }

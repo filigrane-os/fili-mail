@@ -88,6 +88,17 @@ pub mod qobject {
         fn send(self: Pin<&mut Facteur>, account: &QString, fields: &QString);
         #[qsignal]
         fn sent(self: Pin<&mut Facteur>, result: &QString);
+        // A menu command from `fili-mail ctl action NAME` (the fili-bar menu)
+        #[qsignal]
+        fn command(self: Pin<&mut Facteur>, name: &QString);
+        // Rows of the About card: JSON [[label, value], ...]
+        #[qinvokable]
+        #[cxx_name = "aboutRows"]
+        fn about_rows(self: &Facteur) -> QString;
+        // file:// url of the Filigrane logo for the current theme
+        #[qinvokable]
+        #[cxx_name = "aboutLogo"]
+        fn about_logo(self: &Facteur) -> QString;
     }
 
     impl cxx_qt::Initialize for Facteur {}
@@ -154,6 +165,11 @@ impl cxx_qt::Initialize for Facteur {
     fn initialize(mut self: Pin<&mut Self>) {
         self.as_mut().rust_mut().light = read_light();
         self.as_mut().rust_mut().accent = QString::from(&read_accent());
+        // Commands of the fili-bar menu
+        let qt = self.qt_thread();
+        crate::ctl::serve(move |name| {
+            let _ = qt.queue(move |f| f.command(&QString::from(&name)));
+        });
         // Without Filigrane's state file, follow the desktop's color scheme (settings portal signal, blocking thread)
         if !theme_file().exists() {
             let qt = self.qt_thread();
@@ -381,6 +397,26 @@ impl qobject::Facteur {
             };
             let _ = qt.queue(move |f| f.opened(&QString::from(&id), &QString::from(&out)));
         });
+    }
+
+    pub fn about_rows(&self) -> QString {
+        let t = |s: &str| super::i18n::tr(s);
+        let home = env::var("HOME").unwrap_or_default();
+        let settings = format!("{home}/.config/filigrane/fili-mail.toml").replace(&home, "~");
+        let rows = json!([
+            [t("Version"), env!("CARGO_PKG_VERSION")],
+            [t("Also known as"), "fili-mail"],
+            [t("Part of"), "Filigrane"],
+            [t("Built with"), "Rust, Qt Quick"],
+            [t("Settings"), settings],
+        ]);
+        QString::from(&rows.to_string())
+    }
+
+    pub fn about_logo(&self) -> QString {
+        let home = env::var("HOME").unwrap_or_default();
+        let shade = if self.light { "blanc" } else { "ardoise" };
+        QString::from(&format!("file://{home}/.local/share/filigrane/filigrane-mono-{shade}.svg"))
     }
 
     pub fn send(self: Pin<&mut Self>, account: &QString, fields: &QString) {

@@ -68,5 +68,11 @@
  "---------- Forwarded message ----------": "---------- Message transféré ----------",
  "From: %1": "De : %1",
  "Date: %1": "Date : %1",
- "Subject: %1": "Objet : %1"
+ "Subject: %1": "Objet : %1",
+ "The mail client of Filigrane": "Le client mail de Filigrane",
+ "Also known as": "Aussi connu sous le nom de",
+ "Built with": "Construit avec",
+ "Part of": "Fait partie de",
+ "Settings": "Réglages",
+ "Version": "Version"
 }

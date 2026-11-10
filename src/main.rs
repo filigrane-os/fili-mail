@@ -1,3 +1,4 @@
+mod ctl;
 #[cfg(feature = "gui")]
 mod gui;
 
@@ -6,6 +7,18 @@ fn main() {
     #[cfg(feature = "gui")]
     if std::env::args().len() == 1 {
         std::process::exit(gui::run());
+    }
+    // fili-mail ctl ...: command an open window (menu of the fili-bar); never starts Qt
+    let args: Vec<String> = std::env::args().collect();
+    if args.get(1).is_some_and(|a| a == "ctl") {
+        match ctl::run(&args[2..]) {
+            Ok(answer) => println!("{answer}"),
+            Err(e) => {
+                eprintln!("fili-mail ctl: {e}");
+                std::process::exit(1);
+            }
+        }
+        return;
     }
     #[cfg(windows)]
     {
