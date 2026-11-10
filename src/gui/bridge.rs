@@ -82,6 +82,12 @@ pub mod qobject {
         fn open_message(self: Pin<&mut Facteur>, account: &QString, id: &QString);
         #[qsignal]
         fn opened(self: Pin<&mut Facteur>, id: &QString, result: &QString);
+        // Send a message: fields = JSON {to, cc, bcc, subject, body} (address lists as strings);
+        // answered by `sent` (JSON result or {error})
+        #[qinvokable]
+        fn send(self: Pin<&mut Facteur>, account: &QString, fields: &QString);
+        #[qsignal]
+        fn sent(self: Pin<&mut Facteur>, result: &QString);
     }
 
     impl cxx_qt::Initialize for Facteur {}
@@ -376,4 +382,43 @@ impl qobject::Facteur {
             let _ = qt.queue(move |f| f.opened(&QString::from(&id), &QString::from(&out)));
         });
     }
+
+    pub fn send(self: Pin<&mut Self>, account: &QString, fields: &QString) {
+        let (account, fields) = (account.to_string(), fields.to_string());
+        let qt = self.qt_thread();
+        let (runtime, session) = engine();
+        runtime.spawn(async move {
+            let out = match send_message(session, &account, &fields).await {
+                Ok(v) => v.to_string(),
+                Err(e) => error_json(e),
+            };
+            let _ = qt.queue(move |f| f.sent(&QString::from(&out)));
+        });
+    }
+}
+
+/// Split an address field ("a@x.org, b@y.org") into the list the engine wants.
+fn address_list(text: &str) -> Vec<String> {
+    text.split([',', ';'])
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .map(str::to_owned)
+        .collect()
+}
+
+async fn send_message(session: &Session, account: &str, fields: &str) -> Result<Value, &'static str> {
+    let fields: Value = serde_json::from_str(fields).map_err(|_| "invalid_params")?;
+    let text = |name: &str| fields[name].as_str().unwrap_or("").to_owned();
+    let params = json!({
+        "account": account,
+        "to": address_list(&text("to")),
+        "cc": address_list(&text("cc")),
+        "bcc": address_list(&text("bcc")),
+        "subject": text("subject"),
+        "body": text("body"),
+        "execute": true,
+    });
+    let mut result = session.dispatch("mail.send", &params).await?;
+    session.finish_cli_send(&mut result).await?;
+    Ok(result)
 }

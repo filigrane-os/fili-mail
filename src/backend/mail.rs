@@ -368,7 +368,7 @@ async fn m365_call(method: &str, params: &Value) -> Result<Value, &'static str> 
 }
 
 impl Session {
-    pub(crate) async fn finish_cli_send(&self, result: &mut Value) -> Result<(), &'static str> {
+    pub async fn finish_cli_send(&self, result: &mut Value) -> Result<(), &'static str> {
         result["outbox"] = self
             .outbox
             .wait_for_send(

@@ -12,6 +12,8 @@ Rectangle {
     property bool starred: false
     property bool unread: false
     signal act(string operation)
+    signal reply()
+    signal forward()
     color: FiliTheme.backgroundDeep
 
     Text {
@@ -39,6 +41,8 @@ Rectangle {
         x: FiliTheme.space2
         y: FiliTheme.space2
         spacing: FiliTheme.space1
+        TextButton { label: Facteur.tr("Reply"); onClicked: reader.reply() }
+        TextButton { label: Facteur.tr("Forward"); onClicked: reader.forward() }
         TextButton { label: Facteur.tr("Archive"); onClicked: reader.act("archive") }
         TextButton { label: Facteur.tr("Trash"); onClicked: reader.act("trash") }
         TextButton { label: Facteur.tr("Spam"); onClicked: reader.act("spam") }

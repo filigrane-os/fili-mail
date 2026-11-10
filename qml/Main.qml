@@ -31,7 +31,42 @@ ApplicationWindow {
     // A short word under the list when an action failed
     property string notice: ""
 
+    // Message being written (the pane next to the list shows the form instead of the reader)
+    property bool composing: false
+    property bool sending: false
+
     ListModel { id: messages }
+
+    function quoted(text) {
+        return text.split("\n").map(l => l === "" ? ">" : "> " + l).join("\n");
+    }
+    function sender() {
+        const f = reader.summary.from;
+        return f.display ? f.display + " <" + f.email + ">" : f.email;
+    }
+    // kind: "new", "reply" or "forward"
+    function startCompose(kind) {
+        if (account === "" || (kind !== "new" && reader.summary === null))
+            return;
+        let draft = {};
+        if (kind === "reply") {
+            const s = reader.summary;
+            draft = {
+                to: s.from.email,
+                subject: /^re:/i.test(s.subject) ? s.subject : "Re: " + s.subject,
+                body: "\n\n" + Facteur.tr("%1 wrote:").replace("%1", sender()) + "\n" + quoted(reader.body)
+            };
+        } else if (kind === "forward") {
+            const s = reader.summary;
+            draft = {
+                subject: /^fwd?:/i.test(s.subject) ? s.subject : "Fwd: " + s.subject,
+                body: "\n\n" + Facteur.tr("---------- Forwarded message ----------") + "\n" + Facteur.tr("From: %1").replace("%1", sender())
+                    + "\n" + Facteur.tr("Date: %1").replace("%1", s.fullTime) + "\n" + Facteur.tr("Subject: %1").replace("%1", s.subject) + "\n\n" + reader.body
+            };
+        }
+        composing = true;
+        composer.open(draft);
+    }
 
     function errorText(code) {
         const known = {
@@ -130,6 +165,16 @@ ApplicationWindow {
             for (const m of r.messages)
                 messages.append({ id: m.id, from: m.from.display || m.from.email || "", subject: m.subject, time: m.time, unread: m.unread, starred: m.starred });
         }
+        function onSent(json) {
+            win.sending = false;
+            const r = JSON.parse(json);
+            if (r.error) {
+                composer.error = win.errorText(r.error);
+                return;
+            }
+            win.composing = false;
+            win.notice = "";
+        }
         function onOpened(id, json) {
             if (id !== win.selectedId)
                 return;
@@ -189,6 +234,9 @@ ApplicationWindow {
 
     Shortcut { sequences: ["Ctrl+Q", "Ctrl+W"]; onActivated: Qt.quit() }
     Shortcut { sequences: ["F5", "Ctrl+R"]; enabled: !win.adding && win.account !== ""; onActivated: win.refresh() }
+    Shortcut { sequences: ["Ctrl+N"]; enabled: !win.adding && win.account !== ""; onActivated: win.startCompose("new") }
+    Shortcut { sequences: ["Ctrl+Shift+R"]; enabled: !win.adding && !win.composing; onActivated: win.startCompose("reply") }
+    Shortcut { sequences: ["Ctrl+Shift+F"]; enabled: !win.adding && !win.composing; onActivated: win.startCompose("forward") }
     Shortcut { sequences: ["Ctrl+Shift+A"]; onActivated: { win.addError = ""; win.adding = true } }
 
     AccountSetup {
@@ -220,6 +268,7 @@ ApplicationWindow {
             mailbox: win.mailbox
             onAccountChosen: id => win.account = id
             onMailboxChosen: key => win.mailbox = key
+            onCompose: win.startCompose("new")
             onAddAccount: { win.addError = ""; win.adding = true }
             onRemoveRequested: id => win.removing = id
         }
@@ -237,8 +286,19 @@ ApplicationWindow {
         Reader {
             id: reader
             onAct: operation => win.doAct(operation, win.selectedId)
+            onReply: win.startCompose("reply")
+            onForward: win.startCompose("forward")
             width: parent.width - FiliTheme.sidebarWidth - 340 - 2 * FiliTheme.borderWidth
             height: parent.height
+            Compose {
+                id: composer
+                anchors.fill: parent
+                visible: win.composing
+                busy: win.sending
+                from: win.account.replace(/^[a-z]+:/, "")
+                onCancelled: win.composing = false
+                onSubmitted: fields => { win.sending = true; error = ""; Facteur.send(win.account, JSON.stringify(fields)) }
+            }
         }
     }
 

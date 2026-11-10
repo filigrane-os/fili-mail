@@ -22,6 +22,7 @@ fn main() {
                 "qml/Sidebar.qml",
                 "qml/MessageList.qml",
                 "qml/Reader.qml",
+                "qml/Compose.qml",
                 "qml/Field.qml",
                 "qml/IconButton.qml",
                 "qml/TextButton.qml",

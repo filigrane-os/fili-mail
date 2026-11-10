@@ -51,5 +51,22 @@
  "Unstar": "Ne plus suivre",
  "User name (if not the address)": "Identifiant (si différent de l'adresse)",
  "Waiting for the browser…": "En attente du navigateur…",
- "Your browser opens Google's own sign-in page: Facteur never sees your Google password.": "Votre navigateur ouvre la page de connexion de Google: Facteur ne voit jamais votre mot de passe Google."
+ "Your browser opens Google's own sign-in page: Facteur never sees your Google password.": "Votre navigateur ouvre la page de connexion de Google: Facteur ne voit jamais votre mot de passe Google.",
+ "Reply": "Répondre",
+ "Forward": "Transférer",
+ "New message": "Nouveau message",
+ "Send": "Envoyer",
+ "Sending…": "Envoi…",
+ "Discard": "Abandonner",
+ "To": "À",
+ "Cc": "Cc",
+ "Bcc": "Cci",
+ "Subject": "Objet",
+ "From %1": "De %1",
+ "Add at least one recipient.": "Ajoutez au moins un destinataire.",
+ "%1 wrote:": "%1 a écrit :",
+ "---------- Forwarded message ----------": "---------- Message transféré ----------",
+ "From: %1": "De : %1",
+ "Date: %1": "Date : %1",
+ "Subject: %1": "Objet : %1"
 }
