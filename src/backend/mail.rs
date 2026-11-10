@@ -856,7 +856,8 @@ mod tests {
                 "<p>Safe HTML</p><img src=\"https://tracker.example/pixel\"><img src=\"data:text/html,&lt;script&gt;forbiddenDataScript&lt;/script&gt;\">",
                 true,
             ),
-            "Safe text",
+            // The HTML alternative is read, not the plain one
+            "Safe HTML\n[image 1][image 2]",
             false,
         )
         .await;

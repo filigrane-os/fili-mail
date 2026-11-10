@@ -79,5 +79,19 @@
  "Search: %1": "Recherche: %1",
  "%1 messages, %2 unread": "%1 messages, %2 non lus",
  "Pictures are hidden: the sender could see that you read this message.": "Images masquées: l'expéditeur pourrait voir que vous avez lu ce message.",
- "Load pictures (%1)": "Afficher les images (%1)"
+ "Load pictures (%1)": "Afficher les images (%1)",
+ "Move to trash": "Mettre à la corbeille",
+ "Mark as spam": "Signaler comme spam",
+ "Remove star": "Ne plus suivre",
+ "Previous message": "Message précédent",
+ "Next message": "Message suivant",
+ "Reply all": "Répondre à tous",
+ "From": "De",
+ "This message comes from a mailing list.": "Ce message provient d'une liste de diffusion.",
+ "Unsubscribe": "Se désabonner",
+ "Refresh": "Actualiser",
+ "Archive message": "Archiver le message",
+ "Star message": "Suivre le message",
+ "Go back": "Revenir en arrière",
+ "Go forward": "Avancer"
 }

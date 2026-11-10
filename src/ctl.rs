@@ -12,7 +12,7 @@ use std::{
 
 /// The commands of the window (menu entries); the interface runs them by name.
 pub const ACTIONS: &[&str] = &[
-    "new-message", "reply", "forward", "refresh", "archive", "trash", "spam", "star", "unstar",
+    "new-message", "next-message", "previous-message", "reply", "reply-all", "forward", "refresh", "archive", "trash", "spam", "star", "unstar",
     "read", "unread", "add-account", "about", "close", "inbox", "unread-box", "starred", "sent",
     "drafts", "archive-box", "spam-box", "trash-box",
 ];

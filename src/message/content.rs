@@ -534,10 +534,12 @@ fn prepare_content(message: &Value, now: i64, read_html: bool) -> Result<Value> 
             html = html.replace(&format!("cid:{id}"), &uri);
         }
     }
-    let source = if !plain.is_empty() && !(markup_as_text(&plain) && !html.is_empty()) {
-        "plain"
-    } else if !html.is_empty() {
+    // Like every mail client: the HTML alternative is what the sender designed; the plain one is often a
+    // Markdown-ish leftover full of tracking links. Plain text is shown when there is no HTML part.
+    let source = if !html.is_empty() {
         "html"
+    } else if !plain.is_empty() {
+        "plain"
     } else {
         ""
     };

@@ -24,6 +24,7 @@ fn main() {
                 "qml/Reader.qml",
                 "qml/Compose.qml",
                 "qml/AboutCard.qml",
+                "qml/Icon.qml",
                 "qml/Field.qml",
                 "qml/IconButton.qml",
                 "qml/TextButton.qml",

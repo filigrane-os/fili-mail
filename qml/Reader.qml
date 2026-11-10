@@ -1,4 +1,4 @@
-// The open message: subject, sender and date, then the text body.
+// The open message: title, a frame with sender, recipients and the actions, then the message on paper.
 import QtQuick
 import QtQuick.Controls.Basic
 import Fili.Mail
@@ -15,14 +15,22 @@ Rectangle {
     property bool unread: false
     // Link under the pointer, shown at the bottom
     property string hovered: ""
-    signal act(string operation)
-    signal reply()
-    signal loadImages()
+    // First unsubscribe address the sender declared (empty: none)
+    property string unsubscribeUrl: ""
     // Pictures of the sender held back (number), and whether they are being fetched
     property int remoteImages: 0
     property bool loadingImages: false
+    signal act(string operation)
+    signal reply()
+    signal replyAll()
     signal forward()
+    signal loadImages()
+    signal unsubscribe(string url)
     color: FiliTheme.backgroundDeep
+
+    function names(list) {
+        return (list || []).map(a => a.display || a.email).join(", ");
+    }
 
     Text {
         anchors.centerIn: parent
@@ -43,22 +51,8 @@ Rectangle {
         font.pixelSize: FiliTheme.size
         color: FiliTheme.danger
     }
-    Row {
-        id: tools
-        visible: reader.summary !== null
-        x: FiliTheme.space2
-        y: FiliTheme.space2
-        spacing: FiliTheme.space1
-        TextButton { label: Facteur.tr("Reply"); onClicked: reader.reply() }
-        TextButton { label: Facteur.tr("Forward"); onClicked: reader.forward() }
-        TextButton { label: Facteur.tr("Archive"); onClicked: reader.act("archive") }
-        TextButton { label: Facteur.tr("Trash"); onClicked: reader.act("trash") }
-        TextButton { label: Facteur.tr("Spam"); onClicked: reader.act("spam") }
-        TextButton { label: reader.starred ? Facteur.tr("Unstar") : Facteur.tr("Star"); onClicked: reader.act(reader.starred ? "unstar" : "star") }
-        TextButton { label: reader.unread ? Facteur.tr("Mark as read") : Facteur.tr("Mark as unread"); onClicked: reader.act(reader.unread ? "read" : "unread") }
-    }
     ScrollView {
-        anchors { fill: parent; topMargin: tools.visible ? tools.height + 2 * FiliTheme.space2 : 0 }
+        anchors.fill: parent
         visible: reader.summary !== null
         contentWidth: availableWidth
         clip: true
@@ -67,7 +61,7 @@ Rectangle {
             width: parent.width - 2 * FiliTheme.margin
             topPadding: FiliTheme.margin
             bottomPadding: FiliTheme.margin
-            spacing: FiliTheme.space2
+            spacing: FiliTheme.space3
             Text {
                 width: parent.width
                 text: reader.summary ? reader.summary.subject : ""
@@ -77,15 +71,133 @@ Rectangle {
                 font.weight: FiliTheme.weightAccent
                 color: FiliTheme.text
             }
-            Text {
+            // Frame: who wrote to whom and when, what the sender offers, what can be done
+            Rectangle {
                 width: parent.width
-                text: reader.summary ? (reader.summary.from.display || reader.summary.from.email) + "  ·  " + reader.summary.fullTime : ""
-                elide: Text.ElideRight
-                font.family: FiliTheme.font
-                font.pixelSize: FiliTheme.sizeList
-                color: FiliTheme.textSecondary
+                height: frame.implicitHeight + 2 * FiliTheme.space3
+                radius: FiliTheme.radiusControl
+                color: FiliTheme.background
+                border.width: FiliTheme.borderWidth
+                border.color: FiliTheme.border
+                Column {
+                    id: frame
+                    x: FiliTheme.space3
+                    y: FiliTheme.space3
+                    width: parent.width - 2 * FiliTheme.space3
+                    spacing: FiliTheme.space2
+                    readonly property bool narrow: width < 440
+                    Row {
+                        width: parent.width
+                        spacing: FiliTheme.space3
+                        Text { id: fromLabel; width: 44; text: Facteur.tr("From"); font.family: FiliTheme.font; font.pixelSize: FiliTheme.sizeList; color: FiliTheme.textSecondary }
+                        Text {
+                            width: Math.max(0, parent.width - 44 - parent.spacing - (when.visible ? when.width + parent.spacing : 0))
+                            textFormat: Text.StyledText
+                            text: reader.summary ? "<b>" + (reader.summary.from.display || reader.summary.from.email) + "</b>" + (reader.summary.from.display ? " &lt;" + reader.summary.from.email + "&gt;" : "") : ""
+                            elide: Text.ElideRight
+                            font.family: FiliTheme.font
+                            font.pixelSize: FiliTheme.size
+                            color: FiliTheme.text
+                        }
+                        Text {
+                            id: when
+                            visible: !frame.narrow
+                            text: reader.summary ? reader.summary.fullTime : ""
+                            font.family: FiliTheme.font
+                            font.pixelSize: FiliTheme.sizeList
+                            color: FiliTheme.textSecondary
+                        }
+                    }
+                    Row {
+                        width: parent.width
+                        spacing: FiliTheme.space3
+                        Text { width: 44; text: Facteur.tr("To"); font.family: FiliTheme.font; font.pixelSize: FiliTheme.sizeList; color: FiliTheme.textSecondary }
+                        Text {
+                            width: Math.max(0, parent.width - 44 - parent.spacing)
+                            text: reader.summary ? reader.names(reader.summary.to) + (reader.summary.cc && reader.summary.cc.length > 0 ? "   " + Facteur.tr("Cc") + ": " + reader.names(reader.summary.cc) : "") : ""
+                            elide: Text.ElideRight
+                            font.family: FiliTheme.font
+                            font.pixelSize: FiliTheme.size
+                            color: FiliTheme.text
+                        }
+                    }
+                    Text {
+                        visible: frame.narrow
+                        width: parent.width
+                        text: reader.summary ? reader.summary.fullTime : ""
+                        font.family: FiliTheme.font
+                        font.pixelSize: FiliTheme.sizeList
+                        color: FiliTheme.textSecondary
+                    }
+                    // Mailing list: the sender gave a way out
+                    Rectangle {
+                        visible: reader.unsubscribeUrl !== ""
+                        width: parent.width
+                        height: 30
+                        radius: FiliTheme.radiusControl
+                        color: FiliTheme.surface
+                        border.width: FiliTheme.borderWidth
+                        border.color: FiliTheme.border
+                        Icon { x: FiliTheme.space3; anchors.verticalCenter: parent.verticalCenter; name: "mail"; size: 14; color: FiliTheme.textSecondary }
+                        Text {
+                            x: FiliTheme.space3 + 14 + FiliTheme.space2
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: Facteur.tr("This message comes from a mailing list.")
+                            font.family: FiliTheme.font
+                            font.pixelSize: FiliTheme.sizeList
+                            color: FiliTheme.textSecondary
+                        }
+                        TextButton {
+                            anchors { right: parent.right; rightMargin: FiliTheme.space2; verticalCenter: parent.verticalCenter }
+                            label: Facteur.tr("Unsubscribe")
+                            onClicked: reader.unsubscribe(reader.unsubscribeUrl)
+                        }
+                    }
+                    Flow {
+                        id: actions
+                        width: parent.width
+                        spacing: FiliTheme.space2
+                        Rectangle {
+                            id: leftCap
+                            width: leftActions.width + 2 * FiliTheme.space1
+                            height: 30
+                            radius: FiliTheme.radiusControl
+                            color: FiliTheme.surface
+                            border.width: FiliTheme.borderWidth
+                            border.color: FiliTheme.border
+                            Row {
+                                id: leftActions
+                                x: FiliTheme.space1
+                                anchors.verticalCenter: parent.verticalCenter
+                                IconButton { name: reader.unread ? "mail-open" : "mail"; tip: reader.unread ? Facteur.tr("Mark as read") : Facteur.tr("Mark as unread"); onClicked: reader.act(reader.unread ? "read" : "unread") }
+                                IconButton { name: "trash"; tip: Facteur.tr("Move to trash"); onClicked: reader.act("trash") }
+                                IconButton { name: "archive"; tip: Facteur.tr("Archive message"); onClicked: reader.act("archive") }
+                                IconButton { name: "spam"; tip: Facteur.tr("Mark as spam"); onClicked: reader.act("spam") }
+                                IconButton { name: "star"; filled: reader.starred; tip: reader.starred ? Facteur.tr("Remove star") : Facteur.tr("Star message"); onClicked: reader.act(reader.starred ? "unstar" : "star") }
+                            }
+                        }
+                        // Pushes the reply group to the right when both fit on one line
+                        Item { width: Math.max(0, actions.width - leftCap.width - rightCap.width - 2 * actions.spacing); height: 1 }
+                        Rectangle {
+                            id: rightCap
+                            width: rightActions.width + 2 * FiliTheme.space1
+                            height: 30
+                            radius: FiliTheme.radiusControl
+                            color: FiliTheme.surface
+                            border.width: FiliTheme.borderWidth
+                            border.color: FiliTheme.border
+                            Row {
+                                id: rightActions
+                                x: FiliTheme.space1
+                                anchors.verticalCenter: parent.verticalCenter
+                                IconButton { name: "reply"; tip: Facteur.tr("Reply"); onClicked: reader.reply() }
+                                IconButton { name: "reply-all"; tip: Facteur.tr("Reply all"); onClicked: reader.replyAll() }
+                                IconButton { name: "forward"; tip: Facteur.tr("Forward"); onClicked: reader.forward() }
+                            }
+                        }
+                    }
+                }
             }
-            Rectangle { width: parent.width; height: FiliTheme.borderWidth; color: FiliTheme.border }
             // Pictures of the sender are held back: they tell the sender the message was opened
             Rectangle {
                 visible: reader.remoteImages > 0

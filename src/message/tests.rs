@@ -128,8 +128,8 @@ fn markup_in_the_plain_alternative_is_read_from_the_html_part() {
         "<div><span>code</span></div> is an example ending with </p>",
     ] {
         let body = &super::content::prepare(&message(text, Some(html)), 0).unwrap()["body"];
-        assert_eq!(body["source"], "plain", "{text}");
-        assert_eq!(body["text"], text, "{text}");
+        // The HTML alternative is what the sender designed: it is read whenever it exists
+        assert_eq!(body["source"], "html", "{text}");
     }
     // With no HTML part there is nothing better to read.
     let only = "<div><p>Send money easily</p></div>";

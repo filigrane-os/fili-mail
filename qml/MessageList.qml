@@ -10,12 +10,56 @@ Rectangle {
     signal chosen(string id)
     // Keyboard action on the current message: archive, trash, star, unread
     signal act(string operation)
+    // Previous or next message of the list (-1, +1)
+    signal step(int delta)
+    // State of the selected message, for the action bar
+    property bool selectedUnread: false
+    property bool selectedStarred: false
+    property string position: ""
+    property bool canPrev: false
+    property bool canNext: false
 
     color: FiliTheme.background
 
+    // Actions on the selected message, then its place in the list
+    Rectangle {
+        id: bar
+        anchors { left: parent.left; right: parent.right; top: parent.top }
+        height: 40
+        color: FiliTheme.background
+        Row {
+            x: FiliTheme.space2
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 2
+            readonly property bool on: list.selectedId !== ""
+            IconButton { name: list.selectedUnread ? "mail-open" : "mail"; tip: list.selectedUnread ? Facteur.tr("Mark as read") : Facteur.tr("Mark as unread"); enabledState: parent.on; onClicked: list.act(list.selectedUnread ? "read" : "unread") }
+            Rectangle { width: 1; height: 18; anchors.verticalCenter: parent.verticalCenter; color: FiliTheme.border }
+            IconButton { name: "trash"; tip: Facteur.tr("Move to trash"); enabledState: parent.on; onClicked: list.act("trash") }
+            IconButton { name: "archive"; tip: Facteur.tr("Archive message"); enabledState: parent.on; onClicked: list.act("archive") }
+            IconButton { name: "spam"; tip: Facteur.tr("Mark as spam"); enabledState: parent.on; onClicked: list.act("spam") }
+            Rectangle { width: 1; height: 18; anchors.verticalCenter: parent.verticalCenter; color: FiliTheme.border }
+            IconButton { name: "star"; filled: list.selectedStarred; tip: list.selectedStarred ? Facteur.tr("Remove star") : Facteur.tr("Star message"); enabledState: parent.on; onClicked: list.act(list.selectedStarred ? "unstar" : "star") }
+        }
+        Row {
+            anchors { right: parent.right; rightMargin: FiliTheme.space2; verticalCenter: parent.verticalCenter }
+            spacing: 2
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                rightPadding: FiliTheme.space1
+                text: list.position
+                font.family: FiliTheme.font
+                font.pixelSize: FiliTheme.sizeList
+                color: FiliTheme.textSecondary
+            }
+            IconButton { name: "chevron-left"; tip: Facteur.tr("Previous message"); enabledState: list.canPrev; onClicked: list.step(-1) }
+            IconButton { name: "chevron-right"; tip: Facteur.tr("Next message"); enabledState: list.canNext; onClicked: list.step(1) }
+        }
+        Rectangle { anchors { left: parent.left; right: parent.right; bottom: parent.bottom } height: FiliTheme.borderWidth; color: FiliTheme.border }
+    }
+
     ListView {
         id: view
-        anchors.fill: parent
+        anchors { left: parent.left; right: parent.right; top: bar.bottom; bottom: parent.bottom }
         clip: true
         focus: true
         activeFocusOnTab: true

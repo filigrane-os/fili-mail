@@ -62,6 +62,17 @@ ApplicationWindow {
                 subject: /^re:/i.test(s.subject) ? s.subject : "Re: " + s.subject,
                 body: "\n\n" + Facteur.tr("%1 wrote:").replace("%1", sender()) + "\n" + quoted(reader.body)
             };
+        } else if (kind === "replyall") {
+            const s = reader.summary;
+            const self = account.replace(/^[a-z]+:/, "").toLowerCase();
+            const mine = a => a.email.toLowerCase() === self;
+            const others = (s.to || []).concat(s.cc || []).filter(a => !mine(a) && a.email !== s.from.email);
+            draft = {
+                to: [s.from.email].concat(others.filter(a => (s.to || []).includes(a)).map(a => a.email)).join(", "),
+                cc: others.filter(a => !(s.to || []).includes(a)).map(a => a.email).join(", "),
+                subject: /^re:/i.test(s.subject) ? s.subject : "Re: " + s.subject,
+                body: "\n\n" + Facteur.tr("%1 wrote:").replace("%1", sender()) + "\n" + quoted(reader.body)
+            };
         } else if (kind === "forward") {
             const s = reader.summary;
             draft = {
@@ -129,6 +140,12 @@ ApplicationWindow {
         mailbox = p.mailbox;
         navigating = false;
     }
+    // Previous or next message of the list
+    function step(delta) {
+        const i = rowOf(selectedId) + delta;
+        if (selectedId !== "" && i >= 0 && i < messages.count)
+            choose(messages.get(i).id);
+    }
     function boxLabel() {
         const names = { inbox: Facteur.tr("Inbox"), unread: Facteur.tr("Unread"), starred: Facteur.tr("Starred"), sent: Facteur.tr("Sent"), drafts: Facteur.tr("Drafts"), archive: Facteur.tr("Archive"), spam: Facteur.tr("Spam"), trash: Facteur.tr("Trash") };
         return names[mailbox] || mailbox;
@@ -188,6 +205,7 @@ ApplicationWindow {
         reader.summary = null;
         reader.body = "";
         reader.rich = "";
+        reader.unsubscribeUrl = "";
         reader.remoteImages = 0;
         reader.error = "";
         Facteur.openMessage(account, id);
@@ -217,6 +235,11 @@ ApplicationWindow {
             else if (name === "add-account") { win.addError = ""; win.adding = true }
             else if (name === "new-message") win.startCompose("new");
             else if (name === "reply" || name === "forward") win.startCompose(name);
+            else if (name === "reply-all") win.startCompose("replyall");
+            else if (name === "next-message" || name === "previous-message") {
+                if (win.selectedId === "" && messages.count > 0) win.choose(messages.get(0).id);
+                else win.step(name === "next-message" ? 1 : -1);
+            }
             else if (name === "refresh") win.refresh();
             else if (boxes[name]) { win.adding = false; win.mailbox = boxes[name] }
             else if (onMessage) win.doAct(name, win.selectedId);
@@ -243,6 +266,7 @@ ApplicationWindow {
             reader.body = r.message.nativeContent.body.text;
             reader.rich = r.message.rich || "";
             reader.remoteImages = r.message.remoteImages || 0;
+            reader.unsubscribeUrl = (r.message.unsubscribe && r.message.unsubscribe.urls && r.message.unsubscribe.urls[0]) || "";
             reader.loadingImages = false;
         }
         function onActed(acc, operation, ids, json) {
@@ -300,6 +324,7 @@ ApplicationWindow {
     Shortcut { sequences: ["Ctrl+F"]; enabled: !win.adding && win.account !== "" && !win.composing; onActivated: searchInput.forceActiveFocus() }
     Shortcut { sequences: ["Ctrl+N"]; enabled: !win.adding && win.account !== ""; onActivated: win.startCompose("new") }
     Shortcut { sequences: ["Ctrl+Shift+R"]; enabled: !win.adding && !win.composing; onActivated: win.startCompose("reply") }
+    Shortcut { sequences: ["Ctrl+Alt+R"]; enabled: !win.adding && !win.composing; onActivated: win.startCompose("replyall") }
     Shortcut { sequences: ["Ctrl+Shift+F"]; enabled: !win.adding && !win.composing; onActivated: win.startCompose("forward") }
     Shortcut { sequences: ["Ctrl+Shift+A"]; onActivated: { win.addError = ""; win.adding = true } }
 
@@ -343,8 +368,8 @@ ApplicationWindow {
             x: FiliTheme.margin + FiliTheme.space1 + 1
             anchors.verticalCenter: parent.verticalCenter
             spacing: FiliTheme.space1
-            IconButton { glyph: "\uf053"; enabledState: win.hindex > 0; onClicked: win.go(-1) }
-            IconButton { glyph: "\uf054"; enabledState: win.hindex < win.history.length - 1; onClicked: win.go(1) }
+            IconButton { name: "chevron-left"; tip: Facteur.tr("Go back"); enabledState: win.hindex > 0; onClicked: win.go(-1) }
+            IconButton { name: "chevron-right"; tip: Facteur.tr("Go forward"); enabledState: win.hindex < win.history.length - 1; onClicked: win.go(1) }
         }
         Column {
             anchors { left: nav.right; leftMargin: FiliTheme.space5; right: tools.left; rightMargin: FiliTheme.space3; verticalCenter: parent.verticalCenter }
@@ -370,8 +395,8 @@ ApplicationWindow {
             id: tools
             anchors { right: search.left; rightMargin: FiliTheme.space3; verticalCenter: parent.verticalCenter }
             spacing: FiliTheme.space1
-            IconButton { glyph: "\uf021"; onClicked: win.refresh() }
-            IconButton { glyph: "\uf040"; onClicked: win.startCompose("new") }
+            IconButton { name: "refresh"; tip: Facteur.tr("Refresh"); onClicked: win.refresh() }
+            IconButton { name: "compose"; tip: Facteur.tr("New message"); onClicked: win.startCompose("new") }
         }
         Rectangle {
             id: search
@@ -438,11 +463,18 @@ ApplicationWindow {
         }
         Rectangle { width: FiliTheme.borderWidth; height: parent.height; color: FiliTheme.border }
         MessageList {
-            width: 340
+            id: messageList
+            width: Math.max(250, Math.min(340, win.width * 0.34))
             height: parent.height
             model: messages
             selectedId: win.selectedId
             onAct: operation => { if (win.selectedId !== "") win.doAct(operation, win.selectedId) }
+            onStep: delta => win.step(delta)
+            selectedUnread: reader.unread
+            selectedStarred: reader.starred
+            position: win.selectedId !== "" ? (win.rowOf(win.selectedId) + 1) + "/" + messages.count : messages.count > 0 ? "" + messages.count : ""
+            canPrev: win.selectedId !== "" && win.rowOf(win.selectedId) > 0
+            canNext: win.selectedId !== "" && win.rowOf(win.selectedId) < messages.count - 1
             emptyText: win.listError !== "" ? win.listError : win.loading ? "…" : Facteur.tr("No message")
             onChosen: id => win.choose(id)
         }
@@ -452,8 +484,10 @@ ApplicationWindow {
             onAct: operation => win.doAct(operation, win.selectedId)
             onReply: win.startCompose("reply")
             onForward: win.startCompose("forward")
+            onReplyAll: win.startCompose("replyall")
+            onUnsubscribe: url => Qt.openUrlExternally(url)
             onLoadImages: { reader.loadingImages = true; Facteur.loadImages(win.account, win.selectedId) }
-            width: parent.width - FiliTheme.sidebarWidth - 340 - 2 * FiliTheme.borderWidth
+            width: parent.width - FiliTheme.sidebarWidth - messageList.width - 2 * FiliTheme.borderWidth
             height: parent.height
             Compose {
                 id: composer
