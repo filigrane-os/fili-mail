@@ -92,8 +92,30 @@ Rectangle {
             color: FiliTheme.textSecondary
             text: setup.kind === "google" ? (setup.googleReady ? Facteur.tr("Your browser opens Google's own sign-in page: Facteur never sees your Google password.") : Facteur.tr("Google sign-in needs an OAuth client, created once in the Google Cloud console (APIs & Services › Credentials › OAuth client ID › Desktop app). Paste the JSON file it lets you download."))
                 : setup.kind === "gmail" ? Facteur.tr("Gmail needs an app password: Google account › Security › 2-step verification › App passwords.")
-                : setup.kind === "bridge" ? Facteur.tr("Proton Mail Bridge must be running. Use the password it shows for this account, not your Proton password.")
+                : setup.kind === "bridge" ? Facteur.tr("Proton Mail Bridge must be installed and running in the background first (steps below). Use the password it shows for this account, not your Proton password.")
                 : Facteur.tr("Servers are guessed from the address (imap.domain, smtp.domain); fill them in if they differ.")
+        }
+        Rectangle {
+            width: parent.width
+            height: bridgeSteps.implicitHeight + 2 * FiliTheme.space2
+            visible: setup.kind === "bridge"
+            radius: FiliTheme.radiusControl
+            color: FiliTheme.surface
+            border.width: FiliTheme.borderWidth
+            border.color: FiliTheme.border
+            Text {
+                id: bridgeSteps
+                anchors { left: parent.left; right: parent.right; top: parent.top; margins: FiliTheme.space2 }
+                wrapMode: Text.WordWrap
+                textFormat: Text.PlainText
+                font.family: FiliTheme.mono
+                font.pixelSize: FiliTheme.sizeSmall
+                color: FiliTheme.textSecondary
+                // Commands are not translated; only the step titles are
+                text: "1. " + Facteur.tr("Install Bridge (needs a keyring such as gnome-keyring):") + "\n   sudo xbps-install protonmail-bridge\n\n"
+                    + "2. " + Facteur.tr("Sign in once, then run `info` to see the account password:") + "\n   protonmail-bridge --cli\n   >>> login\n   >>> info\n\n"
+                    + "3. " + Facteur.tr("Keep it running in the background, without a window:") + "\n   protonmail-bridge --noninteractive"
+            }
         }
         Field { id: email; width: parent.width; placeholderText: Facteur.tr("Email address"); inputMethodHints: Qt.ImhEmailCharactersOnly; KeyNavigation.tab: password; onAccepted: password.forceActiveFocus() }
         Field { id: password; visible: setup.kind !== "google"; width: parent.width; placeholderText: Facteur.tr("Password"); secret: true; KeyNavigation.tab: setup.kind === "other" ? imapHost : email; onAccepted: setup.submit() }

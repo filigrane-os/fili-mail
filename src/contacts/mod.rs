@@ -224,6 +224,48 @@ fn thunderbird(book: &mut Book, root: &Path) {
         }
     }
 }
+/// Where the addresses seen in listed messages are kept between runs.
+fn remembered_file(cached: &Path) -> PathBuf {
+    cached.join("fili-mail").join("addresses.json")
+}
+
+/// Keep the senders and recipients of listed messages (`messages` of a `mail.list` answer) for the recipient
+/// suggestions: the engine's own cache stays empty in the window, so this is what "addresses of received mail" is.
+pub fn remember(messages: &Value) {
+    let Ok(dirs) = crate::platform::dirs::AppDirs::discover() else { return };
+    let file = remembered_file(&dirs.cache);
+    let mut book = Book::new();
+    if let Some(raw) = read(&file).and_then(|s| serde_json::from_str::<Value>(&s).ok()) {
+        json_book(&mut book, &raw);
+    }
+    let before = book.len();
+    for row in messages.as_array().into_iter().flatten() {
+        let mut people = vec![&row["from"], &row["replyTo"]];
+        for field in ["to", "cc"] {
+            if let Some(items) = row[field].as_array().filter(|a| a.len() <= 20) {
+                people.extend(items)
+            }
+        }
+        for person in people {
+            let name = person["name"].as_str().filter(|s| !s.is_empty()).or_else(|| person["display"].as_str()).unwrap_or("");
+            let email = person["email"].as_str().unwrap_or("");
+            let name = if name == email { "" } else { name };
+            collect(&mut book, name, email);
+        }
+    }
+    if book.len() == before {
+        return;
+    }
+    if let Some(dir) = file.parent() {
+        let _ = fs::create_dir_all(dir);
+    }
+    let list: Vec<_> = book.into_values().collect();
+    // Private: these are the people the user writes with
+    if let Ok(mut out) = fs::OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).open(&file) {
+        let _ = std::io::Write::write_all(&mut out, json!(list).to_string().as_bytes());
+    }
+}
+
 pub fn suggest() -> Result<Value, &'static str> {
     let dirs = crate::platform::dirs::AppDirs::discover()?;
     Ok(discover(
@@ -239,6 +281,9 @@ fn discover(home: &Path, config: &Path, cached: &Path) -> Value {
         thunderbird(&mut book, &home.join(name))
     }
     cache(&mut book, &cached.join("fili-mail"));
+    if let Some(raw) = read(&remembered_file(cached)).and_then(|s| serde_json::from_str::<Value>(&s).ok()) {
+        json_book(&mut book, &raw)
+    }
     if let Some(raw) = read(&config.join("fili-mail/contacts.json"))
         .and_then(|s| serde_json::from_str::<Value>(&s).ok())
     {

@@ -37,6 +37,13 @@ fn answer(request: &str) -> (String, Option<String>) {
 /// Listen for commands in a thread (asleep on accept); `on_action` gets each valid action name.
 pub fn serve(on_action: impl Fn(String) + Send + 'static) {
     let Some(dir) = dir() else { return };
+    // Sockets of windows that are gone are never removed by their owner: sweep them (a reused pid must not match one)
+    for e in fs::read_dir(&dir).into_iter().flatten().flatten() {
+        let path = e.path();
+        if path.extension().is_some_and(|x| x == "sock") && !alive(&path.file_stem().unwrap_or_default().to_string_lossy()) {
+            let _ = fs::remove_file(path);
+        }
+    }
     let sock = dir.join(format!("{}.sock", std::process::id()));
     let _ = fs::remove_file(&sock);
     let Ok(listener) = UnixListener::bind(&sock) else { return };
@@ -75,6 +82,21 @@ fn target(pid: Option<&str>) -> Option<PathBuf> {
         .collect();
     socks.sort();
     socks.pop().map(|(_, p)| p)
+}
+
+/// Starting Facteur while a window is already open: focus that one (through niri, which owns focus on Filigrane)
+/// instead of opening a second. True when a window exists, whether or not niri could focus it.
+pub fn focus_existing() -> bool {
+    let Some(sock) = target(None) else { return false };
+    let Some(pid) = sock.file_stem().and_then(|s| s.to_str()).and_then(|s| s.parse::<u64>().ok()) else { return false };
+    let windows = std::process::Command::new("niri").args(["msg", "-j", "windows"]).output().ok();
+    let id = windows
+        .and_then(|o| serde_json::from_slice::<serde_json::Value>(&o.stdout).ok())
+        .and_then(|v| v.as_array()?.iter().find(|w| w["pid"].as_u64() == Some(pid))?["id"].as_u64());
+    if let Some(id) = id {
+        let _ = std::process::Command::new("niri").args(["msg", "action", "focus-window", "--id", &id.to_string()]).status();
+    }
+    true
 }
 
 const USAGE: &str = "usage: fili-mail ctl [--pid PID] action NAME | actions";

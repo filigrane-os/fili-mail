@@ -85,6 +85,10 @@ pub mod qobject {
         // Google sign-in (OAuth in the browser): whether a Google client is available, keep the client file Google's
         // console gives ("" or an error code), start the sign-in (the page is opened; `googleStarted` also gives its
         // address) and `accountAdded` follows once the browser is done
+        // Addresses seen in the mail already received (cache), the address books of the machine and contacts.json:
+        // a JSON array of {name, email}, for the recipient suggestions of a new message
+        #[qinvokable]
+        fn contacts(self: &Facteur) -> QString;
         #[qinvokable]
         #[cxx_name = "googleReady"]
         fn google_ready(self: &Facteur) -> bool;
@@ -147,6 +151,18 @@ pub mod qobject {
             query: &QString,
             result: &QString,
         );
+        // The last first page of a mailbox as `listed` gave it ("" when there is none), to fill the list at once
+        // while the server answers
+        #[qinvokable]
+        #[cxx_name = "cachedList"]
+        fn cached_list(self: &Facteur, account: &QString, mailbox: &QString) -> QString;
+        // Unread messages of an account's inbox; answered by `unreadCounted` (-1 when the server did not answer)
+        #[qinvokable]
+        #[cxx_name = "countUnread"]
+        fn count_unread(self: Pin<&mut Facteur>, account: &QString);
+        #[qsignal]
+        #[cxx_name = "unreadCounted"]
+        fn unread_counted(self: Pin<&mut Facteur>, account: &QString, count: i32);
         // One message; answered by `opened` (JSON)
         #[qinvokable]
         #[cxx_name = "openMessage"]
@@ -161,6 +177,16 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "saveAttachment"]
         fn save_attachment(self: Pin<&mut Facteur>, account: &QString, id: &QString, attachment: &QString, filename: &QString);
+        // Open an attachment with the desktop's application (saved in the runtime directory first); answered by
+        // `attachmentSaved` ({path, opened: true} or {error})
+        #[qinvokable]
+        #[cxx_name = "openAttachment"]
+        fn open_attachment(self: Pin<&mut Facteur>, account: &QString, id: &QString, attachment: &QString, filename: &QString);
+        // Save every attachment (JSON [{attachmentId, filename}]) to the Downloads folder; answered by
+        // `attachmentSaved` ({count, path} or {error})
+        #[qinvokable]
+        #[cxx_name = "saveAllAttachments"]
+        fn save_all_attachments(self: Pin<&mut Facteur>, account: &QString, id: &QString, list: &QString);
         #[qsignal]
         #[cxx_name = "attachmentSaved"]
         fn attachment_saved(self: Pin<&mut Facteur>, result: &QString);
@@ -480,6 +506,11 @@ impl qobject::Facteur {
         });
     }
 
+    pub fn contacts(&self) -> QString {
+        let list = fili_mail::contacts::suggest().unwrap_or_else(|_| json!([]));
+        QString::from(list.to_string())
+    }
+
     pub fn google_ready(&self) -> bool {
         google_client_configured()
     }
@@ -621,6 +652,26 @@ impl qobject::Facteur {
         });
     }
 
+    pub fn cached_list(&self, account: &QString, mailbox: &QString) -> QString {
+        let text = list_cache_file(&account.to_string(), &mailbox.to_string()).and_then(|p| std::fs::read_to_string(p).ok());
+        QString::from(text.unwrap_or_default())
+    }
+
+    pub fn count_unread(self: Pin<&mut Self>, account: &QString) {
+        let account = account.to_string();
+        let qt = self.qt_thread();
+        let (runtime, session) = engine();
+        runtime.spawn(async move {
+            // One message is enough: the answer carries the number of unread ones
+            let params = json!({"account": account, "mailbox": "unread", "query": "", "limit": 1});
+            let count = match session.dispatch("mail.list", &params).await {
+                Ok(v) => v["estimate"].as_u64().map_or(-1, |n| n.min(i32::MAX as u64) as i32),
+                Err(_) => -1,
+            };
+            let _ = qt.queue(move |f| f.unread_counted(&QString::from(&account), count));
+        });
+    }
+
     pub fn list(self: Pin<&mut Self>, account: &QString, mailbox: &QString, query: &QString, token: &QString) {
         let (account, mailbox, query, token) = (account.to_string(), mailbox.to_string(), query.to_string(), token.to_string());
         let qt = self.qt_thread();
@@ -638,6 +689,10 @@ impl qobject::Facteur {
                 Ok(mut v) => {
                     // The page continues the list when it was asked with a token
                     v["append"] = json!(!token.is_empty());
+                    fili_mail::contacts::remember(&v["messages"]);
+                    if token.is_empty() && query.is_empty() {
+                        store_list_cache(&account, &mailbox, &v);
+                    }
                     v.to_string()
                 }
                 Err(e) => error_json(e),
@@ -684,9 +739,63 @@ impl qobject::Facteur {
         let qt = self.qt_thread();
         let (runtime, session) = engine();
         runtime.spawn(async move {
-            let out = match store_attachment(session, &account, &id, &attachment, &filename).await {
+            let out = match store_attachment(session, &account, &id, &attachment, &filename, false).await {
                 Ok(v) => v.to_string(),
                 Err(e) => error_json(e),
+            };
+            let _ = qt.queue(move |f| f.attachment_saved(&QString::from(&out)));
+        });
+    }
+
+    pub fn open_attachment(self: Pin<&mut Self>, account: &QString, id: &QString, attachment: &QString, filename: &QString) {
+        let (account, id, attachment, filename) = (account.to_string(), id.to_string(), attachment.to_string(), filename.to_string());
+        let qt = self.qt_thread();
+        let (runtime, session) = engine();
+        runtime.spawn(async move {
+            let out = match store_attachment(session, &account, &id, &attachment, &filename, true).await {
+                Ok(v) => {
+                    let path = v["path"].as_str().unwrap_or("").to_owned();
+                    match std::process::Command::new("xdg-open")
+                        .arg(&path)
+                        .stdin(std::process::Stdio::null())
+                        .stdout(std::process::Stdio::null())
+                        .stderr(std::process::Stdio::null())
+                        .spawn()
+                    {
+                        Ok(_) => json!({"path": path, "opened": true}).to_string(),
+                        Err(_) => error_json("attachment_open_failed"),
+                    }
+                }
+                Err(e) => error_json(e),
+            };
+            let _ = qt.queue(move |f| f.attachment_saved(&QString::from(&out)));
+        });
+    }
+
+    pub fn save_all_attachments(self: Pin<&mut Self>, account: &QString, id: &QString, list: &QString) {
+        let (account, id, list) = (account.to_string(), id.to_string(), list.to_string());
+        let qt = self.qt_thread();
+        let (runtime, session) = engine();
+        runtime.spawn(async move {
+            let items: Vec<Value> = serde_json::from_str(&list).unwrap_or_default();
+            let mut saved = 0;
+            let mut folder = String::new();
+            let mut failure = None;
+            for item in &items {
+                let (attachment, filename) = (item["attachmentId"].as_str().unwrap_or(""), item["filename"].as_str().unwrap_or("attachment"));
+                match store_attachment(session, &account, &id, attachment, filename, false).await {
+                    Ok(v) => {
+                        saved += 1;
+                        if let Some(dir) = v["path"].as_str().and_then(|p| std::path::Path::new(p).parent()) {
+                            folder = dir.display().to_string();
+                        }
+                    }
+                    Err(e) => failure = Some(e),
+                }
+            }
+            let out = match (saved, failure) {
+                (0, Some(e)) => error_json(e),
+                _ => json!({"count": saved, "path": folder}).to_string(),
             };
             let _ = qt.queue(move |f| f.attachment_saved(&QString::from(&out)));
         });
@@ -727,17 +836,44 @@ impl qobject::Facteur {
 }
 
 /// Fetch one attachment (Gmail: by its attachment id) and write it in Downloads under a name that never overwrites.
-async fn store_attachment(session: &Session, account: &str, id: &str, attachment: &str, filename: &str) -> Result<Value, &'static str> {
+async fn store_attachment(session: &Session, account: &str, id: &str, attachment: &str, filename: &str, open: bool) -> Result<Value, &'static str> {
     if attachment.is_empty() {
         return Err("attachment_unavailable");
     }
+    // The provider is told by the account id (Gmail ids are plain addresses)
+    let method = match account.split_once(':') {
+        Some(("imap", _)) => "imap.attachment",
+        Some(("jmap", _)) => "jmap.attachment",
+        Some(("m365", _)) => "m365.attachment",
+        _ => "gmail.attachment",
+    };
     let answer = session
-        .dispatch("gmail.attachment", &json!({"accountId": account, "messageId": id, "attachmentId": attachment}))
+        .dispatch(method, &json!({"accountId": account, "messageId": id, "attachmentId": attachment}))
         .await?;
     let data = answer["data"].as_str().ok_or("attachment_data_invalid")?;
     session
-        .dispatch("attachment.store", &json!({"filename": filename, "data": data, "open": false}))
+        .dispatch("attachment.store", &json!({"filename": filename, "data": data, "open": open}))
         .await
+}
+
+/// Where the first page of a mailbox is kept between runs (private: subjects and senders).
+fn list_cache_file(account: &str, mailbox: &str) -> Option<PathBuf> {
+    let base = env::var_os("XDG_CACHE_HOME").map(PathBuf::from).filter(|p| p.is_absolute()).or_else(|| env::var_os("HOME").map(|h| PathBuf::from(h).join(".cache")))?;
+    let safe = |s: &str| s.chars().map(|c| if c.is_ascii_alphanumeric() || c == '.' || c == '-' { c } else { '_' }).collect::<String>();
+    Some(base.join("fili-mail/lists").join(format!("{}__{}.json", safe(account), safe(mailbox))))
+}
+
+fn store_list_cache(account: &str, mailbox: &str, answer: &Value) {
+    use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
+    use std::io::Write;
+    let Some(file) = list_cache_file(account, mailbox) else { return };
+    if let Some(dir) = file.parent() {
+        let _ = std::fs::DirBuilder::new().recursive(true).mode(0o700).create(dir);
+    }
+    let page = json!({"messages": answer["messages"], "estimate": answer["estimate"]});
+    if let Ok(mut out) = std::fs::OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).open(&file) {
+        let _ = out.write_all(page.to_string().as_bytes());
+    }
 }
 
 /// Split an address field ("a@x.org, b@y.org") into the list the engine wants.
@@ -747,6 +883,17 @@ fn address_list(text: &str) -> Vec<String> {
         .filter(|part| !part.is_empty())
         .map(str::to_owned)
         .collect()
+}
+
+/// The interface only knows the path and the name of an attachment; the engine wants the size it will then check
+/// again while reading the file (a file changed in between is refused).
+fn attachments_with_size(list: &Value) -> Vec<Value> {
+    let mut out = list.as_array().cloned().unwrap_or_default();
+    for item in &mut out {
+        let size = item["path"].as_str().and_then(|p| std::fs::metadata(p).ok()).map_or(0, |m| m.len());
+        item["size"] = json!(size);
+    }
+    out
 }
 
 async fn send_message(session: &Session, account: &str, fields: &str) -> Result<Value, &'static str> {
@@ -759,7 +906,7 @@ async fn send_message(session: &Session, account: &str, fields: &str) -> Result<
         "bcc": address_list(&text("bcc")),
         "subject": text("subject"),
         "body": text("body"),
-        "attachments": fields["attachments"].as_array().cloned().unwrap_or_default(),
+        "attachments": attachments_with_size(&fields["attachments"]),
         "inReplyTo": text("inReplyTo"),
         "references": text("references"),
         "execute": true,

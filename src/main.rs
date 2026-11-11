@@ -6,6 +6,9 @@ fn main() {
     // No argument: the window (Facteur). Everything else is the command line and the daemon, which never start Qt.
     #[cfg(feature = "gui")]
     if std::env::args().len() == 1 {
+        if ctl::focus_existing() {
+            return;
+        }
         std::process::exit(gui::run());
     }
     // fili-mail ctl ...: command an open window (menu of the fili-bar); never starts Qt

@@ -26,9 +26,11 @@ Rectangle {
     signal forward()
     signal loadImages()
     signal unsubscribe(string url)
-    // Files attached to the message ({filename, mimeType, size, attachmentId}); clicking one saves it
+    // Files attached to the message ({filename, mimeType, size, attachmentId}); clicking one opens it, its arrow saves it
     property var attachments: []
     signal saveAttachment(int index)
+    signal openAttachment(int index)
+    signal saveAllAttachments()
     // Escape: back to the list
     signal leave()
     function focusReader() { scroller.forceActiveFocus(); }
@@ -204,11 +206,11 @@ Rectangle {
                                 required property var modelData
                                 required property int index
                                 activeFocusOnTab: !!modelData.attachmentId
-                                Keys.onReturnPressed: reader.saveAttachment(index)
-                                Keys.onEnterPressed: reader.saveAttachment(index)
-                                Keys.onSpacePressed: reader.saveAttachment(index)
+                                Keys.onReturnPressed: reader.openAttachment(index)
+                                Keys.onEnterPressed: reader.openAttachment(index)
+                                Keys.onSpacePressed: reader.openAttachment(index)
                                 FocusRing {}
-                                width: Math.min(chipText.implicitWidth + 2 * FiliTheme.space3 + 14 + FiliTheme.space2, content.width)
+                                width: Math.min(chipText.implicitWidth + 2 * FiliTheme.space3 + 14 + FiliTheme.space2 + 28, content.width)
                                 height: 28
                                 radius: FiliTheme.radiusControl
                                 color: chipArea.containsMouse ? FiliTheme.surfaceHover : FiliTheme.surface
@@ -218,7 +220,7 @@ Rectangle {
                                 Text {
                                     id: chipText
                                     x: FiliTheme.space3 + 14 + FiliTheme.space2
-                                    width: parent.width - x - FiliTheme.space3
+                                    width: parent.width - x - FiliTheme.space3 - 28
                                     anchors.verticalCenter: parent.verticalCenter
                                     text: modelData.filename + "  ·  " + reader.sizeText(modelData.size)
                                     elide: Text.ElideMiddle
@@ -231,9 +233,22 @@ Rectangle {
                                     anchors.fill: parent
                                     hoverEnabled: true
                                     enabled: !!modelData.attachmentId
-                                    onClicked: reader.saveAttachment(index)
+                                    onClicked: reader.openAttachment(index)
+                                }
+                                // Save to the Downloads folder without opening
+                                IconButton {
+                                    anchors { right: parent.right; rightMargin: 2; verticalCenter: parent.verticalCenter }
+                                    name: "download"
+                                    tip: Facteur.tr("Download")
+                                    enabledState: !!modelData.attachmentId
+                                    onClicked: if (modelData.attachmentId) reader.saveAttachment(index)
                                 }
                             }
+                        }
+                        TextButton {
+                            visible: reader.attachments.filter(a => !!a.attachmentId).length > 1
+                            label: Facteur.tr("Download all")
+                            onClicked: reader.saveAllAttachments()
                         }
                     }
                     Flow {

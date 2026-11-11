@@ -5,6 +5,8 @@ import Fili.Mail
 Rectangle {
     id: side
     property var accounts: []
+    // {accountId: unread messages of its inbox}
+    property var unreadCounts: ({})
     property string account: ""
     property string mailbox: "inbox"
     // Labels the user made ({name, rawName, unread}); each one is a mailbox "label:<rawName>"
@@ -176,7 +178,16 @@ Rectangle {
                             color: FiliTheme.accentColor
                         }
                         Text {
-                            anchors { left: service.right; leftMargin: FiliTheme.space2; right: parent.right; rightMargin: FiliTheme.space2; bottom: parent.bottom; bottomMargin: (FiliTheme.sideRowHeight - height) / 2 }
+                            id: acctCount
+                            visible: !acct.open && (side.unreadCounts[modelData.id] || 0) > 0
+                            anchors { right: parent.right; rightMargin: FiliTheme.space3; bottom: parent.bottom; bottomMargin: (FiliTheme.sideRowHeight - height) / 2 }
+                            text: "" + (side.unreadCounts[modelData.id] || 0)
+                            font.family: FiliTheme.font
+                            font.pixelSize: FiliTheme.sizeSmall
+                            color: FiliTheme.muted
+                        }
+                        Text {
+                            anchors { left: service.right; leftMargin: FiliTheme.space2; right: acctCount.visible ? acctCount.left : parent.right; rightMargin: FiliTheme.space2; bottom: parent.bottom; bottomMargin: (FiliTheme.sideRowHeight - height) / 2 }
                             text: (modelData.label !== "" ? modelData.label : modelData.email)
                             elide: Text.ElideRight
                             font.family: FiliTheme.font
@@ -216,6 +227,14 @@ Rectangle {
                                 font.pixelSize: FiliTheme.size
                                 font.weight: selected ? FiliTheme.weightAccent : Font.Normal
                                 color: FiliTheme.text
+                            }
+                            Text {
+                                visible: modelData.key === "inbox" && (side.unreadCounts[acct.info.id] || 0) > 0
+                                anchors { right: parent.right; rightMargin: FiliTheme.space3; verticalCenter: parent.verticalCenter }
+                                text: "" + (side.unreadCounts[acct.info.id] || 0)
+                                font.family: FiliTheme.font
+                                font.pixelSize: FiliTheme.sizeSmall
+                                color: FiliTheme.muted
                             }
                             MouseArea { id: row; anchors.fill: parent; hoverEnabled: true; onClicked: acct.current ? side.mailboxChosen(modelData.key) : side.boxOfAccountChosen(acct.info.id, modelData.key) }
                         }

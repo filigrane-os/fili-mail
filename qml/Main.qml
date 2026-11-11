@@ -133,6 +133,9 @@ ApplicationWindow {
     property string removing: ""
     // A short word under the list when an action failed
     property string notice: ""
+    // A notice that is not an error links to a folder (where a file was saved); errors have none
+    property string noticeFolder: ""
+    onNoticeChanged: if (notice === "") noticeFolder = ""
 
     // Message being written (the pane next to the list shows the form instead of the reader)
     property bool composing: false
@@ -199,6 +202,9 @@ ApplicationWindow {
             "gmail_client_missing": Facteur.tr("No Google OAuth client: paste the client file first."),
             "gmail_client_unreadable": Facteur.tr("No Google OAuth client: paste the client file first."),
             "auth_port_unavailable": Facteur.tr("Port 9481 is in use: close the program that listens on it."),
+            "attachment_open_refused": Facteur.tr("This kind of file is not opened from a message: download it instead."),
+            "attachment_open_failed": Facteur.tr("No application could open this file."),
+            "attachment_unavailable": Facteur.tr("This attachment is not available."),
             "auth_timeout": Facteur.tr("Google sign-in took too long. Try again."),
             "auth_offline_access_missing": Facteur.tr("Google did not grant lasting access. Remove Facteur from your Google account permissions and try again."),
             "auth_missing_scope": Facteur.tr("Mail access was not granted: tick every permission on Google's page.")
@@ -320,7 +326,26 @@ ApplicationWindow {
         loadingMore = true;
         Facteur.list(account, listBox(), listQuery(), nextToken);
     }
+    // Unread messages of each account's inbox ({accountId: count}), shown in the sidebar
+    property var unreadCounts: ({})
+    function countUnread() {
+        for (const a of accounts)
+            Facteur.countUnread(a.id);
+    }
+    Timer { interval: 60000; running: win.accounts.length > 0; repeat: true; triggeredOnStart: true; onTriggered: win.countUnread() }
+    function appendMessages(list, known) {
+        for (const m of list)
+            if ((!listBar.unreadOnly || m.unread) && !known.has(m.id))
+                messages.append({ id: m.id, from: m.from.display || m.from.email || "", subject: m.subject, time: m.time, unread: m.unread, starred: m.starred, checked: false });
+    }
     function refresh() {
+        // What the mailbox showed last time, at once; the server's answer replaces it
+        if (messages.count === 0 && account !== "" && query === "") {
+            const kept = Facteur.cachedList(account, listBox());
+            if (kept !== "") {
+                try { appendMessages(JSON.parse(kept).messages || [], new Set()) } catch (e) {}
+            }
+        }
         nextToken = "";
         loadingMore = false;
         searchPhase = "";
@@ -328,6 +353,7 @@ ApplicationWindow {
         checkAnchor = -1;
         if (account === "")
             return;
+        countUnread();
         loading = true;
         listError = "";
         // IMAP: a quick pass in the mailbox shown (subject, sender, recipients), then the whole account and the content
@@ -408,6 +434,11 @@ ApplicationWindow {
 
     Connections {
         target: Facteur
+        function onUnreadCounted(acc, count) {
+            const next = Object.assign({}, win.unreadCounts);
+            if (count >= 0) next[acc] = count;
+            win.unreadCounts = next;
+        }
         function onListed(acc, box, rawQry, json) {
             const quick = rawQry.startsWith("scope:headers ");
             const qry = quick ? rawQry.slice(14) : rawQry;
@@ -440,9 +471,7 @@ ApplicationWindow {
             const known = new Set();
             if (more || merge)
                 for (let i = 0; i < messages.count; i++) known.add(messages.get(i).id);
-            for (const m of r.messages)
-                if ((!listBar.unreadOnly || m.unread) && !known.has(m.id))
-                    messages.append({ id: m.id, from: m.from.display || m.from.email || "", subject: m.subject, time: m.time, unread: m.unread, starred: m.starred, checked: false });
+            win.appendMessages(r.messages, known);
             if (quick) {
                 // Now the full search: content, whole account; its results come after these
                 win.searchPhase = "full";
@@ -498,7 +527,16 @@ ApplicationWindow {
         }
         function onAttachmentSaved(json) {
             const r = JSON.parse(json);
-            win.notice = r.error ? win.errorText(r.error) : Facteur.tr("Saved to %1").replace("%1", r.path);
+            win.noticeFolder = "";
+            if (r.error) win.notice = win.errorText(r.error);
+            else if (r.opened) win.notice = "";
+            else {
+                // A file gives its path, several give their folder
+                const folder = r.count !== undefined ? r.path : r.path.replace(/\/[^\/]*$/, "");
+                const shown = folder.replace(/^\/home\/[^\/]+/, "~");
+                win.notice = r.count !== undefined ? Facteur.tr("%1 attachments saved to %2").replace("%1", r.count).replace("%2", shown) : Facteur.tr("Saved to %1").replace("%1", shown);
+                win.noticeFolder = folder;
+            }
         }
         function onLabelsLoaded(acc, json) {
             if (acc !== win.account) return;
@@ -779,6 +817,7 @@ ApplicationWindow {
             width: FiliTheme.sidebarWidth
             height: parent.height
             accounts: win.accounts
+            unreadCounts: win.unreadCounts
             account: win.account
             mailbox: win.mailbox
             onAccountChosen: id => win.account = id
@@ -854,6 +893,8 @@ ApplicationWindow {
                     onReplyAll: win.startCompose("replyall")
                     onUnsubscribe: url => Qt.openUrlExternally(url)
                     onLeave: win.focusPane(1)
+                    onOpenAttachment: index => Facteur.openAttachment(win.account, win.selectedId, reader.attachments[index].attachmentId, reader.attachments[index].filename)
+                    onSaveAllAttachments: Facteur.saveAllAttachments(win.account, win.selectedId, JSON.stringify(reader.attachments.filter(a => !!a.attachmentId).map(a => ({ attachmentId: a.attachmentId, filename: a.filename }))))
                     onSaveAttachment: index => Facteur.saveAttachment(win.account, win.selectedId, reader.attachments[index].attachmentId, reader.attachments[index].filename)
                     onLoadImages: { reader.loadingImages = true; Facteur.loadImages(win.account, win.selectedId) }
                     x: panes.below ? 0 : messageList.width + FiliTheme.borderWidth
@@ -922,7 +963,14 @@ ApplicationWindow {
             }
             font.family: FiliTheme.font
             font.pixelSize: FiliTheme.sizeSmall
-            color: win.notice !== "" ? FiliTheme.danger : FiliTheme.textSecondary
+            color: win.notice === "" ? FiliTheme.textSecondary : win.noticeFolder !== "" ? FiliTheme.accentColor : FiliTheme.danger
+            font.underline: win.noticeFolder !== ""
+            MouseArea {
+                anchors.fill: parent
+                enabled: win.noticeFolder !== ""
+                cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                onClicked: Qt.openUrlExternally("file://" + win.noticeFolder)
+            }
         }
     }
     // The message being written: a card at the bottom right, over the panes

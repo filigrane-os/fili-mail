@@ -31,6 +31,49 @@ Rectangle {
         files = next;
     }
 
+    // Recipient suggestions: the address book is read once, when the card is first used
+    property var book: null
+    property Item suggestField: null
+    property var matches: []
+    property int pick: 0
+    function suggest(field) {
+        if (book === null) {
+            try { book = JSON.parse(Facteur.contacts()) } catch (e) { book = [] }
+        }
+        const t = field.text;
+        const cut = Math.max(t.lastIndexOf(","), t.lastIndexOf(";"));
+        const part = t.slice(cut + 1).trim().toLowerCase();
+        if (part.length < 2) { hideSuggest(); return }
+        const starts = [], inside = [];
+        for (const c of book) {
+            const name = (c.name || "").toLowerCase(), mail = (c.email || "").toLowerCase();
+            if (mail.startsWith(part) || name.startsWith(part)) starts.push(c);
+            else if (mail.includes(part) || name.includes(part)) inside.push(c);
+        }
+        matches = starts.concat(inside).slice(0, 6);
+        pick = 0;
+        suggestField = matches.length > 0 ? field : null;
+    }
+    function hideSuggest() { suggestField = null; matches = [] }
+    function accept(index) {
+        const f = suggestField;
+        if (!f || index < 0 || index >= matches.length) return;
+        const cut = Math.max(f.text.lastIndexOf(","), f.text.lastIndexOf(";"));
+        f.text = f.text.slice(0, cut + 1) + (cut >= 0 ? " " : "") + matches[index].email + ", ";
+        f.cursorPosition = f.text.length;
+        hideSuggest();
+    }
+    // Arrow keys move in the list, Enter and Tab take the highlighted address, Escape closes the list
+    function suggestKey(field, event) {
+        if (suggestField !== field || matches.length === 0) return false;
+        if (event.key === Qt.Key_Down) pick = (pick + 1) % matches.length;
+        else if (event.key === Qt.Key_Up) pick = (pick + matches.length - 1) % matches.length;
+        else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Tab) accept(pick);
+        else if (event.key === Qt.Key_Escape) hideSuggest();
+        else return false;
+        return true;
+    }
+
     signal submitted(var fields)
     signal cancelled()
 
@@ -87,6 +130,11 @@ Rectangle {
         selectionColor: FiliTheme.surfaceActive
         selectedTextColor: FiliTheme.text
         enabled: !compose.busy
+        // To, Cc and Bcc suggest addresses while typing
+        property bool recipient: false
+        onTextEdited: if (recipient) compose.suggest(f)
+        onActiveFocusChanged: if (!activeFocus && compose.suggestField === f) compose.hideSuggest()
+        Keys.onPressed: event => { if (recipient && compose.suggestKey(f, event)) event.accepted = true }
         background: Rectangle {
             color: "transparent"
             Rectangle { anchors { left: parent.left; right: parent.right; bottom: parent.bottom } height: f.activeFocus ? 2 : FiliTheme.borderWidth; color: f.activeFocus ? FiliTheme.accentColor : FiliTheme.border }
@@ -134,7 +182,7 @@ Rectangle {
         Item {
             width: parent.width
             height: 40
-            Line { id: to; placeholderText: Facteur.tr("To"); anchors { left: parent.left; right: ccToggles.left; rightMargin: FiliTheme.space2 } width: undefined; KeyNavigation.tab: compose.showCc ? cc : compose.showBcc ? bcc : subject }
+            Line { id: to; recipient: true; placeholderText: Facteur.tr("To"); anchors { left: parent.left; right: ccToggles.left; rightMargin: FiliTheme.space2 } width: undefined; KeyNavigation.tab: compose.showCc ? cc : compose.showBcc ? bcc : subject }
             Row {
                 id: ccToggles
                 anchors { right: parent.right; verticalCenter: parent.verticalCenter }
@@ -143,9 +191,48 @@ Rectangle {
                 Text { text: "BCC"; visible: !compose.showBcc; font.family: FiliTheme.font; font.pixelSize: FiliTheme.sizeList; font.weight: FiliTheme.weightAccent; color: FiliTheme.textSecondary; MouseArea { anchors { fill: parent; margins: -4 } onClicked: compose.showBcc = true } }
             }
         }
-        Line { id: cc; visible: compose.showCc; placeholderText: Facteur.tr("Cc"); KeyNavigation.tab: compose.showBcc ? bcc : subject }
-        Line { id: bcc; visible: compose.showBcc; placeholderText: Facteur.tr("Bcc"); KeyNavigation.tab: subject }
+        Line { id: cc; recipient: true; visible: compose.showCc; placeholderText: Facteur.tr("Cc"); KeyNavigation.tab: compose.showBcc ? bcc : subject }
+        Line { id: bcc; recipient: true; visible: compose.showBcc; placeholderText: Facteur.tr("Bcc"); KeyNavigation.tab: subject }
         Line { id: subject; placeholderText: Facteur.tr("Subject"); KeyNavigation.tab: body }
+    }
+
+    // Suggestions under the field being typed in
+    Rectangle {
+        id: suggestions
+        visible: compose.suggestField !== null && compose.matches.length > 0
+        z: 50
+        property point at: compose.suggestField ? compose.suggestField.mapToItem(compose, 0, compose.suggestField.height) : Qt.point(0, 0)
+        x: at.x
+        y: at.y
+        width: compose.suggestField ? compose.suggestField.width : 0
+        height: compose.matches.length * 32 + 2
+        radius: FiliTheme.radiusControl
+        color: FiliTheme.surface
+        border.width: FiliTheme.borderWidth
+        border.color: FiliTheme.border
+        Column {
+            anchors { fill: parent; margins: 1 }
+            Repeater {
+                model: compose.matches
+                delegate: Rectangle {
+                    required property var modelData
+                    required property int index
+                    width: parent.width
+                    height: 32
+                    radius: FiliTheme.radiusControl
+                    color: index === compose.pick ? FiliTheme.surfaceHover : "transparent"
+                    Text {
+                        anchors { left: parent.left; right: parent.right; leftMargin: FiliTheme.space2; rightMargin: FiliTheme.space2; verticalCenter: parent.verticalCenter }
+                        text: modelData.name ? modelData.name + "  " + modelData.email : modelData.email
+                        elide: Text.ElideRight
+                        font.family: FiliTheme.font
+                        font.pixelSize: FiliTheme.sizeList
+                        color: FiliTheme.text
+                    }
+                    MouseArea { anchors.fill: parent; hoverEnabled: true; onEntered: compose.pick = index; onClicked: compose.accept(index) }
+                }
+            }
+        }
     }
 
     // Body

@@ -21,6 +21,13 @@ mod tests;
 pub type Executor =
     Arc<dyn Fn(Value) -> BoxFuture<'static, Result<Value, &'static str>> + Send + Sync>;
 static SERIAL: AtomicU64 = AtomicU64::new(0);
+/// Seconds a composed message waits in the outbox before delivery (an undo window; the command line keeps 10).
+static SEND_DELAY: AtomicU64 = AtomicU64::new(10);
+
+/// A front end without an undo (the window) sends at once.
+pub fn set_send_delay(seconds: u64) {
+    SEND_DELAY.store(seconds.min(60), Ordering::Relaxed);
+}
 const MAX_ENTRIES: usize = 65536;
 const MAX_RECOVERABLE: usize = 128;
 struct State {
@@ -252,7 +259,7 @@ impl Outbox {
         let payload = tokio::task::spawn_blocking(move || prepared.payload(stamp, &seed))
             .await
             .map_err(|_| "worker_failed")??;
-        let answer = self.shared_call("outbox.enqueue", &json!({"accountId":account,"provider":provider,"sendId":id,"order":stamp,"payload":payload})).await?;
+        let answer = self.shared_call("outbox.enqueue", &json!({"accountId":account,"provider":provider,"sendId":id,"order":stamp,"payload":payload,"delaySeconds":SEND_DELAY.load(Ordering::Relaxed)})).await?;
         Ok(
             json!({"dryRun":false,"executed":true,"accountId":account,"sendId":answer["id"],"outbox":answer["snapshot"]}),
         )

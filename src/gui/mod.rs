@@ -13,6 +13,14 @@ pub fn run() -> i32 {
     cxx_qt::init_crate!(cxx_qt_lib);
     cxx_qt::init_crate!(fili_mail);
     cxx_qt::init_qml_module!("Fili.Mail");
+    // No undo in this window: a sent message leaves at once instead of waiting out the 10 s undo window
+    fili_mail::outbox::set_send_delay(0);
+    // Without a platform theme, Qt draws its own file dialog; through the portal, "Attach files" opens the desktop's
+    // file chooser (Casier on Filigrane). Must be set before the application object exists.
+    if std::env::var_os("QT_QPA_PLATFORMTHEME").is_none() {
+        // SAFETY: nothing else runs yet (single thread, before Qt starts)
+        unsafe { std::env::set_var("QT_QPA_PLATFORMTHEME", "xdgdesktopportal") };
+    }
     let mut app = QGuiApplication::new();
     // Wayland app-id (niri rules, fili-mail.desktop)
     QGuiApplication::set_desktop_file_name(&QString::from("fili-mail"));
