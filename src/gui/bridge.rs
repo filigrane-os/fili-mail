@@ -92,6 +92,13 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "loadImages"]
         fn load_images(self: Pin<&mut Facteur>, account: &QString, id: &QString);
+        // Save an attachment of a message to the Downloads folder; answered by `attachmentSaved` ({path} or {error})
+        #[qinvokable]
+        #[cxx_name = "saveAttachment"]
+        fn save_attachment(self: Pin<&mut Facteur>, account: &QString, id: &QString, attachment: &QString, filename: &QString);
+        #[qsignal]
+        #[cxx_name = "attachmentSaved"]
+        fn attachment_saved(self: Pin<&mut Facteur>, result: &QString);
         // Send a message: fields = JSON {to, cc, bcc, subject, body} (address lists as strings);
         // answered by `sent` (JSON result or {error})
         #[qinvokable]
@@ -422,6 +429,19 @@ impl qobject::Facteur {
         });
     }
 
+    pub fn save_attachment(self: Pin<&mut Self>, account: &QString, id: &QString, attachment: &QString, filename: &QString) {
+        let (account, id, attachment, filename) = (account.to_string(), id.to_string(), attachment.to_string(), filename.to_string());
+        let qt = self.qt_thread();
+        let (runtime, session) = engine();
+        runtime.spawn(async move {
+            let out = match store_attachment(session, &account, &id, &attachment, &filename).await {
+                Ok(v) => v.to_string(),
+                Err(e) => error_json(e),
+            };
+            let _ = qt.queue(move |f| f.attachment_saved(&QString::from(&out)));
+        });
+    }
+
     pub fn about_rows(&self) -> QString {
         let t = |s: &str| super::i18n::tr(s);
         let home = env::var("HOME").unwrap_or_default();
@@ -456,6 +476,20 @@ impl qobject::Facteur {
     }
 }
 
+/// Fetch one attachment (Gmail: by its attachment id) and write it in Downloads under a name that never overwrites.
+async fn store_attachment(session: &Session, account: &str, id: &str, attachment: &str, filename: &str) -> Result<Value, &'static str> {
+    if attachment.is_empty() {
+        return Err("attachment_unavailable");
+    }
+    let answer = session
+        .dispatch("gmail.attachment", &json!({"accountId": account, "messageId": id, "attachmentId": attachment}))
+        .await?;
+    let data = answer["data"].as_str().ok_or("attachment_data_invalid")?;
+    session
+        .dispatch("attachment.store", &json!({"filename": filename, "data": data, "open": false}))
+        .await
+}
+
 /// Split an address field ("a@x.org, b@y.org") into the list the engine wants.
 fn address_list(text: &str) -> Vec<String> {
     text.split([',', ';'])
@@ -475,6 +509,7 @@ async fn send_message(session: &Session, account: &str, fields: &str) -> Result<
         "bcc": address_list(&text("bcc")),
         "subject": text("subject"),
         "body": text("body"),
+        "attachments": fields["attachments"].as_array().cloned().unwrap_or_default(),
         "inReplyTo": text("inReplyTo"),
         "references": text("references"),
         "execute": true,

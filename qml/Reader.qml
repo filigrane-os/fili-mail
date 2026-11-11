@@ -26,8 +26,16 @@ Rectangle {
     signal forward()
     signal loadImages()
     signal unsubscribe(string url)
+    // Files attached to the message ({filename, mimeType, size, attachmentId}); clicking one saves it
+    property var attachments: []
+    signal saveAttachment(int index)
     color: FiliTheme.backgroundDeep
 
+    function sizeText(bytes) {
+        if (bytes < 1024) return bytes + " B";
+        if (bytes < 1048576) return Math.round(bytes / 1024) + " KB";
+        return (bytes / 1048576).toFixed(1) + " MB";
+    }
     function names(list) {
         return (list || []).map(a => a.display || a.email).join(", ");
     }
@@ -156,6 +164,43 @@ Rectangle {
                             anchors { right: parent.right; rightMargin: FiliTheme.space2; verticalCenter: parent.verticalCenter }
                             label: Facteur.tr("Unsubscribe")
                             onClicked: reader.unsubscribe(reader.unsubscribeUrl)
+                        }
+                    }
+                    Flow {
+                        visible: reader.attachments.length > 0
+                        width: parent.width
+                        spacing: FiliTheme.space2
+                        Repeater {
+                            model: reader.attachments
+                            Rectangle {
+                                required property var modelData
+                                required property int index
+                                width: Math.min(chipText.implicitWidth + 2 * FiliTheme.space3 + 14 + FiliTheme.space2, content.width)
+                                height: 28
+                                radius: FiliTheme.radiusControl
+                                color: chipArea.containsMouse ? FiliTheme.surfaceHover : FiliTheme.surface
+                                border.width: FiliTheme.borderWidth
+                                border.color: FiliTheme.border
+                                Icon { x: FiliTheme.space3; anchors.verticalCenter: parent.verticalCenter; name: "archive"; size: 14; color: FiliTheme.textSecondary }
+                                Text {
+                                    id: chipText
+                                    x: FiliTheme.space3 + 14 + FiliTheme.space2
+                                    width: parent.width - x - FiliTheme.space3
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: modelData.filename + "  ·  " + reader.sizeText(modelData.size)
+                                    elide: Text.ElideMiddle
+                                    font.family: FiliTheme.font
+                                    font.pixelSize: FiliTheme.sizeList
+                                    color: modelData.attachmentId ? FiliTheme.text : FiliTheme.muted
+                                }
+                                MouseArea {
+                                    id: chipArea
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    enabled: !!modelData.attachmentId
+                                    onClicked: reader.saveAttachment(index)
+                                }
+                            }
                         }
                     }
                     Flow {

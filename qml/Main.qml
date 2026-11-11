@@ -208,6 +208,7 @@ ApplicationWindow {
         if (row >= 0 && messages.get(row).unread)
             doAct("read", id);
         reader.summary = null;
+        reader.attachments = [];
         reader.body = "";
         reader.rich = "";
         reader.unsubscribeUrl = "";
@@ -273,7 +274,12 @@ ApplicationWindow {
             reader.rich = r.message.rich || "";
             reader.remoteImages = r.message.remoteImages || 0;
             reader.unsubscribeUrl = (r.message.unsubscribe && r.message.unsubscribe.urls && r.message.unsubscribe.urls[0]) || "";
+            reader.attachments = r.message.nativeContent.attachments || [];
             reader.loadingImages = false;
+        }
+        function onAttachmentSaved(json) {
+            const r = JSON.parse(json);
+            win.notice = r.error ? win.errorText(r.error) : Facteur.tr("Saved to %1").replace("%1", r.path);
         }
         function onActed(acc, operation, ids, json) {
             if (acc !== win.account)
@@ -493,6 +499,7 @@ ApplicationWindow {
             onForward: win.startCompose("forward")
             onReplyAll: win.startCompose("replyall")
             onUnsubscribe: url => Qt.openUrlExternally(url)
+            onSaveAttachment: index => Facteur.saveAttachment(win.account, win.selectedId, reader.attachments[index].attachmentId, reader.attachments[index].filename)
             onLoadImages: { reader.loadingImages = true; Facteur.loadImages(win.account, win.selectedId) }
             width: parent.width - FiliTheme.sidebarWidth - messageList.width - 2 * FiliTheme.borderWidth
             height: parent.height
