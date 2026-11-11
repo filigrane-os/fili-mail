@@ -60,7 +60,7 @@ ApplicationWindow {
         contextKind = kind;
         contextData = data;
         const entries = kind === "label" && data.folder
-            ? [{ id: "color", label: Facteur.tr("Change colour…") }]
+            ? [{ id: "edit", label: Facteur.tr("Rename…") }, { id: "color", label: Facteur.tr("Change colour…") }, { id: "delete", label: Facteur.tr("Delete…"), danger: true }]
             : kind === "account"
             ? [{ id: "edit", label: Facteur.tr("Edit account…") }, { id: "remove", label: Facteur.tr("Remove account…"), danger: true }]
             : [{ id: "edit", label: Facteur.tr("Edit label…") }, { id: "delete", label: Facteur.tr("Delete label…"), danger: true }];
@@ -87,8 +87,16 @@ ApplicationWindow {
         for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
         return nameColors[h % nameColors.length];
     }
+    // IMAP account whose server is Proton Bridge (labels and folders live under "Labels/" and "Folders/")
+    property bool bridge: false
+    function isImap() { const a = accounts.find(x => x.id === account); return !!a && (a.provider === "imap" || a.provider === "outlook"); }
     function loadLabels() {
         labels = [];
+        bridge = false;
+        if (isImap()) {
+            const d = JSON.parse(Facteur.accountDetails(account));
+            bridge = !d.error && !!d.imap && d.imap.imapHost === "127.0.0.1";
+        }
         const a = accounts.find(x => x.id === account);
         if (a && a.provider === "gmail") Facteur.loadLabels(account);
         else if (a && (a.provider === "imap" || a.provider === "outlook")) Facteur.loadFolders(account);
@@ -710,7 +718,8 @@ ApplicationWindow {
             onAccountChosen: id => win.account = id
             onMailboxChosen: key => win.mailbox = key
             labels: win.labels
-            onAddLabelRequested: { labelDialog.error = ""; labelDialog.open() }
+            onAddLabelRequested: { labelDialog.error = ""; labelDialog.imap = win.isImap(); labelDialog.bridge = win.bridge; labelDialog.open() }
+            sectionTitle: win.isImap() && !win.bridge ? Facteur.tr("Folders") : Facteur.tr("Labels")
             onAddAccount: { win.addError = ""; win.adding = true }
             onContextRequested: (kind, data, x, y) => win.openContext(kind, data, x, y)
         }
@@ -867,13 +876,35 @@ ApplicationWindow {
                 win.labels = win.labels.map(l => l.id === id ? Object.assign({}, l, { color: background }) : l);
                 return;
             }
+            if (editId !== "" && win.isImap()) {
+                // Rename a folder of the server: its colour follows
+                const old = win.labels.find(l => l.id === editId);
+                const raw = (old ? old.prefix : "") + name;
+                if (raw !== editId) {
+                    const color = background !== "" ? background : Facteur.uiGet("color:" + win.account + ":" + editId);
+                    if (color !== "") Facteur.uiSet("color:" + win.account + ":" + raw, color);
+                    if (win.mailbox === "folder:" + editId) win.mailbox = "folder:" + raw;
+                    Facteur.renameFolder(win.account, editId, raw);
+                } else if (background !== "") {
+                    Facteur.uiSet("color:" + win.account + ":" + editId, background);
+                    win.labels = win.labels.map(l => l.id === editId ? Object.assign({}, l, { color: background }) : l);
+                    busy = false;
+                    visible = false;
+                }
+                return;
+            }
             if (editId !== "") {
                 // A view of this label follows its new name
                 const old = win.labels.find(l => l.id === editId);
                 if (old && win.mailbox === "label:" + old.rawName) win.mailbox = "label:" + name;
                 Facteur.updateLabel(win.account, editId, name, background, text);
             }
-            else Facteur.createLabel(win.account, name, background, text);
+            else if (win.isImap()) {
+                // A folder of the server; its colour is only kept here
+                const raw = (win.bridge ? (kind === "folder" ? "Folders/" : "Labels/") : "") + name;
+                if (background !== "") Facteur.uiSet("color:" + win.account + ":" + raw, background);
+                Facteur.createFolder(win.account, raw);
+            } else Facteur.createLabel(win.account, name, background, text);
         }
     }
     AccountDialog {
@@ -900,7 +931,7 @@ ApplicationWindow {
         Row {
             anchors { right: parent.right; rightMargin: FiliTheme.margin; verticalCenter: parent.verticalCenter }
             spacing: FiliTheme.space2
-            TextButton { label: Facteur.tr("Delete"); primary: true; onClicked: { if (win.mailbox === "label:" + win.deletingLabel.rawName) win.mailbox = "inbox"; Facteur.deleteLabel(win.account, win.deletingLabel.id); win.deletingLabel = null } }
+            TextButton { label: Facteur.tr("Delete"); primary: true; onClicked: { const gone = win.deletingLabel; if (win.mailbox === "label:" + gone.rawName || win.mailbox === "folder:" + gone.id) win.mailbox = "inbox"; if (gone.folder) Facteur.deleteFolder(win.account, gone.id); else Facteur.deleteLabel(win.account, gone.id); win.deletingLabel = null } }
             TextButton { label: Facteur.tr("Cancel"); onClicked: win.deletingLabel = null }
         }
     }

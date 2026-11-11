@@ -21,6 +21,10 @@ Rectangle {
     property string editColor: ""
     // Colour only (labels of IMAP servers, which have none: the colour is kept on this computer)
     property bool colorOnly: false
+    // IMAP account: the label is a folder of the server; with Proton Bridge it is a label ("Labels/") or a folder ("Folders/")
+    property bool imap: false
+    property bool bridge: false
+    property string kind: "label"
     function bg() { return pick >= 0 ? swatches[pick][0] : editColor; }
     function fg() { return pick >= 0 ? swatches[pick][1] : "#ffffff"; }
 
@@ -34,6 +38,7 @@ Rectangle {
         visible = true;
     }
     function open() {
+        kind = "label";
         colorOnly = false;
         editId = "";
         editColor = "";
@@ -82,7 +87,7 @@ Rectangle {
             width: parent.width - 2 * FiliTheme.margin
             spacing: FiliTheme.space3
             Text {
-                text: dialog.colorOnly ? Facteur.tr("Label colour") : dialog.editId !== "" ? Facteur.tr("Edit label") : Facteur.tr("New label")
+                text: dialog.colorOnly ? Facteur.tr("Label colour") : dialog.editId !== "" ? Facteur.tr("Edit label") : dialog.imap && !dialog.bridge ? Facteur.tr("New folder") : Facteur.tr("New label")
                 font.family: FiliTheme.font
                 font.pixelSize: FiliTheme.sizeTitle
                 font.weight: FiliTheme.weightAccent
@@ -94,6 +99,12 @@ Rectangle {
                 placeholderText: Facteur.tr("Label name")
                 enabled: !dialog.busy && !dialog.colorOnly
                 onAccepted: dialog.submit()
+            }
+            Row {
+                visible: dialog.imap && dialog.bridge && dialog.editId === ""
+                spacing: FiliTheme.space2
+                TextButton { label: (dialog.kind === "label" ? "● " : "○ ") + Facteur.tr("Label"); onClicked: dialog.kind = "label" }
+                TextButton { label: (dialog.kind === "folder" ? "● " : "○ ") + Facteur.tr("Folder"); onClicked: dialog.kind = "folder" }
             }
             Text {
                 text: Facteur.tr("Colour")

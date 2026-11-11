@@ -9,6 +9,8 @@ Rectangle {
     property string mailbox: "inbox"
     // Labels the user made ({name, rawName, unread}); each one is a mailbox "label:<rawName>"
     property var labels: []
+    // Heading of that section: "Labels" (Gmail, Proton) or "Folders" (plain IMAP)
+    property string sectionTitle: Facteur.tr("Labels")
     signal accountChosen(string id)
     signal mailboxChosen(string key)
     signal addAccount()
@@ -125,7 +127,7 @@ Rectangle {
                     // Labels (Gmail): heading with fold arrow and a button to make one
                     Rectangle {
                         id: labelsHead
-                        visible: current && acct.open && (modelData.provider === "gmail" || side.labels.length > 0)
+                        visible: current && acct.open
                         readonly property bool open: !side.isFolded("labels:" + modelData.id)
                         width: parent.width
                         height: visible ? FiliTheme.sideRowHeight + FiliTheme.space4 : 0
@@ -140,7 +142,7 @@ Rectangle {
                         }
                         Text {
                             anchors { left: lArrow.right; leftMargin: FiliTheme.space2; bottom: parent.bottom; bottomMargin: (FiliTheme.sideRowHeight - height) / 2 }
-                            text: modelData.provider === "gmail" || (side.labels.length > 0 && side.labels[0].group !== "Folders") ? Facteur.tr("Labels") : Facteur.tr("Folders")
+                            text: side.sectionTitle
                             font.family: FiliTheme.font
                             font.pixelSize: FiliTheme.sizeSmall
                             font.weight: FiliTheme.weightAccent
@@ -148,7 +150,6 @@ Rectangle {
                         }
                         MouseArea { id: lhArea; anchors.fill: parent; hoverEnabled: true; onClicked: side.toggle("labels:" + modelData.id) }
                         IconButton {
-                            visible: modelData.provider === "gmail"
                             anchors { right: parent.right; rightMargin: FiliTheme.space2; bottom: parent.bottom; bottomMargin: (FiliTheme.sideRowHeight - height) / 2 }
                             glyph: "+"
                             tip: Facteur.tr("New label")

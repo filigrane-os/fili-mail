@@ -42,6 +42,16 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "loadFolders"]
         fn load_folders(self: Pin<&mut Facteur>, account: &QString);
+        // Folders of an IMAP account: create, rename, delete; answered by `labelChanged`
+        #[qinvokable]
+        #[cxx_name = "createFolder"]
+        fn create_folder(self: Pin<&mut Facteur>, account: &QString, name: &QString);
+        #[qinvokable]
+        #[cxx_name = "renameFolder"]
+        fn rename_folder(self: Pin<&mut Facteur>, account: &QString, id: &QString, name: &QString);
+        #[qinvokable]
+        #[cxx_name = "deleteFolder"]
+        fn delete_folder(self: Pin<&mut Facteur>, account: &QString, id: &QString);
         // Window management under niri (the window panel of the toolbar)
         #[qinvokable]
         #[cxx_name = "windowControl"]
@@ -377,13 +387,40 @@ impl qobject::Facteur {
                 .map(|l| {
                     let raw = l["rawName"].as_str().unwrap_or("");
                     let shown = l["name"].as_str().unwrap_or(raw);
-                    let name = shown.strip_prefix("Labels/").or_else(|| shown.strip_prefix("Folders/")).unwrap_or(shown);
-                    json!({"id": raw, "rawName": name, "color": "", "unread": 0, "folder": true, "group": if raw.starts_with("Folders/") { "Folders" } else { "Labels" }})
+                    let prefix = if shown.starts_with("Labels/") { "Labels/" } else if shown.starts_with("Folders/") { "Folders/" } else { "" };
+                    let name = &shown[prefix.len()..];
+                    json!({"id": raw, "rawName": name, "prefix": prefix, "color": "", "unread": 0, "folder": true, "group": if prefix == "Folders/" { "Folders" } else { "Labels" }})
                 })
                 .collect();
             folders.sort_by_key(|l| (l["group"].as_str().unwrap_or("").to_owned(), l["rawName"].as_str().unwrap_or("").to_lowercase()));
             let out = Value::Array(folders).to_string();
             let _ = qt.queue(move |f| f.labels_loaded(&QString::from(&account), &QString::from(&out)));
+        });
+    }
+
+    pub fn create_folder(self: Pin<&mut Self>, account: &QString, name: &QString) {
+        self.folder_call("imap.createFolder", json!({"name": name.to_string()}), account);
+    }
+
+    pub fn rename_folder(self: Pin<&mut Self>, account: &QString, id: &QString, name: &QString) {
+        self.folder_call("imap.renameFolder", json!({"id": id.to_string(), "name": name.to_string()}), account);
+    }
+
+    pub fn delete_folder(self: Pin<&mut Self>, account: &QString, id: &QString) {
+        self.folder_call("imap.deleteFolder", json!({"id": id.to_string()}), account);
+    }
+
+    fn folder_call(self: Pin<&mut Self>, method: &'static str, mut params: Value, account: &QString) {
+        let account = account.to_string();
+        params["accountId"] = json!(account);
+        let qt = self.qt_thread();
+        let (runtime, session) = engine();
+        runtime.spawn(async move {
+            let out = match session.dispatch(method, &params).await {
+                Ok(v) => v.to_string(),
+                Err(e) => error_json(e),
+            };
+            let _ = qt.queue(move |f| f.label_changed(&QString::from(&account), &QString::from(&out)));
         });
     }
 
