@@ -20,6 +20,12 @@ ApplicationWindow {
     property var accounts: []
     property string account: ""
     property string mailbox: "inbox"
+    // Reader beside the list ("right", default) or under it ("below"); the choice is kept
+    property string preview: Facteur.uiGet("preview") === "below" ? "below" : "right"
+    function togglePreview() {
+        preview = preview === "below" ? "right" : "below";
+        Facteur.uiSet("preview", preview);
+    }
     // A label (Gmail) is a mailbox named "label:NAME": it lists everything carrying it except spam and trash
     property var labels: []
     function listBox() { return mailbox.startsWith("label:") ? "archive" : mailbox; }
@@ -559,6 +565,7 @@ ApplicationWindow {
             id: tools
             anchors { right: search.left; rightMargin: FiliTheme.space3; verticalCenter: parent.verticalCenter }
             spacing: FiliTheme.space1
+            IconButton { name: win.preview === "below" ? "layout-below" : "layout-right"; tip: win.preview === "below" ? Facteur.tr("Preview on the right") : Facteur.tr("Preview below"); onClicked: win.togglePreview() }
             IconButton { name: "refresh"; tip: Facteur.tr("Refresh"); onClicked: win.refresh() }
             IconButton { name: "compose"; tip: Facteur.tr("New message"); onClicked: win.startCompose("new") }
         }
@@ -682,13 +689,15 @@ ApplicationWindow {
                 canNext: win.selectedId !== "" && win.rowOf(win.selectedId) < messages.count - 1
             }
             Rectangle { width: parent.width; height: FiliTheme.borderWidth; color: FiliTheme.border }
-            Row {
+            Item {
+                id: panes
                 width: parent.width
                 height: parent.height - listBar.height - FiliTheme.borderWidth
+                readonly property bool below: win.preview === "below"
                 MessageList {
                     id: messageList
-                    width: Math.max(250, Math.min(340, win.width * 0.34))
-                    height: parent.height
+                    width: panes.below ? panes.width : Math.max(250, Math.min(340, win.width * 0.34))
+                    height: panes.below ? Math.max(140, Math.min(panes.height * 0.4, 340)) : panes.height
                     model: messages
                     selectedId: win.selectedId
                     onAct: operation => win.actOnSelection(operation)
@@ -700,7 +709,13 @@ ApplicationWindow {
                     emptyText: win.listError !== "" ? win.listError : win.loading ? "…" : Facteur.tr("No message")
                     onChosen: id => win.choose(id)
                 }
-                Rectangle { width: FiliTheme.borderWidth; height: parent.height; color: FiliTheme.border }
+                Rectangle {
+                    x: panes.below ? 0 : messageList.width
+                    y: panes.below ? messageList.height : 0
+                    width: panes.below ? panes.width : FiliTheme.borderWidth
+                    height: panes.below ? FiliTheme.borderWidth : panes.height
+                    color: FiliTheme.border
+                }
                 Reader {
                     id: reader
                     onAct: operation => win.doAct(operation, win.selectedId)
@@ -710,8 +725,10 @@ ApplicationWindow {
                     onUnsubscribe: url => Qt.openUrlExternally(url)
                     onSaveAttachment: index => Facteur.saveAttachment(win.account, win.selectedId, reader.attachments[index].attachmentId, reader.attachments[index].filename)
                     onLoadImages: { reader.loadingImages = true; Facteur.loadImages(win.account, win.selectedId) }
-                    width: parent.width - messageList.width - FiliTheme.borderWidth
-                    height: parent.height
+                    x: panes.below ? 0 : messageList.width + FiliTheme.borderWidth
+                    y: panes.below ? messageList.height + FiliTheme.borderWidth : 0
+                    width: panes.below ? panes.width : panes.width - x
+                    height: panes.below ? panes.height - y : panes.height
                     Compose {
                         id: composer
                         anchors.fill: parent

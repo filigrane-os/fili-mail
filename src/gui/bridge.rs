@@ -48,6 +48,13 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "windowAction"]
         fn window_action(self: &Facteur, name: &QString) -> bool;
+        // Interface state kept between runs (~/.local/state/filigrane/mail/ui, lines key=value)
+        #[qinvokable]
+        #[cxx_name = "uiGet"]
+        fn ui_get(self: &Facteur, key: &QString) -> QString;
+        #[qinvokable]
+        #[cxx_name = "uiSet"]
+        fn ui_set(self: &Facteur, key: &QString, value: &QString);
         // Translation of a text written in English
         #[qinvokable]
         fn tr(self: &Facteur, text: &QString) -> QString;
@@ -197,6 +204,12 @@ fn home() -> String {
     env::var("HOME").unwrap_or_default()
 }
 
+// Interface choices that outlive the window (layout of the panes)
+fn ui_file() -> PathBuf {
+    let state = env::var("XDG_STATE_HOME").unwrap_or_else(|_| format!("{}/.local/state", home()));
+    PathBuf::from(state).join("filigrane/mail/ui")
+}
+
 // State of fili-theme ("light" or "dark"), like FiliTheme.qml of the fili-shell
 fn theme_file() -> PathBuf {
     let state = env::var("XDG_STATE_HOME").unwrap_or_else(|_| format!("{}/.local/state", home()));
@@ -322,6 +335,25 @@ impl qobject::Facteur {
             };
             let _ = qt.queue(move |f| f.label_created(&QString::from(&account), &QString::from(&out)));
         });
+    }
+
+    pub fn ui_get(&self, key: &QString) -> QString {
+        let key = key.to_string();
+        let text = std::fs::read_to_string(ui_file()).unwrap_or_default();
+        let value = text.lines().find_map(|l| l.strip_prefix(&format!("{key}="))).unwrap_or("");
+        QString::from(value)
+    }
+
+    pub fn ui_set(&self, key: &QString, value: &QString) {
+        let (key, value) = (key.to_string(), value.to_string());
+        let path = ui_file();
+        let old = std::fs::read_to_string(&path).unwrap_or_default();
+        let mut lines: Vec<String> = old.lines().filter(|l| !l.starts_with(&format!("{key}="))).map(str::to_owned).collect();
+        lines.push(format!("{key}={value}"));
+        if let Some(dir) = path.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        let _ = std::fs::write(&path, lines.join("\n") + "\n");
     }
 
     pub fn window_control(&self) -> bool {
