@@ -42,7 +42,7 @@ pub(super) fn normalize(method: &str, answer: Value) -> Value {
             if id.is_empty() { return None; }
             let name = text(&label["name"]);
             let raw = if name.is_empty() {id} else {name};
-            Some(json!({"id":id,"name":display(id,raw),"rawName":raw,"system":text(&label["type"])=="system",
+            Some(json!({"id":id,"name":display(id,raw),"rawName":raw,"system":text(&label["type"])=="system","color":text(&label["color"]["backgroundColor"]),
                 "unread":count(&label["messagesUnread"]),"total":count(&label["messagesTotal"]),"threadsUnread":count(&label["threadsUnread"])}))
         }).collect()),
         "gmail.labelCounts" => json!({"id":text(&answer["id"]),"unread":count(&answer["messagesUnread"]),"total":count(&answer["messagesTotal"]),"threadsUnread":count(&answer["threadsUnread"])}),
@@ -69,13 +69,13 @@ mod tests {
                 "gmail.labels",
                 json!({"labels":[
                     {"id":"INBOX","name":"INBOX","type":"system","messagesUnread":7,"messagesTotal":120,"threadsUnread":5},
-                    {"id":"Label_12","name":"Receipts","messagesUnread":-3,"messagesTotal":"9.8"},
+                    {"id":"Label_12","name":"Receipts","color":{"backgroundColor":"#16a766","textColor":"#ffffff"},"messagesUnread":-3,"messagesTotal":"9.8"},
                     {"name":"missing id"}
                 ]})
             ),
             json!([
-                {"id":"INBOX","name":"Inbox","rawName":"INBOX","system":true,"unread":7,"total":120,"threadsUnread":5},
-                {"id":"Label_12","name":"Receipts","rawName":"Receipts","system":false,"unread":0,"total":9,"threadsUnread":0}
+                {"id":"INBOX","name":"Inbox","rawName":"INBOX","system":true,"color":"","unread":7,"total":120,"threadsUnread":5},
+                {"id":"Label_12","name":"Receipts","rawName":"Receipts","system":false,"color":"#16a766","unread":0,"total":9,"threadsUnread":0}
             ])
         );
     }

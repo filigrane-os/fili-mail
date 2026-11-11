@@ -61,14 +61,23 @@ Rectangle {
                         }
                     }
                     Repeater {
-                        model: current ? side.boxes.concat(side.labels.length > 0 ? [{ key: "", label: Facteur.tr("Labels"), heading: true }] : []).concat(side.labels.map(l => ({ key: "label:" + l.rawName, label: l.rawName, unread: l.unread }))) : []
+                        model: current ? side.boxes.concat(side.labels.length > 0 ? [{ key: "", label: Facteur.tr("Labels"), heading: true }] : []).concat(side.labels.map(l => ({ key: "label:" + l.rawName, label: l.rawName, unread: l.unread, color: l.color || "", dot: true }))) : []
                         delegate: Rectangle {
                             width: column.width
                             height: FiliTheme.sideRowHeight
                             readonly property bool selected: !modelData.heading && side.mailbox === modelData.key
                             color: selected ? FiliTheme.surfaceHover : row.containsMouse ? FiliTheme.alpha(FiliTheme.surfaceHover, 0.5) : "transparent"
+                            Rectangle { // colour of the label: a dot (grey ring when the label has none)
+                                visible: !!modelData.dot
+                                x: FiliTheme.margin / 2 + FiliTheme.space2
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 10; height: 10; radius: 5
+                                color: modelData.color || "transparent"
+                                border.width: modelData.color ? 0 : 1
+                                border.color: FiliTheme.muted
+                            }
                             Text {
-                                anchors { left: parent.left; right: parent.right; leftMargin: FiliTheme.margin / 2 + FiliTheme.space2; verticalCenter: parent.verticalCenter }
+                                anchors { left: parent.left; right: parent.right; leftMargin: FiliTheme.margin / 2 + FiliTheme.space2 + (modelData.dot ? 16 : 0); verticalCenter: parent.verticalCenter }
                                 text: modelData.label
                                 elide: Text.ElideRight
                                 font.family: FiliTheme.font
