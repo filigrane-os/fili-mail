@@ -24,6 +24,23 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "themeJson"]
         fn theme_json(self: &Facteur) -> QString;
+        // Labels of a Gmail account (the ones the user made); answered by `labelsLoaded` (JSON array)
+        #[qinvokable]
+        #[cxx_name = "loadLabels"]
+        fn load_labels(self: Pin<&mut Facteur>, account: &QString);
+        #[qsignal]
+        #[cxx_name = "labelsLoaded"]
+        fn labels_loaded(self: Pin<&mut Facteur>, account: &QString, result: &QString);
+        // Window management under niri (the window panel of the toolbar)
+        #[qinvokable]
+        #[cxx_name = "windowControl"]
+        fn window_control(self: &Facteur) -> bool;
+        #[qinvokable]
+        #[cxx_name = "windowState"]
+        fn window_state(self: &Facteur) -> QString;
+        #[qinvokable]
+        #[cxx_name = "windowAction"]
+        fn window_action(self: &Facteur, name: &QString) -> bool;
         // Translation of a text written in English
         #[qinvokable]
         fn tr(self: &Facteur, text: &QString) -> QString;
@@ -248,6 +265,34 @@ impl cxx_qt::Initialize for Facteur {
 impl qobject::Facteur {
     pub fn theme_json(&self) -> QString {
         QString::from(&super::theme::theme_json())
+    }
+
+    pub fn load_labels(self: Pin<&mut Self>, account: &QString) {
+        let account = account.to_string();
+        let qt = self.qt_thread();
+        let (runtime, session) = engine();
+        runtime.spawn(async move {
+            let out = match session.dispatch("gmail.labels", &json!({"accountId": account})).await {
+                Ok(v) => v,
+                Err(_) => json!([]),
+            };
+            let mut labels: Vec<Value> = out.as_array().cloned().unwrap_or_default().into_iter().filter(|l| l["system"] == false).collect();
+            labels.sort_by_key(|l| l["rawName"].as_str().unwrap_or("").to_lowercase());
+            let out = Value::Array(labels).to_string();
+            let _ = qt.queue(move |f| f.labels_loaded(&QString::from(&account), &QString::from(&out)));
+        });
+    }
+
+    pub fn window_control(&self) -> bool {
+        fili_mail::window::available()
+    }
+
+    pub fn window_state(&self) -> QString {
+        QString::from(&fili_mail::window::state())
+    }
+
+    pub fn window_action(&self, name: &QString) -> bool {
+        fili_mail::window::run(&name.to_string())
     }
 
     pub fn tr(&self, text: &QString) -> QString {

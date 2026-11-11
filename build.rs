@@ -23,6 +23,8 @@ fn main() {
                 "qml/MessageList.qml",
                 "qml/Reader.qml",
                 "qml/FiliScrollBar.qml",
+                "qml/WindowGlyph.qml",
+                "qml/WindowPanel.qml",
                 "qml/KineticScroll.qml",
                 "qml/Compose.qml",
                 "qml/AboutCard.qml",

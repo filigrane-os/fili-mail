@@ -21,3 +21,4 @@ pub mod providers;
 pub mod public_http;
 pub mod sync;
 pub mod tls;
+pub mod window;

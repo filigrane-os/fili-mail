@@ -20,6 +20,15 @@ ApplicationWindow {
     property var accounts: []
     property string account: ""
     property string mailbox: "inbox"
+    // A label (Gmail) is a mailbox named "label:NAME": it lists everything carrying it except spam and trash
+    property var labels: []
+    function listBox() { return mailbox.startsWith("label:") ? "archive" : mailbox; }
+    function listQuery() { return mailbox.startsWith("label:") ? ("label:\"" + mailbox.slice(6) + "\" " + query).trim() : query; }
+    function loadLabels() {
+        labels = [];
+        const a = accounts.find(x => x.id === account);
+        if (a && a.provider === "gmail") Facteur.loadLabels(account);
+    }
     // Search text applied to the list (typed text waits a moment in the toolbar field)
     property string query: ""
     // Places visited (account, mailbox, search) for the back and forward buttons
@@ -153,7 +162,7 @@ ApplicationWindow {
     }
     function boxLabel() {
         const names = { inbox: Facteur.tr("Inbox"), unread: Facteur.tr("Unread"), starred: Facteur.tr("Starred"), sent: Facteur.tr("Sent"), drafts: Facteur.tr("Drafts"), archive: Facteur.tr("Archive"), spam: Facteur.tr("Spam"), trash: Facteur.tr("Trash") };
-        return names[mailbox] || mailbox;
+        return names[mailbox] || (mailbox.startsWith("label:") ? mailbox.slice(6) : mailbox);
     }
     function unreadCount() {
         let n = 0;
@@ -219,7 +228,7 @@ ApplicationWindow {
             return;
         loading = true;
         listError = "";
-        Facteur.list(account, mailbox, query);
+        Facteur.list(account, listBox(), listQuery());
     }
 
     function rowOf(id) {
@@ -291,7 +300,7 @@ ApplicationWindow {
     Connections {
         target: Facteur
         function onListed(acc, box, qry, json) {
-            if (acc !== win.account || box !== win.mailbox || qry !== win.query)
+            if (acc !== win.account || box !== win.listBox() || qry !== win.listQuery())
                 return;
             win.loading = false;
             const r = JSON.parse(json);
@@ -352,6 +361,9 @@ ApplicationWindow {
             const r = JSON.parse(json);
             win.notice = r.error ? win.errorText(r.error) : Facteur.tr("Saved to %1").replace("%1", r.path);
         }
+        function onLabelsLoaded(acc, json) {
+            if (acc === win.account) win.labels = JSON.parse(json);
+        }
         function onActed(acc, operation, ids, json) {
             if (acc !== win.account)
                 return;
@@ -396,11 +408,12 @@ ApplicationWindow {
         visit();
         refresh();
     }
-    onAccountChanged: { messages.clear(); selectedId = ""; reader.summary = null; visit(); refresh() }
+    onAccountChanged: { messages.clear(); selectedId = ""; reader.summary = null; if (mailbox.startsWith("label:")) mailbox = "inbox"; loadLabels(); visit(); refresh() }
     onMailboxChanged: { messages.clear(); selectedId = ""; reader.summary = null; visit(); refresh() }
     onQueryChanged: { messages.clear(); selectedId = ""; reader.summary = null; visit(); refresh() }
 
     Shortcut { sequences: ["Ctrl+Q", "Ctrl+W"]; onActivated: Qt.quit() }
+    Shortcut { sequences: ["Ctrl+Shift+W"]; enabled: toolbar.visible; onActivated: windowPanel.visible ? windowPanel.close() : windowPanel.open() }
     Shortcut { sequences: ["F5", "Ctrl+R"]; enabled: !win.adding && win.account !== ""; onActivated: win.refresh() }
     Shortcut { sequences: ["Alt+Left"]; enabled: !win.adding && win.hindex > 0; onActivated: win.go(-1) }
     Shortcut { sequences: ["Alt+Right"]; enabled: !win.adding && win.hindex < win.history.length - 1; onActivated: win.go(1) }
@@ -481,9 +494,40 @@ ApplicationWindow {
             IconButton { name: "refresh"; tip: Facteur.tr("Refresh"); onClicked: win.refresh() }
             IconButton { name: "compose"; tip: Facteur.tr("New message"); onClicked: win.startCompose("new") }
         }
+        // Window buttons at the far right: close, and the panel of window actions (niri)
+        Rectangle {
+            id: closeButton
+            anchors { right: parent.right; rightMargin: (toolbar.height - height) / 2; verticalCenter: parent.verticalCenter }
+            width: 28
+            height: 24
+            radius: FiliTheme.radiusControl
+            color: closeArea.pressed ? FiliTheme.danger : closeArea.containsMouse ? FiliTheme.alpha(FiliTheme.danger, 0.75) : "transparent"
+            WindowGlyph {
+                anchors.centerIn: parent
+                kind: "close"
+                width: 16
+                height: 16
+                color: closeArea.containsMouse ? "#ffffff" : FiliTheme.text
+            }
+            MouseArea { id: closeArea; anchors.fill: parent; hoverEnabled: true; onClicked: Qt.quit() }
+            Accessible.role: Accessible.Button
+            Accessible.name: Facteur.tr("Close window")
+        }
+        Rectangle {
+            id: windowButton
+            anchors { right: closeButton.left; rightMargin: FiliTheme.space1; verticalCenter: parent.verticalCenter }
+            width: 28
+            height: 24
+            radius: FiliTheme.radiusControl
+            color: windowArea.pressed ? FiliTheme.surfaceActive : windowArea.containsMouse || windowPanel.visible ? FiliTheme.surfaceHover : "transparent"
+            WindowGlyph { anchors.centerIn: parent; kind: "window"; width: 16; height: 16 }
+            MouseArea { id: windowArea; anchors.fill: parent; hoverEnabled: true; onClicked: windowPanel.visible ? windowPanel.close() : windowPanel.open() }
+            Accessible.role: Accessible.Button
+            Accessible.name: Facteur.tr("Window")
+        }
         Rectangle {
             id: search
-            anchors { right: parent.right; rightMargin: FiliTheme.margin; verticalCenter: parent.verticalCenter }
+            anchors { right: windowButton.left; rightMargin: FiliTheme.space3; verticalCenter: parent.verticalCenter }
             width: 200
             height: 26
             radius: FiliTheme.radiusControl
@@ -541,6 +585,7 @@ ApplicationWindow {
             mailbox: win.mailbox
             onAccountChosen: id => win.account = id
             onMailboxChosen: key => win.mailbox = key
+            labels: win.labels
             onAddAccount: { win.addError = ""; win.adding = true }
             onRemoveRequested: id => win.removing = id
         }
@@ -619,6 +664,11 @@ ApplicationWindow {
         font.family: FiliTheme.font
         font.pixelSize: FiliTheme.sizeList
         color: FiliTheme.danger
+    }
+    WindowPanel {
+        id: windowPanel
+        anchorRight: width - (toolbar.height - closeButton.height) / 2
+        anchorTop: toolbar.height + 1
     }
     AboutCard { id: aboutCard; anchors.fill: parent }
 }

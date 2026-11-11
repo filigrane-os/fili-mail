@@ -7,6 +7,8 @@ Rectangle {
     property var accounts: []
     property string account: ""
     property string mailbox: "inbox"
+    // Labels the user made ({name, rawName, unread}); each one is a mailbox "label:<rawName>"
+    property var labels: []
     signal accountChosen(string id)
     signal mailboxChosen(string key)
     signal addAccount()
@@ -59,22 +61,30 @@ Rectangle {
                         }
                     }
                     Repeater {
-                        model: current ? side.boxes : []
+                        model: current ? side.boxes.concat(side.labels.length > 0 ? [{ key: "", label: Facteur.tr("Labels"), heading: true }] : []).concat(side.labels.map(l => ({ key: "label:" + l.rawName, label: l.rawName, unread: l.unread }))) : []
                         delegate: Rectangle {
                             width: column.width
                             height: FiliTheme.sideRowHeight
-                            readonly property bool selected: side.mailbox === modelData.key
+                            readonly property bool selected: !modelData.heading && side.mailbox === modelData.key
                             color: selected ? FiliTheme.surfaceHover : row.containsMouse ? FiliTheme.alpha(FiliTheme.surfaceHover, 0.5) : "transparent"
                             Text {
                                 anchors { left: parent.left; right: parent.right; leftMargin: FiliTheme.margin / 2 + FiliTheme.space2; verticalCenter: parent.verticalCenter }
                                 text: modelData.label
                                 elide: Text.ElideRight
                                 font.family: FiliTheme.font
-                                font.pixelSize: FiliTheme.size
-                                font.weight: selected ? FiliTheme.weightAccent : Font.Normal
-                                color: FiliTheme.text
+                                font.pixelSize: modelData.heading ? FiliTheme.sizeSmall : FiliTheme.size
+                                font.weight: selected || modelData.heading ? FiliTheme.weightAccent : Font.Normal
+                                color: modelData.heading ? FiliTheme.muted : FiliTheme.text
                             }
-                            MouseArea { id: row; anchors.fill: parent; hoverEnabled: true; onClicked: side.mailboxChosen(modelData.key) }
+                            Text {
+                                visible: !!modelData.unread
+                                anchors { right: parent.right; rightMargin: FiliTheme.space3; verticalCenter: parent.verticalCenter }
+                                text: "" + (modelData.unread || "")
+                                font.family: FiliTheme.font
+                                font.pixelSize: FiliTheme.sizeSmall
+                                color: FiliTheme.muted
+                            }
+                            MouseArea { id: row; anchors.fill: parent; hoverEnabled: !modelData.heading; enabled: !modelData.heading; onClicked: side.mailboxChosen(modelData.key) }
                         }
                     }
                 }
