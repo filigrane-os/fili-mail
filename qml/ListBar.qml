@@ -34,6 +34,9 @@ Rectangle {
             anchors.verticalCenter: parent.verticalCenter
             spacing: 2
             readonly property bool on: list.selectedId !== "" || list.checkedCount > 0
+            IconButton { name: "chevron-left"; tip: Facteur.tr("Previous message"); enabledState: list.canPrev && list.checkedCount === 0; onClicked: list.step(-1) }
+            IconButton { name: "chevron-right"; tip: Facteur.tr("Next message"); enabledState: list.canNext && list.checkedCount === 0; onClicked: list.step(1) }
+            Rectangle { width: 1; height: 18; anchors.verticalCenter: parent.verticalCenter; color: FiliTheme.border }
             IconButton { name: list.selectedUnread ? "mail-open" : "mail"; tip: list.selectedUnread ? Facteur.tr("Mark as read") : Facteur.tr("Mark as unread"); enabledState: parent.on; onClicked: list.act(list.selectedUnread ? "read" : "unread") }
             Rectangle { width: 1; height: 18; anchors.verticalCenter: parent.verticalCenter; color: FiliTheme.border }
             IconButton { name: "trash"; tip: Facteur.tr("Move to trash"); enabledState: parent.on; onClicked: list.act("trash") }
@@ -54,8 +57,6 @@ Rectangle {
                 color: FiliTheme.textSecondary
             }
             IconButton { name: "mail"; toggled: list.unreadOnly; tip: Facteur.tr("Unread only"); onClicked: list.unreadOnly = !list.unreadOnly }
-            IconButton { name: "chevron-left"; tip: Facteur.tr("Previous message"); enabledState: list.canPrev && list.checkedCount === 0; onClicked: list.step(-1) }
-            IconButton { name: "chevron-right"; tip: Facteur.tr("Next message"); enabledState: list.canNext && list.checkedCount === 0; onClicked: list.step(1) }
         }
         Rectangle { anchors { left: parent.left; right: parent.right; bottom: parent.bottom } height: FiliTheme.borderWidth; color: FiliTheme.border }
     }
@@ -64,18 +65,18 @@ Rectangle {
         id: tabRow
         visible: list.tabs.length > 0
         anchors { left: parent.left; right: parent.right; top: bar.bottom }
-        height: visible ? 30 : 0
+        height: visible ? 40 : 0
         color: FiliTheme.background
         Row {
-            anchors { left: parent.left; leftMargin: FiliTheme.space2; verticalCenter: parent.verticalCenter }
-            spacing: 2
+            anchors { left: parent.left; leftMargin: FiliTheme.margin; verticalCenter: parent.verticalCenter }
+            spacing: FiliTheme.space3
             Repeater {
                 model: list.tabs
                 Rectangle {
                     required property var modelData
                     readonly property bool on: list.tab === modelData.key
-                    width: tabText.implicitWidth + 2 * FiliTheme.space3
-                    height: 24
+                    width: tabText.implicitWidth + 2 * FiliTheme.space4
+                    height: 28
                     radius: FiliTheme.radiusControl
                     color: on ? FiliTheme.surfaceActive : tabArea.containsMouse ? FiliTheme.surfaceHover : "transparent"
                     Text {
