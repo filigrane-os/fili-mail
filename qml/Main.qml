@@ -39,6 +39,30 @@ ApplicationWindow {
         if (categoriesOn()) return ("category:" + category + " " + query).trim();
         return query;
     }
+    // Right click in the sidebar: an account (edit, remove) or a label (edit, delete)
+    property var contextData: null
+    property string contextKind: ""
+    property var deletingLabel: null
+    function openContext(kind, data, x, y) {
+        contextKind = kind;
+        contextData = data;
+        const entries = kind === "account"
+            ? [{ id: "edit", label: Facteur.tr("Edit account…") }, { id: "remove", label: Facteur.tr("Remove account…"), danger: true }]
+            : [{ id: "edit", label: Facteur.tr("Edit label…") }, { id: "delete", label: Facteur.tr("Delete label…"), danger: true }];
+        popup.openAt(x, y, entries);
+    }
+    function runContext(id) {
+        if (contextKind === "account") {
+            if (id === "remove") { removing = contextData.id; return; }
+            const d = JSON.parse(Facteur.accountDetails(contextData.id));
+            if (d.error) { notice = errorText(d.error); return; }
+            accountDialog.edit(d);
+        } else if (id === "edit") {
+            labelDialog.edit(contextData);
+        } else {
+            deletingLabel = contextData;
+        }
+    }
     function loadLabels() {
         labels = [];
         const a = accounts.find(x => x.id === account);
@@ -325,7 +349,7 @@ ApplicationWindow {
                 return;
             }
             for (const m of r.messages)
-                if (!messageList.unreadOnly || m.unread)
+                if (!listBar.unreadOnly || m.unread)
                     messages.append({ id: m.id, from: m.from.display || m.from.email || "", subject: m.subject, time: m.time, unread: m.unread, starred: m.starred, checked: false });
         }
         // Menu of the fili-bar (fili-mail ctl action NAME)
@@ -388,6 +412,24 @@ ApplicationWindow {
             }
             labelDialog.visible = false;
             if (acc === win.account) win.loadLabels();
+        }
+        function onLabelChanged(acc, json) {
+            const r = JSON.parse(json);
+            labelDialog.busy = false;
+            if (r.error) {
+                if (labelDialog.visible) labelDialog.error = win.errorText(r.error); else win.notice = win.errorText(r.error);
+                return;
+            }
+            labelDialog.visible = false;
+            if (acc !== win.account) return;
+            win.loadLabels();
+        }
+        function onAccountUpdated(json) {
+            const r = JSON.parse(json);
+            accountDialog.busy = false;
+            if (r.error) { accountDialog.error = win.errorText(r.error); return; }
+            accountDialog.visible = false;
+            win.loadAccounts();
         }
         function onActed(acc, operation, ids, json) {
             if (acc !== win.account)
@@ -614,53 +656,72 @@ ApplicationWindow {
             labels: win.labels
             onAddLabelRequested: { labelDialog.error = ""; labelDialog.open() }
             onAddAccount: { win.addError = ""; win.adding = true }
-            onRemoveRequested: id => win.removing = id
+            onContextRequested: (kind, data, x, y) => win.openContext(kind, data, x, y)
         }
         Rectangle { width: FiliTheme.borderWidth; height: parent.height; color: FiliTheme.border }
-        MessageList {
-            id: messageList
-            onUnreadOnlyChanged: { messages.clear(); win.selectedId = ""; win.refresh() }
-            width: Math.max(250, Math.min(340, win.width * 0.34))
+        // Bar over the list and the reader, then the two side by side
+        Column {
+            id: content
+            width: parent.width - FiliTheme.sidebarWidth - FiliTheme.borderWidth
             height: parent.height
-            model: messages
-            selectedId: win.selectedId
-            onAct: operation => win.actOnSelection(operation)
-            onCheck: (index, mode) => win.check(index, mode)
-            onCheckAll: win.checkAll()
-            onClearChecks: win.clearChecks()
-            checkedCount: win.checkedCount
-            tabs: win.categoriesOn() ? win.categories : []
-            tab: win.category
-            onTabChosen: key => win.category = key
-            onStep: delta => win.step(delta)
-            selectedUnread: win.checkedCount > 0 ? win.checkedAnyUnread : reader.unread
-            selectedStarred: win.checkedCount > 0 ? win.checkedAllStarred : reader.starred
-            position: win.selectedId !== "" ? (win.rowOf(win.selectedId) + 1) + "/" + messages.count : messages.count > 0 ? "" + messages.count : ""
-            canPrev: win.selectedId !== "" && win.rowOf(win.selectedId) > 0
-            canNext: win.selectedId !== "" && win.rowOf(win.selectedId) < messages.count - 1
-            emptyText: win.listError !== "" ? win.listError : win.loading ? "…" : Facteur.tr("No message")
-            onChosen: id => win.choose(id)
-        }
-        Rectangle { width: FiliTheme.borderWidth; height: parent.height; color: FiliTheme.border }
-        Reader {
-            id: reader
-            onAct: operation => win.doAct(operation, win.selectedId)
-            onReply: win.startCompose("reply")
-            onForward: win.startCompose("forward")
-            onReplyAll: win.startCompose("replyall")
-            onUnsubscribe: url => Qt.openUrlExternally(url)
-            onSaveAttachment: index => Facteur.saveAttachment(win.account, win.selectedId, reader.attachments[index].attachmentId, reader.attachments[index].filename)
-            onLoadImages: { reader.loadingImages = true; Facteur.loadImages(win.account, win.selectedId) }
-            width: parent.width - FiliTheme.sidebarWidth - messageList.width - 2 * FiliTheme.borderWidth
-            height: parent.height
-            Compose {
-                id: composer
-                anchors.fill: parent
-                visible: win.composing
-                busy: win.sending
-                from: win.account.replace(/^[a-z]+:/, "")
-                onCancelled: win.composing = false
-                onSubmitted: fields => { win.sending = true; error = ""; Facteur.send(win.account, JSON.stringify(fields)) }
+            ListBar {
+                id: listBar
+                width: parent.width
+                onUnreadOnlyChanged: { messages.clear(); win.selectedId = ""; win.refresh() }
+                selectedId: win.selectedId
+                checkedCount: win.checkedCount
+                onAct: operation => win.actOnSelection(operation)
+                tabs: win.categoriesOn() ? win.categories : []
+                tab: win.category
+                onTabChosen: key => win.category = key
+                onStep: delta => win.step(delta)
+                selectedUnread: win.checkedCount > 0 ? win.checkedAnyUnread : reader.unread
+                selectedStarred: win.checkedCount > 0 ? win.checkedAllStarred : reader.starred
+                position: win.selectedId !== "" ? (win.rowOf(win.selectedId) + 1) + "/" + messages.count : messages.count > 0 ? "" + messages.count : ""
+                canPrev: win.selectedId !== "" && win.rowOf(win.selectedId) > 0
+                canNext: win.selectedId !== "" && win.rowOf(win.selectedId) < messages.count - 1
+            }
+            Rectangle { width: parent.width; height: FiliTheme.borderWidth; color: FiliTheme.border }
+            Row {
+                width: parent.width
+                height: parent.height - listBar.height - FiliTheme.borderWidth
+                MessageList {
+                    id: messageList
+                    width: Math.max(250, Math.min(340, win.width * 0.34))
+                    height: parent.height
+                    model: messages
+                    selectedId: win.selectedId
+                    onAct: operation => win.actOnSelection(operation)
+                    onCheck: (index, mode) => win.check(index, mode)
+                    onCheckAll: win.checkAll()
+                    onClearChecks: win.clearChecks()
+                    checkedCount: win.checkedCount
+                    onStep: delta => win.step(delta)
+                    emptyText: win.listError !== "" ? win.listError : win.loading ? "…" : Facteur.tr("No message")
+                    onChosen: id => win.choose(id)
+                }
+                Rectangle { width: FiliTheme.borderWidth; height: parent.height; color: FiliTheme.border }
+                Reader {
+                    id: reader
+                    onAct: operation => win.doAct(operation, win.selectedId)
+                    onReply: win.startCompose("reply")
+                    onForward: win.startCompose("forward")
+                    onReplyAll: win.startCompose("replyall")
+                    onUnsubscribe: url => Qt.openUrlExternally(url)
+                    onSaveAttachment: index => Facteur.saveAttachment(win.account, win.selectedId, reader.attachments[index].attachmentId, reader.attachments[index].filename)
+                    onLoadImages: { reader.loadingImages = true; Facteur.loadImages(win.account, win.selectedId) }
+                    width: parent.width - messageList.width - FiliTheme.borderWidth
+                    height: parent.height
+                    Compose {
+                        id: composer
+                        anchors.fill: parent
+                        visible: win.composing
+                        busy: win.sending
+                        from: win.account.replace(/^[a-z]+:/, "")
+                        onCancelled: win.composing = false
+                        onSubmitted: fields => { win.sending = true; error = ""; Facteur.send(win.account, JSON.stringify(fields)) }
+                    }
+                }
             }
         }
     }
@@ -698,7 +759,49 @@ ApplicationWindow {
     LabelDialog {
         id: labelDialog
         onCancelled: visible = false
-        onCreated: (name, background, text) => { busy = true; error = ""; Facteur.createLabel(win.account, name, background, text) }
+        onCreated: (name, background, text) => {
+            busy = true;
+            error = "";
+            if (editId !== "") {
+                // A view of this label follows its new name
+                const old = win.labels.find(l => l.id === editId);
+                if (old && win.mailbox === "label:" + old.rawName) win.mailbox = "label:" + name;
+                Facteur.updateLabel(win.account, editId, name, background, text);
+            }
+            else Facteur.createLabel(win.account, name, background, text);
+        }
+    }
+    AccountDialog {
+        id: accountDialog
+        onCancelled: visible = false
+        onSaved: (id, patch) => { busy = true; error = ""; Facteur.updateAccount(id, JSON.stringify(patch)) }
+    }
+    // Deleting a label asks first: the messages keep everything else, only the label goes
+    Rectangle {
+        visible: win.deletingLabel !== null
+        anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+        height: FiliTheme.statusHeight + FiliTheme.space2
+        z: 90
+        color: FiliTheme.surface
+        border.width: FiliTheme.borderWidth
+        border.color: FiliTheme.border
+        Text {
+            anchors { left: parent.left; leftMargin: FiliTheme.margin; verticalCenter: parent.verticalCenter }
+            text: Facteur.tr("Delete the label %1? Its messages are kept.").replace("%1", win.deletingLabel ? win.deletingLabel.rawName : "")
+            font.family: FiliTheme.font
+            font.pixelSize: FiliTheme.size
+            color: FiliTheme.text
+        }
+        Row {
+            anchors { right: parent.right; rightMargin: FiliTheme.margin; verticalCenter: parent.verticalCenter }
+            spacing: FiliTheme.space2
+            TextButton { label: Facteur.tr("Delete"); primary: true; onClicked: { if (win.mailbox === "label:" + win.deletingLabel.rawName) win.mailbox = "inbox"; Facteur.deleteLabel(win.account, win.deletingLabel.id); win.deletingLabel = null } }
+            TextButton { label: Facteur.tr("Cancel"); onClicked: win.deletingLabel = null }
+        }
+    }
+    PopupMenu {
+        id: popup
+        onActivated: id => win.runContext(id)
     }
     WindowPanel {
         id: windowPanel

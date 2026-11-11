@@ -16,17 +16,34 @@ Rectangle {
         ["#f691b2", "#000000"], ["#cc3a21", "#ffffff"], ["#8e63ce", "#ffffff"], ["#666666", "#ffffff"]
     ]
     property int pick: 6
+    // Editing: id of the label (empty: a new one) and its current colour when it is not one of the swatches
+    property string editId: ""
+    property string editColor: ""
+    function bg() { return pick >= 0 ? swatches[pick][0] : editColor; }
+    function fg() { return pick >= 0 ? swatches[pick][1] : "#ffffff"; }
 
     function open() {
+        editId = "";
+        editColor = "";
         name.text = "";
         error = "";
         pick = Math.floor(Math.random() * swatches.length);
         visible = true;
         name.forceActiveFocus();
     }
+    function edit(label) {
+        editId = label.id;
+        editColor = label.color || "";
+        name.text = label.rawName;
+        error = "";
+        pick = swatches.findIndex(s => s[0] === editColor);
+        visible = true;
+        name.forceActiveFocus();
+        name.selectAll();
+    }
     function submit() {
         if (busy || name.text.trim() === "") return;
-        created(name.text.trim(), swatches[pick][0], swatches[pick][1]);
+        created(name.text.trim(), pick >= 0 ? swatches[pick][0] : "", fg());
     }
 
     visible: false
@@ -52,7 +69,7 @@ Rectangle {
             width: parent.width - 2 * FiliTheme.margin
             spacing: FiliTheme.space3
             Text {
-                text: Facteur.tr("New label")
+                text: dialog.editId !== "" ? Facteur.tr("Edit label") : Facteur.tr("New label")
                 font.family: FiliTheme.font
                 font.pixelSize: FiliTheme.sizeTitle
                 font.weight: FiliTheme.weightAccent
@@ -91,7 +108,7 @@ Rectangle {
             // Preview: the label as it will appear in the sidebar
             Row {
                 spacing: FiliTheme.space2
-                Rectangle { width: 10; height: 10; radius: 5; anchors.verticalCenter: parent.verticalCenter; color: dialog.swatches[dialog.pick][0] }
+                Rectangle { width: 10; height: 10; radius: 5; anchors.verticalCenter: parent.verticalCenter; color: dialog.bg() }
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
                     text: name.text.trim() !== "" ? name.text.trim() : Facteur.tr("Label name")
@@ -113,7 +130,7 @@ Rectangle {
                 anchors.right: parent.right
                 spacing: FiliTheme.space2
                 TextButton { label: Facteur.tr("Cancel"); onClicked: if (!dialog.busy) dialog.cancelled() }
-                TextButton { label: dialog.busy ? "…" : Facteur.tr("Create"); primary: true; onClicked: dialog.submit() }
+                TextButton { label: dialog.busy ? "…" : dialog.editId !== "" ? Facteur.tr("Save") : Facteur.tr("Create"); primary: true; onClicked: dialog.submit() }
             }
         }
     }

@@ -20,6 +20,21 @@ pub(super) fn supports(method: &str) -> bool {
     )
 }
 
+/// Optional label colour: Gmail only takes colours of its own palette and refuses the others
+fn label_color(params: &Value) -> Result<Option<Value>, &'static str> {
+    let Some(color) = params.get("color").filter(|c| !c.is_null()) else {
+        return Ok(None);
+    };
+    let hex = |key: &str| {
+        color[key]
+            .as_str()
+            .filter(|s| s.len() == 7 && s.starts_with('#') && s[1..].chars().all(|c| c.is_ascii_hexdigit()))
+            .map(str::to_lowercase)
+            .ok_or("invalid_params")
+    };
+    Ok(Some(json!({"backgroundColor":hex("backgroundColor")?,"textColor":hex("textColor")?})))
+}
+
 fn strings(params: &Value, key: &str, max: usize) -> Result<Value, &'static str> {
     let values = params
         .get(key)
@@ -72,7 +87,7 @@ fn plan(method: &str, params: &Value) -> Result<Plan, &'static str> {
         "gmail.modify" => &["accountId", "id", "addLabelIds", "removeLabelIds"],
         "gmail.batchModify" => &["accountId", "ids", "addLabelIds", "removeLabelIds"],
         "gmail.createLabel" => &["accountId", "name", "color"],
-        "gmail.renameLabel" => &["accountId", "id", "name"],
+        "gmail.renameLabel" => &["accountId", "id", "name", "color"],
         "gmail.deleteLabel" | "gmail.trash" | "gmail.untrash" | "gmail.deleteDraft" => {
             &["accountId", "id"]
         }
@@ -115,16 +130,8 @@ fn plan(method: &str, params: &Value) -> Result<Plan, &'static str> {
         "gmail.createLabel" => {
             result.path = vec!["labels".into()];
             let mut body = json!({"name":field(params,"name",true)?,"labelListVisibility":"labelShow","messageListVisibility":"show"});
-            // Optional colour: Gmail only takes colours of its own palette and refuses the others
-            if let Some(color) = params.get("color").filter(|c| !c.is_null()) {
-                let hex = |key: &str| {
-                    color[key]
-                        .as_str()
-                        .filter(|s| s.len() == 7 && s.starts_with('#') && s[1..].chars().all(|c| c.is_ascii_hexdigit()))
-                        .map(str::to_lowercase)
-                        .ok_or("invalid_params")
-                };
-                body["color"] = json!({"backgroundColor":hex("backgroundColor")?,"textColor":hex("textColor")?});
+            if let Some(color) = label_color(params)? {
+                body["color"] = color;
             }
             result.body = Some(body);
         }
@@ -136,7 +143,11 @@ fn plan(method: &str, params: &Value) -> Result<Plan, &'static str> {
                 Method::DELETE
             };
             if method == "gmail.renameLabel" {
-                result.body = Some(json!({"name":field(params,"name",true)?}));
+                let mut body = json!({"name":field(params,"name",true)?});
+                if let Some(color) = label_color(params)? {
+                    body["color"] = color;
+                }
+                result.body = Some(body);
             }
         }
         "gmail.trash" | "gmail.untrash" => {

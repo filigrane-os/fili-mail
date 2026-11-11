@@ -158,6 +158,67 @@ pub async fn google_poll(session: &Session, id: &str) -> Result<Option<Value>, &
     Ok(Some(json!({"added": email})))
 }
 
+/// What the edit sheet shows of an account: its name and, for IMAP, the server settings (never the password).
+pub async fn account_details(session: &Session, id: &str) -> Result<Value, &'static str> {
+    let read = session.dispatch("accounts.read", &json!({})).await?;
+    let (_, entry) = find_entry(&read["registry"], session, id).await?;
+    Ok(json!({"id":id,"provider":entry["provider"],"email":entry["email"],"label":entry["label"],"imap":entry["imap"]}))
+}
+
+async fn find_entry(registry: &Value, session: &Session, id: &str) -> Result<(usize, Value), &'static str> {
+    let summary = session.dispatch("accounts.list", &json!({})).await?;
+    let provider = summary["accounts"]
+        .as_array()
+        .and_then(|list| list.iter().find(|a| a["id"] == id))
+        .and_then(|a| a["provider"].as_str())
+        .ok_or("mail_account_unknown")?
+        .to_owned();
+    let email = id.strip_prefix(&format!("{provider}:")).unwrap_or(id).to_owned();
+    registry["accounts"]
+        .as_array()
+        .ok_or("accounts_invalid")?
+        .iter()
+        .enumerate()
+        .find(|(_, a)| {
+            a["provider"].as_str().unwrap_or("gmail") == provider
+                && a["email"].as_str().map(str::to_lowercase).as_deref() == Some(email.as_str())
+        })
+        .map(|(i, a)| (i, a.clone()))
+        .ok_or("mail_account_unknown")
+}
+
+/// Change an account: its name (any provider) and, for IMAP, servers, ports, user name and (when given) password.
+pub async fn update_account(session: &Session, id: &str, patch: &Value) -> Result<Value, &'static str> {
+    let read = session.dispatch("accounts.read", &json!({})).await?;
+    let mut registry = read["registry"].clone();
+    let (at, mut entry) = find_entry(&registry, session, id).await?;
+    if let Some(label) = patch["label"].as_str() {
+        entry["label"] = json!(label.trim());
+    }
+    if entry["provider"] == "imap" {
+        for key in ["imapHost", "smtpHost", "username"] {
+            if let Some(v) = patch[key].as_str().map(str::trim).filter(|v| !v.is_empty()) {
+                entry["imap"][key] = json!(v);
+            }
+        }
+        for key in ["imapPort", "smtpPort"] {
+            if let Some(p) = patch[key].as_u64().and_then(|p| u16::try_from(p).ok()).filter(|p| *p > 0) {
+                entry["imap"][key] = json!(p);
+            }
+        }
+    }
+    registry["accounts"][at] = entry;
+    if let Some(secret) = patch["password"].as_str().filter(|s| !s.is_empty()) {
+        session
+            .dispatch("credentials.put", &json!({"kind":"imap-password","accountId":id,"secret":secret}))
+            .await?;
+    }
+    session
+        .dispatch("accounts.save", &json!({"registry":registry,"revision":read["revision"]}))
+        .await?;
+    Ok(json!({"updated":id}))
+}
+
 /// Remove an account: its registry entry, then its secret in the keyring (a missing secret is not an error).
 pub async fn remove_account(session: &Session, id: &str) -> Result<Value, &'static str> {
     let read = session.dispatch("accounts.read", &json!({})).await?;

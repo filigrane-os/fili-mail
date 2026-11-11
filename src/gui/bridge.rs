@@ -76,6 +76,26 @@ pub mod qobject {
         #[qsignal]
         #[cxx_name = "googleStarted"]
         fn google_started(self: Pin<&mut Facteur>, url: &QString);
+        // Edit an account: its details (JSON, no password) and the update; answered by `accountUpdated`
+        #[qinvokable]
+        #[cxx_name = "accountDetails"]
+        fn account_details(self: &Facteur, id: &QString) -> QString;
+        #[qinvokable]
+        #[cxx_name = "updateAccount"]
+        fn update_account(self: Pin<&mut Facteur>, id: &QString, patch: &QString);
+        #[qsignal]
+        #[cxx_name = "accountUpdated"]
+        fn account_updated(self: Pin<&mut Facteur>, result: &QString);
+        // Rename / recolour / delete a Gmail label; answered by `labelChanged` (account, JSON result)
+        #[qinvokable]
+        #[cxx_name = "updateLabel"]
+        fn update_label(self: Pin<&mut Facteur>, account: &QString, id: &QString, name: &QString, background: &QString, text: &QString);
+        #[qinvokable]
+        #[cxx_name = "deleteLabel"]
+        fn delete_label(self: Pin<&mut Facteur>, account: &QString, id: &QString);
+        #[qsignal]
+        #[cxx_name = "labelChanged"]
+        fn label_changed(self: Pin<&mut Facteur>, account: &QString, result: &QString);
         // Remove an account (registry entry and keyring secret); answered by `accountRemoved` ({"removed"} or {"error"})
         #[qinvokable]
         #[cxx_name = "removeAccount"]
@@ -408,6 +428,59 @@ impl qobject::Facteur {
                 Err(e) => error_json(e),
             };
             let _ = qt.queue(move |f| f.account_added(&QString::from(&out)));
+        });
+    }
+
+    pub fn account_details(&self, id: &QString) -> QString {
+        let (runtime, session) = engine();
+        let out = match runtime.block_on(fili_mail::account::setup::account_details(session, &id.to_string())) {
+            Ok(v) => v.to_string(),
+            Err(e) => error_json(e),
+        };
+        QString::from(&out)
+    }
+
+    pub fn update_account(self: Pin<&mut Self>, id: &QString, patch: &QString) {
+        let id = id.to_string();
+        let patch: Value = serde_json::from_str(&patch.to_string()).unwrap_or_default();
+        let qt = self.qt_thread();
+        let (runtime, session) = engine();
+        runtime.spawn(async move {
+            let out = match fili_mail::account::setup::update_account(session, &id, &patch).await {
+                Ok(v) => v.to_string(),
+                Err(e) => error_json(e),
+            };
+            let _ = qt.queue(move |f| f.account_updated(&QString::from(&out)));
+        });
+    }
+
+    pub fn update_label(self: Pin<&mut Self>, account: &QString, id: &QString, name: &QString, background: &QString, text: &QString) {
+        let (account, id, name, background, text) = (account.to_string(), id.to_string(), name.to_string(), background.to_string(), text.to_string());
+        let qt = self.qt_thread();
+        let (runtime, session) = engine();
+        runtime.spawn(async move {
+            let mut params = json!({"accountId": account, "id": id, "name": name});
+            if !background.is_empty() {
+                params["color"] = json!({"backgroundColor": background, "textColor": text});
+            }
+            let out = match session.dispatch("gmail.renameLabel", &params).await {
+                Ok(v) => v.to_string(),
+                Err(e) => error_json(e),
+            };
+            let _ = qt.queue(move |f| f.label_changed(&QString::from(&account), &QString::from(&out)));
+        });
+    }
+
+    pub fn delete_label(self: Pin<&mut Self>, account: &QString, id: &QString) {
+        let (account, id) = (account.to_string(), id.to_string());
+        let qt = self.qt_thread();
+        let (runtime, session) = engine();
+        runtime.spawn(async move {
+            let out = match session.dispatch("gmail.deleteLabel", &json!({"accountId": account, "id": id})).await {
+                Ok(v) => v.to_string(),
+                Err(e) => error_json(e),
+            };
+            let _ = qt.queue(move |f| f.label_changed(&QString::from(&account), &QString::from(&out)));
         });
     }
 

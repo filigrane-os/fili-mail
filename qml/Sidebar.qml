@@ -36,6 +36,8 @@ Rectangle {
         folded = next;
     }
     signal addLabelRequested()
+    // Right click: kind "account" (data: the account) or "label" (data: the label), at window position x, y
+    signal contextRequested(string kind, var data, real x, real y)
 
     Flickable {
         anchors { fill: parent; bottomMargin: FiliTheme.statusHeight + FiliTheme.space2; topMargin: FiliTheme.space3 }
@@ -80,7 +82,7 @@ Rectangle {
                             hoverEnabled: true
                             acceptedButtons: Qt.LeftButton | Qt.RightButton
                             onClicked: mouse => {
-                                if (mouse.button === Qt.RightButton) side.removeRequested(modelData.id);
+                                if (mouse.button === Qt.RightButton) { const p = head.mapToItem(null, mouse.x, mouse.y); side.contextRequested("account", modelData, p.x, p.y); }
                                 else if (mouse.x < arrow.x + arrow.width + FiliTheme.space3) side.toggle("account:" + modelData.id);
                                 else { side.accountChosen(modelData.id); if (!acct.open) side.toggle("account:" + modelData.id); }
                             }
@@ -170,7 +172,16 @@ Rectangle {
                                 font.pixelSize: FiliTheme.sizeSmall
                                 color: FiliTheme.muted
                             }
-                            MouseArea { id: lrow; anchors.fill: parent; hoverEnabled: true; onClicked: side.mailboxChosen(key) }
+                            MouseArea {
+                                id: lrow
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                acceptedButtons: Qt.LeftButton | Qt.RightButton
+                                onClicked: mouse => {
+                                    if (mouse.button === Qt.RightButton) { const p = lrow.mapToItem(null, mouse.x, mouse.y); side.contextRequested("label", modelData, p.x, p.y); }
+                                    else side.mailboxChosen(key);
+                                }
+                            }
                         }
                     }
                 }
