@@ -59,7 +59,9 @@ ApplicationWindow {
     function openContext(kind, data, x, y) {
         contextKind = kind;
         contextData = data;
-        const entries = kind === "account"
+        const entries = kind === "label" && data.folder
+            ? [{ id: "color", label: Facteur.tr("Change colour…") }]
+            : kind === "account"
             ? [{ id: "edit", label: Facteur.tr("Edit account…") }, { id: "remove", label: Facteur.tr("Remove account…"), danger: true }]
             : [{ id: "edit", label: Facteur.tr("Edit label…") }, { id: "delete", label: Facteur.tr("Delete label…"), danger: true }];
         popup.openAt(x, y, entries);
@@ -70,11 +72,20 @@ ApplicationWindow {
             const d = JSON.parse(Facteur.accountDetails(contextData.id));
             if (d.error) { notice = errorText(d.error); return; }
             accountDialog.edit(d);
+        } else if (id === "color") {
+            labelDialog.pickColor(contextData);
         } else if (id === "edit") {
             labelDialog.edit(contextData);
         } else {
             deletingLabel = contextData;
         }
+    }
+    // A stable colour for a name (Proton's label palette)
+    readonly property var nameColors: ["#8080ff", "#db60d6", "#ec3e7c", "#f78400", "#936d58", "#5252cc", "#a839a4", "#ba1e55", "#c44800", "#415df0", "#179fd9", "#1da583", "#3cbb3a", "#b4a40e"]
+    function nameColor(name) {
+        let h = 0;
+        for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+        return nameColors[h % nameColors.length];
     }
     function loadLabels() {
         labels = [];
@@ -441,7 +452,9 @@ ApplicationWindow {
             win.notice = r.error ? win.errorText(r.error) : Facteur.tr("Saved to %1").replace("%1", r.path);
         }
         function onLabelsLoaded(acc, json) {
-            if (acc === win.account) win.labels = JSON.parse(json);
+            if (acc !== win.account) return;
+            // IMAP labels come without colour: the one chosen here, else one taken from the name (stable)
+            win.labels = JSON.parse(json).map(l => l.folder ? Object.assign({}, l, { color: Facteur.uiGet("color:" + acc + ":" + l.id) || win.nameColor(l.rawName) }) : l);
         }
         function onLabelCreated(acc, json) {
             labelDialog.busy = false;
@@ -845,6 +858,15 @@ ApplicationWindow {
         onCreated: (name, background, text) => {
             busy = true;
             error = "";
+            if (colorOnly) {
+                // Servers without label colours: the choice stays on this computer
+                const id = editId.slice(6);
+                Facteur.uiSet("color:" + win.account + ":" + id, background);
+                busy = false;
+                visible = false;
+                win.labels = win.labels.map(l => l.id === id ? Object.assign({}, l, { color: background }) : l);
+                return;
+            }
             if (editId !== "") {
                 // A view of this label follows its new name
                 const old = win.labels.find(l => l.id === editId);

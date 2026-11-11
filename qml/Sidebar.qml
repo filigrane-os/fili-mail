@@ -194,7 +194,7 @@ Rectangle {
                                 hoverEnabled: true
                                 acceptedButtons: Qt.LeftButton | Qt.RightButton
                                 onClicked: mouse => {
-                                    if (mouse.button === Qt.RightButton) { if (modelData.folder) return; const p = lrow.mapToItem(null, mouse.x, mouse.y); side.contextRequested("label", modelData, p.x, p.y); }
+                                    if (mouse.button === Qt.RightButton) { const p = lrow.mapToItem(null, mouse.x, mouse.y); side.contextRequested("label", modelData, p.x, p.y); }
                                     else side.mailboxChosen(key);
                                 }
                             }

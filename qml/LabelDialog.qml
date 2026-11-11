@@ -19,10 +19,22 @@ Rectangle {
     // Editing: id of the label (empty: a new one) and its current colour when it is not one of the swatches
     property string editId: ""
     property string editColor: ""
+    // Colour only (labels of IMAP servers, which have none: the colour is kept on this computer)
+    property bool colorOnly: false
     function bg() { return pick >= 0 ? swatches[pick][0] : editColor; }
     function fg() { return pick >= 0 ? swatches[pick][1] : "#ffffff"; }
 
+    function pickColor(label) {
+        colorOnly = true;
+        editId = "local:" + label.id;
+        editColor = label.color || "";
+        name.text = label.rawName;
+        error = "";
+        pick = swatches.findIndex(s => s[0] === editColor);
+        visible = true;
+    }
     function open() {
+        colorOnly = false;
         editId = "";
         editColor = "";
         name.text = "";
@@ -32,6 +44,7 @@ Rectangle {
         name.forceActiveFocus();
     }
     function edit(label) {
+        colorOnly = false;
         editId = label.id;
         editColor = label.color || "";
         name.text = label.rawName;
@@ -69,7 +82,7 @@ Rectangle {
             width: parent.width - 2 * FiliTheme.margin
             spacing: FiliTheme.space3
             Text {
-                text: dialog.editId !== "" ? Facteur.tr("Edit label") : Facteur.tr("New label")
+                text: dialog.colorOnly ? Facteur.tr("Label colour") : dialog.editId !== "" ? Facteur.tr("Edit label") : Facteur.tr("New label")
                 font.family: FiliTheme.font
                 font.pixelSize: FiliTheme.sizeTitle
                 font.weight: FiliTheme.weightAccent
@@ -79,7 +92,7 @@ Rectangle {
                 id: name
                 width: parent.width
                 placeholderText: Facteur.tr("Label name")
-                enabled: !dialog.busy
+                enabled: !dialog.busy && !dialog.colorOnly
                 onAccepted: dialog.submit()
             }
             Text {
