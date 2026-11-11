@@ -75,13 +75,22 @@ Rectangle {
                 Rectangle {
                     required property var modelData
                     readonly property bool on: list.tab === modelData.key
-                    width: tabText.implicitWidth + 2 * FiliTheme.space4
+                    width: tabIcon.width + FiliTheme.space2 + tabText.implicitWidth + 2 * FiliTheme.space4
                     height: FiliTheme.tabHeight
                     radius: FiliTheme.radiusControl
                     color: on ? FiliTheme.surfaceActive : tabArea.containsMouse ? FiliTheme.surfaceHover : "transparent"
+                    Icon {
+                        id: tabIcon
+                        x: FiliTheme.space4
+                        anchors.verticalCenter: parent.verticalCenter
+                        name: modelData.icon || ""
+                        size: 14
+                        color: on ? FiliTheme.accentColor : FiliTheme.textSecondary
+                    }
                     Text {
                         id: tabText
-                        anchors.centerIn: parent
+                        x: FiliTheme.space4 + tabIcon.width + FiliTheme.space2
+                        anchors.verticalCenter: parent.verticalCenter
                         text: modelData.label
                         font.family: FiliTheme.font
                         font.pixelSize: FiliTheme.sizeList

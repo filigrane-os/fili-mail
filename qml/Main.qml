@@ -741,7 +741,7 @@ ApplicationWindow {
                     onClearChecks: win.clearChecks()
                     checkedCount: win.checkedCount
                     onStep: delta => win.step(delta)
-                    emptyText: win.listError !== "" ? win.listError : win.loading ? "…" : Facteur.tr("No message")
+                    emptyText: win.listError !== "" ? win.listError : win.loading ? (win.query !== "" ? Facteur.tr("Searching…") : "…") : Facteur.tr("No message")
                     onChosen: id => win.choose(id)
                     onNearEnd: win.loadMore()
                 }
@@ -825,7 +825,7 @@ ApplicationWindow {
             text: {
                 if (win.notice !== "") return win.notice;
                 const parts = [];
-                if (win.loading) parts.push("…");
+                if (win.loading) parts.push(win.query !== "" ? Facteur.tr("Searching…") : "…");
                 else if (win.listError === "") {
                     parts.push(Facteur.tr("%1 messages, %2 unread").replace("%1", messages.count).replace("%2", win.unreadCount()));
                     if (win.nextToken !== "") parts.push(win.loadingMore ? Facteur.tr("Loading more…") : Facteur.tr("More below"));
