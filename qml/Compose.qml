@@ -122,10 +122,15 @@ Rectangle {
         color: FiliTheme.surface
         border.width: FiliTheme.borderWidth
         border.color: body.activeFocus ? FiliTheme.accentColor : FiliTheme.border
-        ScrollView {
+        // Same scrolling as every fili-* view: KineticScroll + FiliScrollBar (app-window.md), the text area follows
+        // its cursor through TextArea.flickable
+        Flickable {
+            id: bodyFlick
             anchors { fill: parent; margins: FiliTheme.space2 }
             clip: true
-            TextArea {
+            boundsBehavior: Flickable.StopAtBounds
+            KineticScroll {}
+            TextArea.flickable: TextArea {
                 id: body
                 enabled: !compose.busy
                 wrapMode: TextEdit.Wrap
@@ -139,6 +144,10 @@ Rectangle {
                 KeyNavigation.priority: KeyNavigation.BeforeItem
                 KeyNavigation.tab: to
             }
+        }
+        FiliScrollBar {
+            flick: bodyFlick
+            anchors { top: bodyFlick.top; bottom: bodyFlick.bottom; right: parent.right }
         }
     }
     Row {

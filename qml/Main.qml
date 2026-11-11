@@ -5,6 +5,13 @@ import Fili.Mail
 
 ApplicationWindow {
     id: win
+    // Close and window-actions buttons at the right of the header (bar menu: Window > Show Window Buttons), kept in
+    // the state file like Casier's
+    property bool windowButtons: Facteur.uiGet("window_buttons") !== "0"
+    function toggleWindowButtons() {
+        windowButtons = !windowButtons;
+        Facteur.uiSet("window_buttons", windowButtons ? "1" : "0");
+    }
     // Fonts embedded in the binary (fonts/, licenses/): same look on every distribution
     FontLoader { source: "qrc:/qt/qml/Fili/Mail/fonts/Jost-Variable.ttf" }
     FontLoader { source: "qrc:/qt/qml/Fili/Mail/fonts/JetBrainsMono-Variable.ttf" }
@@ -32,11 +39,11 @@ ApplicationWindow {
     // Gmail sorts the inbox in categories (tabs above the list)
     property string category: "primary"
     readonly property var categories: [
-        { key: "primary", label: Facteur.tr("Primary") },
-        { key: "promotions", label: Facteur.tr("Promotions") },
-        { key: "social", label: Facteur.tr("Social") },
-        { key: "updates", label: Facteur.tr("Updates") },
-        { key: "forums", label: Facteur.tr("Forums") }
+        { key: "primary", label: Facteur.tr("Primary"), icon: "inbox" },
+        { key: "promotions", label: Facteur.tr("Promotions"), icon: "tag" },
+        { key: "social", label: Facteur.tr("Social"), icon: "users" },
+        { key: "updates", label: Facteur.tr("Updates"), icon: "bell" },
+        { key: "forums", label: Facteur.tr("Forums"), icon: "chat" }
     ]
     function isGmail() { const a = accounts.find(x => x.id === account); return !!a && a.provider === "gmail"; }
     function categoriesOn() { return mailbox === "inbox" && isGmail(); }
@@ -388,6 +395,8 @@ ApplicationWindow {
             const onMessage = !win.adding && !win.composing && win.selectedId !== "";
             if (name === "about") aboutCard.show();
             else if (name === "close") Qt.quit();
+            else if (name === "window-actions") { if (toolbar.visible) windowPanel.visible ? windowPanel.close() : windowPanel.open() }
+            else if (name === "toggle-window-buttons") win.toggleWindowButtons();
             else if (name === "add-account") { win.addError = ""; win.adding = true }
             else if (name === "new-message") win.startCompose("new");
             else if (name === "reply" || name === "forward") win.startCompose(name);
@@ -596,6 +605,7 @@ ApplicationWindow {
         // Window buttons at the far right: close, and the panel of window actions (niri)
         Rectangle {
             id: closeButton
+            visible: win.windowButtons
             anchors { right: parent.right; rightMargin: (toolbar.height - height) / 2; verticalCenter: parent.verticalCenter }
             width: 28
             height: 24
@@ -614,6 +624,7 @@ ApplicationWindow {
         }
         Rectangle {
             id: windowButton
+            visible: win.windowButtons
             anchors { right: closeButton.left; rightMargin: FiliTheme.space1; verticalCenter: parent.verticalCenter }
             width: 28
             height: 24
@@ -626,8 +637,8 @@ ApplicationWindow {
         }
         Rectangle {
             id: search
-            anchors { right: windowButton.left; rightMargin: FiliTheme.space3; verticalCenter: parent.verticalCenter }
-            width: 200
+            anchors { right: win.windowButtons ? windowButton.left : parent.right; rightMargin: win.windowButtons ? FiliTheme.space3 : FiliTheme.margin; verticalCenter: parent.verticalCenter }
+            width: 180
             height: 26
             radius: FiliTheme.radiusControl
             color: FiliTheme.surface
@@ -772,7 +783,7 @@ ApplicationWindow {
     Rectangle {
         visible: win.removing !== ""
         anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-        height: FiliTheme.statusHeight + FiliTheme.space2
+        height: FiliTheme.statusHeight
         color: FiliTheme.surface
         border.width: FiliTheme.borderWidth
         border.color: FiliTheme.border
@@ -851,7 +862,7 @@ ApplicationWindow {
     Rectangle {
         visible: win.deletingLabel !== null
         anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-        height: FiliTheme.statusHeight + FiliTheme.space2
+        height: FiliTheme.statusHeight
         z: 90
         color: FiliTheme.surface
         border.width: FiliTheme.borderWidth

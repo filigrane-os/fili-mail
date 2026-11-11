@@ -65,7 +65,7 @@ Rectangle {
         id: tabRow
         visible: list.tabs.length > 0
         anchors { left: parent.left; right: parent.right; top: bar.bottom }
-        height: visible ? 40 : 0
+        height: visible ? FiliTheme.tabBarHeight : 0
         color: FiliTheme.background
         Row {
             anchors { left: parent.left; leftMargin: FiliTheme.margin; verticalCenter: parent.verticalCenter }
@@ -76,7 +76,7 @@ Rectangle {
                     required property var modelData
                     readonly property bool on: list.tab === modelData.key
                     width: tabText.implicitWidth + 2 * FiliTheme.space4
-                    height: 28
+                    height: FiliTheme.tabHeight
                     radius: FiliTheme.radiusControl
                     color: on ? FiliTheme.surfaceActive : tabArea.containsMouse ? FiliTheme.surfaceHover : "transparent"
                     Text {

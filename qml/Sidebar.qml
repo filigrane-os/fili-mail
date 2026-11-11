@@ -45,9 +45,12 @@ Rectangle {
     signal contextRequested(string kind, var data, real x, real y)
 
     Flickable {
+        id: sideFlick
         anchors { fill: parent; bottomMargin: FiliTheme.statusHeight + FiliTheme.space2; topMargin: FiliTheme.space3 }
         contentHeight: column.height
         clip: true
+        boundsBehavior: Flickable.StopAtBounds
+        KineticScroll {}
         Column {
             id: column
             width: parent.width
@@ -81,7 +84,7 @@ Rectangle {
                         }
                         Text {
                             anchors { left: service.right; leftMargin: FiliTheme.space2; right: parent.right; rightMargin: FiliTheme.space2; bottom: parent.bottom; bottomMargin: (FiliTheme.sideRowHeight - height) / 2 }
-                            text: (modelData.label !== "" ? modelData.label : modelData.email) + (modelData.provider === "imap" ? "  ·  IMAP" : modelData.provider === "gmail" ? "  ·  Gmail" : "")
+                            text: (modelData.label !== "" ? modelData.label : modelData.email)
                             elide: Text.ElideRight
                             font.family: FiliTheme.font
                             font.pixelSize: FiliTheme.sizeSmall
@@ -199,6 +202,10 @@ Rectangle {
                 }
             }
         }
+    }
+    FiliScrollBar {
+        flick: sideFlick
+        anchors { top: sideFlick.top; bottom: sideFlick.bottom; right: sideFlick.right }
     }
     TextButton {
         anchors { left: parent.left; bottom: parent.bottom; leftMargin: FiliTheme.space3; bottomMargin: FiliTheme.space2 }
