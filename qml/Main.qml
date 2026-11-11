@@ -90,6 +90,22 @@ ApplicationWindow {
     // IMAP account whose server is Proton Bridge (labels and folders live under "Labels/" and "Folders/")
     property bool bridge: false
     function isImap() { const a = accounts.find(x => x.id === account); return !!a && (a.provider === "imap" || a.provider === "outlook"); }
+    // Which pane has the keyboard: 0 sidebar, 1 list, 2 reader
+    property int pane: 1
+    function focusPane(n) {
+        pane = ((n % 3) + 3) % 3;
+        Facteur.keyNav = true;
+        if (pane === 0) sidebar.forceActiveFocus();
+        else if (pane === 1) messageList.focusList();
+        else reader.focusReader();
+    }
+    function confirmDeleteLabel() {
+        const gone = deletingLabel;
+        if (!gone) return;
+        if (mailbox === "label:" + gone.rawName || mailbox === "folder:" + gone.id) mailbox = "inbox";
+        if (gone.folder) Facteur.deleteFolder(account, gone.id); else Facteur.deleteLabel(account, gone.id);
+        deletingLabel = null;
+    }
     function loadLabels() {
         labels = [];
         bridge = false;
@@ -438,6 +454,7 @@ ApplicationWindow {
             const boxes = { "inbox": "inbox", "unread-box": "unread", "starred": "starred", "sent": "sent", "drafts": "drafts", "archive-box": "archive", "spam-box": "spam", "trash-box": "trash" };
             const onMessage = !win.adding && !win.composing && win.selectedId !== "";
             if (name === "about") aboutCard.show();
+            else if (name === "shortcuts") shortcutsCard.show();
             else if (name === "close") Qt.quit();
             else if (name === "window-actions") { if (toolbar.visible) windowPanel.visible ? windowPanel.close() : windowPanel.open() }
             else if (name === "toggle-window-buttons") win.toggleWindowButtons();
@@ -566,6 +583,26 @@ ApplicationWindow {
     onQueryChanged: { messages.clear(); selectedId = ""; reader.summary = null; visit(); refresh() }
 
     Shortcut { sequences: ["Ctrl+Q", "Ctrl+W"]; onActivated: Qt.quit() }
+    // Keyboard: the three panes (F6 / Shift+F6 go round them, Alt+1 2 3 go straight), the tabs, the filter, the layout
+    Shortcut { sequences: ["F6"]; enabled: !win.adding && win.account !== ""; onActivated: win.focusPane(win.pane + 1) }
+    Shortcut { sequences: ["Shift+F6"]; enabled: !win.adding && win.account !== ""; onActivated: win.focusPane(win.pane - 1) }
+    Shortcut { sequences: ["Alt+1"]; enabled: !win.adding && win.account !== ""; onActivated: win.focusPane(0) }
+    Shortcut { sequences: ["Alt+2"]; enabled: !win.adding && win.account !== ""; onActivated: win.focusPane(1) }
+    Shortcut { sequences: ["Alt+3"]; enabled: !win.adding && win.account !== ""; onActivated: win.focusPane(2) }
+    Shortcut { sequences: ["Ctrl+1"]; enabled: win.categoriesOn(); onActivated: win.category = win.categories[0].key }
+    Shortcut { sequences: ["Ctrl+2"]; enabled: win.categoriesOn(); onActivated: win.category = win.categories[1].key }
+    Shortcut { sequences: ["Ctrl+3"]; enabled: win.categoriesOn(); onActivated: win.category = win.categories[2].key }
+    Shortcut { sequences: ["Ctrl+4"]; enabled: win.categoriesOn(); onActivated: win.category = win.categories[3].key }
+    Shortcut { sequences: ["Ctrl+5"]; enabled: win.categoriesOn(); onActivated: win.category = win.categories[4].key }
+    Shortcut { sequences: ["Ctrl+U"]; enabled: !win.adding && win.account !== ""; onActivated: listBar.unreadOnly = !listBar.unreadOnly }
+    Shortcut { sequences: ["Ctrl+Shift+P"]; enabled: !win.adding; onActivated: win.togglePreview() }
+    Shortcut { sequences: ["Ctrl+Shift+L"]; enabled: !win.adding && win.account !== ""; onActivated: { labelDialog.error = ""; labelDialog.imap = win.isImap(); labelDialog.bridge = win.bridge; labelDialog.open() } }
+    Shortcut { sequences: ["F1", "Ctrl+/"]; onActivated: shortcutsCard.show() }
+    // The confirmation bars answer to Enter and Esc
+    Shortcut { sequences: ["Return", "Enter"]; enabled: win.deletingLabel !== null; onActivated: win.confirmDeleteLabel() }
+    Shortcut { sequences: ["Escape"]; enabled: win.deletingLabel !== null; onActivated: win.deletingLabel = null }
+    Shortcut { sequences: ["Return", "Enter"]; enabled: win.removing !== ""; onActivated: Facteur.removeAccount(win.removing) }
+    Shortcut { sequences: ["Escape"]; enabled: win.removing !== ""; onActivated: win.removing = "" }
     Shortcut { sequences: ["Ctrl+Shift+W"]; enabled: toolbar.visible; onActivated: windowPanel.visible ? windowPanel.close() : windowPanel.open() }
     Shortcut { sequences: ["F5", "Ctrl+R"]; enabled: !win.adding && win.account !== ""; onActivated: win.refresh() }
     Shortcut { sequences: ["Alt+Left"]; enabled: !win.adding && win.hindex > 0; onActivated: win.go(-1) }
@@ -738,6 +775,7 @@ ApplicationWindow {
         anchors { top: toolbar.visible ? toolbarLine.bottom : parent.top; bottom: footer.visible ? footer.top : parent.bottom; left: parent.left; right: parent.right }
         visible: !win.adding && win.accounts.length > 0
         Sidebar {
+            id: sidebar
             width: FiliTheme.sidebarWidth
             height: parent.height
             accounts: win.accounts
@@ -796,6 +834,10 @@ ApplicationWindow {
                     emptyText: win.listError !== "" ? win.listError : win.loading ? (win.query !== "" ? Facteur.tr("Searching…") : "…") : Facteur.tr("No message")
                     onChosen: id => win.choose(id)
                     onNearEnd: win.loadMore()
+                    onReply: win.startCompose("reply")
+                    onReplyAll: win.startCompose("replyall")
+                    onForward: win.startCompose("forward")
+                    onSearchRequested: searchInput.forceActiveFocus()
                 }
                 Rectangle {
                     x: panes.below ? 0 : messageList.width
@@ -811,6 +853,7 @@ ApplicationWindow {
                     onForward: win.startCompose("forward")
                     onReplyAll: win.startCompose("replyall")
                     onUnsubscribe: url => Qt.openUrlExternally(url)
+                    onLeave: win.focusPane(1)
                     onSaveAttachment: index => Facteur.saveAttachment(win.account, win.selectedId, reader.attachments[index].attachmentId, reader.attachments[index].filename)
                     onLoadImages: { reader.loadingImages = true; Facteur.loadImages(win.account, win.selectedId) }
                     x: panes.below ? 0 : messageList.width + FiliTheme.borderWidth
@@ -963,7 +1006,7 @@ ApplicationWindow {
         Row {
             anchors { right: parent.right; rightMargin: FiliTheme.margin; verticalCenter: parent.verticalCenter }
             spacing: FiliTheme.space2
-            TextButton { label: Facteur.tr("Delete"); primary: true; onClicked: { const gone = win.deletingLabel; if (win.mailbox === "label:" + gone.rawName || win.mailbox === "folder:" + gone.id) win.mailbox = "inbox"; if (gone.folder) Facteur.deleteFolder(win.account, gone.id); else Facteur.deleteLabel(win.account, gone.id); win.deletingLabel = null } }
+            TextButton { label: Facteur.tr("Delete"); primary: true; onClicked: win.confirmDeleteLabel() }
             TextButton { label: Facteur.tr("Cancel"); onClicked: win.deletingLabel = null }
         }
     }
@@ -977,4 +1020,5 @@ ApplicationWindow {
         anchorTop: toolbar.height + 1
     }
     AboutCard { id: aboutCard; anchors.fill: parent }
+    ShortcutsCard { id: shortcutsCard; anchors.fill: parent }
 }

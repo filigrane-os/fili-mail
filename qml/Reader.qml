@@ -29,6 +29,9 @@ Rectangle {
     // Files attached to the message ({filename, mimeType, size, attachmentId}); clicking one saves it
     property var attachments: []
     signal saveAttachment(int index)
+    // Escape: back to the list
+    signal leave()
+    function focusReader() { scroller.forceActiveFocus(); }
     color: FiliTheme.backgroundDeep
 
     function sizeText(bytes) {
@@ -68,6 +71,31 @@ Rectangle {
         boundsBehavior: Flickable.StopAtBounds
         clip: true
         KineticScroll {}
+        activeFocusOnTab: true
+        // Keyboard: scrolling, and the keys of the list for the message that is open
+        Keys.onPressed: event => {
+            Facteur.keyNav = true;
+            const top = scroller.originY, max = Math.max(top, top + scroller.contentHeight - scroller.height);
+            const go = y => scroller.contentY = Math.max(top, Math.min(max, y));
+            const plain = !(event.modifiers & (Qt.ControlModifier | Qt.AltModifier));
+            if (event.key === Qt.Key_Down || (plain && event.key === Qt.Key_J)) go(scroller.contentY + 48);
+            else if (event.key === Qt.Key_Up || (plain && event.key === Qt.Key_K)) go(scroller.contentY - 48);
+            else if (event.key === Qt.Key_PageDown || event.key === Qt.Key_Space) go(scroller.contentY + scroller.height * 0.9);
+            else if (event.key === Qt.Key_PageUp) go(scroller.contentY - scroller.height * 0.9);
+            else if (event.key === Qt.Key_Home) go(top);
+            else if (event.key === Qt.Key_End) go(max);
+            else if (event.key === Qt.Key_Escape) reader.leave();
+            else if (plain && event.key === Qt.Key_R) reader.reply();
+            else if (plain && event.key === Qt.Key_A) reader.replyAll();
+            else if (plain && event.key === Qt.Key_F) reader.forward();
+            else if (plain && event.key === Qt.Key_E) reader.act("archive");
+            else if (plain && (event.key === Qt.Key_NumberSign || event.key === Qt.Key_Delete)) reader.act("trash");
+            else if (plain && event.key === Qt.Key_S) reader.act(reader.starred ? "unstar" : "star");
+            else if (plain && event.key === Qt.Key_U) reader.act(reader.unread ? "read" : "unread");
+            else return;
+            event.accepted = true;
+        }
+
         Column {
             id: content
             x: FiliTheme.margin
@@ -175,6 +203,11 @@ Rectangle {
                             Rectangle {
                                 required property var modelData
                                 required property int index
+                                activeFocusOnTab: !!modelData.attachmentId
+                                Keys.onReturnPressed: reader.saveAttachment(index)
+                                Keys.onEnterPressed: reader.saveAttachment(index)
+                                Keys.onSpacePressed: reader.saveAttachment(index)
+                                FocusRing {}
                                 width: Math.min(chipText.implicitWidth + 2 * FiliTheme.space3 + 14 + FiliTheme.space2, content.width)
                                 height: 28
                                 radius: FiliTheme.radiusControl
@@ -310,6 +343,7 @@ Rectangle {
             }
         }
     }
+    FocusRing { target: scroller; gap: -2; shown: scroller.activeFocus }
     FiliScrollBar {
         flick: scroller
         visible: needed && reader.summary !== null

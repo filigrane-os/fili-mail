@@ -48,6 +48,90 @@ Rectangle {
     // Right click: kind "account" (data: the account) or "label" (data: the label), at window position x, y
     signal contextRequested(string kind, var data, real x, real y)
 
+    // Keyboard: the row under the cursor ("a:<account>", "b:<account>:<box>", "s:<account>", "l:<account>:<key>");
+    // Up/Down (J/K) move, Enter opens, Left/Right fold, Menu or Shift+F10 the context menu, + a new label
+    property string cursor: ""
+    property point cursorPos: Qt.point(60, 60)
+    activeFocusOnTab: true
+    readonly property var rows: {
+        const out = [];
+        for (const a of accounts) {
+            out.push({ key: "a:" + a.id, kind: "account", account: a });
+            if (isFolded("account:" + a.id)) continue;
+            for (const b of boxes) out.push({ key: "b:" + a.id + ":" + b.key, kind: "box", account: a, box: b.key });
+            if (a.id !== account) continue;
+            out.push({ key: "s:" + a.id, kind: "section", account: a });
+            if (isFolded("labels:" + a.id)) continue;
+            for (const l of labels) {
+                const k = l.folder ? "folder:" + l.id : "label:" + l.rawName;
+                out.push({ key: "l:" + a.id + ":" + k, kind: "label", account: a, label: l, box: k });
+            }
+        }
+        return out;
+    }
+    function rowIndex() { return rows.findIndex(r => r.key === cursor); }
+    function currentKey() {
+        const r = rows.find(r => (r.kind === "box" || r.kind === "label") && r.account.id === account && r.box === mailbox);
+        return r ? r.key : rows.length > 0 ? rows[0].key : "";
+    }
+    function activate(r) {
+        if (r.kind === "account") {
+            accountChosen(r.account.id);
+            if (isFolded("account:" + r.account.id)) toggle("account:" + r.account.id);
+        } else if (r.kind === "box") {
+            if (r.account.id === account) mailboxChosen(r.box); else boxOfAccountChosen(r.account.id, r.box);
+        } else if (r.kind === "section") {
+            toggle("labels:" + r.account.id);
+        } else {
+            mailboxChosen(r.box);
+        }
+    }
+    // Keep the row under the cursor in view and remember where it is (for the context menu)
+    function reveal(item) {
+        const p = item.mapToItem(sideFlick.contentItem, 0, 0);
+        if (p.y < sideFlick.contentY) sideFlick.contentY = p.y;
+        else if (p.y + item.height > sideFlick.contentY + sideFlick.height) sideFlick.contentY = p.y + item.height - sideFlick.height;
+        cursorPos = item.mapToItem(null, 60, item.height);
+    }
+    onActiveFocusChanged: if (activeFocus && rowIndex() < 0) cursor = currentKey()
+    Keys.onPressed: event => {
+        Facteur.keyNav = true;
+        const i = rowIndex();
+        const r = i >= 0 ? rows[i] : null;
+        if (event.key === Qt.Key_Down || event.key === Qt.Key_J) {
+            cursor = rows[Math.min(rows.length - 1, i + 1)].key;
+        } else if (event.key === Qt.Key_Up || event.key === Qt.Key_K) {
+            cursor = rows[Math.max(0, i - 1)].key;
+        } else if (event.key === Qt.Key_Home) {
+            cursor = rows[0].key;
+        } else if (event.key === Qt.Key_End) {
+            cursor = rows[rows.length - 1].key;
+        } else if (r && (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space)) {
+            activate(r);
+        } else if (r && event.key === Qt.Key_Right && (r.kind === "account" || r.kind === "section")) {
+            const k = (r.kind === "account" ? "account:" : "labels:") + r.account.id;
+            if (isFolded(k)) toggle(k);
+        } else if (r && event.key === Qt.Key_Left) {
+            if (r.kind === "account" || r.kind === "section") {
+                const k = (r.kind === "account" ? "account:" : "labels:") + r.account.id;
+                if (!isFolded(k)) toggle(k);
+            } else {
+                // From a box or a label back to the heading above it
+                for (let j = i - 1; j >= 0; j--)
+                    if (rows[j].kind === "section" || (rows[j].kind === "account" && r.kind === "box")) { cursor = rows[j].key; break; }
+            }
+        } else if (r && (event.key === Qt.Key_Menu || (event.key === Qt.Key_F10 && (event.modifiers & Qt.ShiftModifier)))) {
+            if (r.kind === "account") contextRequested("account", r.account, cursorPos.x, cursorPos.y);
+            else if (r.kind === "label") contextRequested("label", r.label, cursorPos.x, cursorPos.y);
+        } else if (event.key === Qt.Key_Plus || event.key === Qt.Key_Insert) {
+            addLabelRequested();
+        } else {
+            return;
+        }
+        event.accepted = true;
+    }
+    FocusRing { target: side; gap: -2; shown: false }
+
     Flickable {
         id: sideFlick
         anchors { fill: parent; bottomMargin: FiliTheme.statusHeight + FiliTheme.space2; topMargin: FiliTheme.space3 }
@@ -68,6 +152,11 @@ Rectangle {
                     readonly property bool open: !side.isFolded("account:" + modelData.id)
                     // Account heading: room above it, a fold arrow, then the name
                     Rectangle {
+                        id: headRow
+                        readonly property string rk: "a:" + modelData.id
+                        readonly property bool atCursor: side.activeFocus && Facteur.keyNav && side.cursor === rk
+                        onAtCursorChanged: if (atCursor) side.reveal(headRow)
+                        Rectangle { visible: headRow.atCursor; anchors { fill: parent; margins: 1 } color: "transparent"; border.width: FiliTheme.borderWidth; border.color: FiliTheme.accentColor; radius: FiliTheme.radiusControl }
                         width: parent.width
                         height: FiliTheme.sideRowHeight + FiliTheme.space4
                         color: head.containsMouse ? FiliTheme.surfaceHover : "transparent"
@@ -110,6 +199,11 @@ Rectangle {
                     Repeater {
                         model: acct.open ? side.boxes : []
                         delegate: Rectangle {
+                            id: boxRow
+                            readonly property string rk: "b:" + acct.info.id + ":" + modelData.key
+                            readonly property bool atCursor: side.activeFocus && Facteur.keyNav && side.cursor === rk
+                            onAtCursorChanged: if (atCursor) side.reveal(boxRow)
+                            Rectangle { visible: boxRow.atCursor; anchors { fill: parent; margins: 1 } color: "transparent"; border.width: FiliTheme.borderWidth; border.color: FiliTheme.accentColor; radius: FiliTheme.radiusControl }
                             width: column.width
                             height: FiliTheme.sideRowHeight
                             readonly property bool selected: acct.current && side.mailbox === modelData.key
@@ -129,6 +223,10 @@ Rectangle {
                     // Labels (Gmail): heading with fold arrow and a button to make one
                     Rectangle {
                         id: labelsHead
+                        readonly property string rk: "s:" + modelData.id
+                        readonly property bool atCursor: side.activeFocus && Facteur.keyNav && side.cursor === rk
+                        onAtCursorChanged: if (atCursor) side.reveal(labelsHead)
+                        Rectangle { visible: labelsHead.atCursor; anchors { fill: parent; margins: 1 } color: "transparent"; border.width: FiliTheme.borderWidth; border.color: FiliTheme.accentColor; radius: FiliTheme.radiusControl }
                         visible: current && acct.open
                         readonly property bool open: !side.isFolded("labels:" + modelData.id)
                         width: parent.width
@@ -161,6 +259,11 @@ Rectangle {
                     Repeater {
                         model: current && acct.open && labelsHead.open ? side.labels : []
                         delegate: Rectangle {
+                            id: labelRow
+                            readonly property string rk: "l:" + acct.info.id + ":" + key
+                            readonly property bool atCursor: side.activeFocus && Facteur.keyNav && side.cursor === rk
+                            onAtCursorChanged: if (atCursor) side.reveal(labelRow)
+                            Rectangle { visible: labelRow.atCursor; anchors { fill: parent; margins: 1 } color: "transparent"; border.width: FiliTheme.borderWidth; border.color: FiliTheme.accentColor; radius: FiliTheme.radiusControl }
                             width: column.width
                             height: FiliTheme.sideRowHeight
                             readonly property string key: modelData.folder ? "folder:" + modelData.id : "label:" + modelData.rawName

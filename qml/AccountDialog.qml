@@ -48,6 +48,7 @@ Rectangle {
     z: 100
     MouseArea { anchors.fill: parent; onClicked: if (!dialog.busy) dialog.cancelled() }
     Keys.onEscapePressed: dialog.cancelled()
+    Shortcut { sequences: ["Ctrl+Return", "Ctrl+Enter"]; enabled: dialog.visible; onActivated: dialog.submit() }
 
     Rectangle {
         anchors.centerIn: parent

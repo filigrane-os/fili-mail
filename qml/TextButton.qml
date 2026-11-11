@@ -8,6 +8,11 @@ Rectangle {
     property string label
     property bool primary: false
     signal clicked()
+    activeFocusOnTab: true
+    Keys.onReturnPressed: b.clicked()
+    Keys.onEnterPressed: b.clicked()
+    Keys.onSpacePressed: b.clicked()
+    FocusRing {}
 
     width: text.implicitWidth + 2 * FiliTheme.space3
     height: 22

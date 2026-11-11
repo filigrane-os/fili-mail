@@ -32,6 +32,7 @@ fn main() {
                 "qml/KineticScroll.qml",
                 "qml/Compose.qml",
                 "qml/AboutCard.qml",
+                "qml/ShortcutsCard.qml",
                 "qml/Icon.qml",
                 "qml/Field.qml",
                 "qml/IconButton.qml",
@@ -43,7 +44,13 @@ fn main() {
             .depend("QtQuick.Controls"),
     )
     // Fonts of the interface travel with the binary: the application looks the same on any distribution
-    .qrc_resources(["fonts/Jost-Variable.ttf", "fonts/JetBrainsMono-Variable.ttf", "fonts/FiliIcons.ttf"])
+    .qrc_resources([
+        "fonts/Jost-Variable.ttf",
+        "fonts/JetBrainsMono-Variable.ttf",
+        "fonts/FiliIcons.ttf",
+        // The icon of the application, shown by the About card
+        "data/icons/hicolor/scalable/apps/fili-mail.svg",
+    ])
     .qt_module("Quick")
     .files(["src/gui/bridge.rs"])
     .build();

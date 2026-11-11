@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Name=Facteur
+GenericName=Mail
+GenericName[fr]=Courrier
+Comment=Read and write mail
+Comment[fr]=Lire et écrire du courrier
+Exec=fili-mail
+Icon=fili-mail
+Keywords=mail;email;courriel;courrier;inbox;gmail;imap;
+Keywords[fr]=courrier;courriel;mail;messagerie;boîte;
+Categories=Network;Email;
+StartupWMClass=fili-mail
+Terminal=false

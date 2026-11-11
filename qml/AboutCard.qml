@@ -39,9 +39,10 @@ Rectangle {
             Image {
                 anchors.horizontalCenter: parent.horizontalCenter
                 width: 96
-                height: 96 * 0.4
-                source: Facteur.aboutLogo()
+                height: 96
+                source: "qrc:/qt/qml/Fili/Mail/data/icons/hicolor/scalable/apps/fili-mail.svg"
                 sourceSize.width: 192
+                sourceSize.height: 192
                 fillMode: Image.PreserveAspectFit
             }
             Text {

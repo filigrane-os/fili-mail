@@ -7,12 +7,14 @@ Item {
     id: menu
     property var items: []
     signal activated(string id)
+    property int index: 0
     visible: false
     anchors.fill: parent
     z: 200
 
     function openAt(x, y, entries) {
         items = entries;
+        index = 0;
         card.x = Math.max(4, Math.min(x, menu.width - card.width - 4));
         card.y = Math.max(4, Math.min(y, menu.height - card.height - 4));
         visible = true;
@@ -21,6 +23,14 @@ Item {
     function close() { visible = false; }
 
     Keys.onEscapePressed: menu.close()
+    Keys.onPressed: event => {
+        Facteur.keyNav = true;
+        if (event.key === Qt.Key_Down || event.key === Qt.Key_J) index = Math.min(items.length - 1, index + 1);
+        else if (event.key === Qt.Key_Up || event.key === Qt.Key_K) index = Math.max(0, index - 1);
+        else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) { const id = items[index].id; close(); activated(id); }
+        else return;
+        event.accepted = true;
+    }
     MouseArea {
         anchors.fill: parent
         acceptedButtons: Qt.AllButtons
@@ -43,10 +53,11 @@ Item {
                 model: menu.items
                 Rectangle {
                     required property var modelData
+                    required property int index
                     width: col.width
                     height: 26
                     radius: FiliTheme.radiusControl
-                    color: area.containsMouse ? FiliTheme.surfaceHover : "transparent"
+                    color: area.containsMouse || (Facteur.keyNav && menu.index === index) ? FiliTheme.surfaceHover : "transparent"
                     Text {
                         anchors { left: parent.left; leftMargin: FiliTheme.space2; verticalCenter: parent.verticalCenter }
                         text: modelData.label

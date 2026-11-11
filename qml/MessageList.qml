@@ -15,6 +15,15 @@ Rectangle {
     // Ticking: toggle one row (mode 0) or a range (mode 1), all, none
     signal check(int index, int mode)
     signal checkAll()
+    signal reply()
+    signal replyAll()
+    signal forward()
+    // "/" asks for the search field
+    signal searchRequested()
+    function focusList() {
+        view.forceActiveFocus();
+        if (view.currentIndex < 0 && view.count > 0) view.currentIndex = 0;
+    }
     signal clearChecks()
     property int checkedCount: 0
     // The end of the list is near: the next page can be fetched
@@ -138,6 +147,14 @@ Rectangle {
                 view.currentIndex = Math.max(0, view.currentIndex - 1);
             } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
                 if (view.currentItem) list.chosen(view.model.get(view.currentIndex).id);
+                return;
+            } else if (!(event.modifiers & (Qt.ControlModifier | Qt.AltModifier)) && (event.key === Qt.Key_R || event.key === Qt.Key_A || event.key === Qt.Key_F)) {
+                if (event.key === Qt.Key_R) list.reply(); else if (event.key === Qt.Key_A) list.replyAll(); else list.forward();
+                event.accepted = true;
+                return;
+            } else if (event.key === Qt.Key_Slash) {
+                list.searchRequested();
+                event.accepted = true;
                 return;
             } else if (event.key === Qt.Key_X) {
                 list.check(view.currentIndex, 0);

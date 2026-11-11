@@ -69,6 +69,9 @@ Rectangle {
 
     Keys.onEscapePressed: compose.cancelled()
     Shortcut { sequences: ["Ctrl+Return", "Ctrl+Enter"]; enabled: compose.visible; onActivated: compose.submit() }
+    Shortcut { sequences: ["Ctrl+Shift+C"]; enabled: compose.visible && !compose.minimized; onActivated: { compose.showCc = true; cc.forceActiveFocus() } }
+    Shortcut { sequences: ["Ctrl+Shift+B"]; enabled: compose.visible && !compose.minimized; onActivated: { compose.showBcc = true; bcc.forceActiveFocus() } }
+    Shortcut { sequences: ["Ctrl+M"]; enabled: compose.visible; onActivated: compose.minimized = !compose.minimized }
 
     // A field of the card: no frame, a line under it
     component Line: TextField {

@@ -70,6 +70,7 @@ Rectangle {
     z: 100
     MouseArea { anchors.fill: parent; onClicked: if (!dialog.busy) dialog.cancelled() }
     Keys.onEscapePressed: dialog.cancelled()
+    Shortcut { sequences: ["Ctrl+Return", "Ctrl+Enter"]; enabled: dialog.visible; onActivated: dialog.submit() }
 
     Rectangle {
         anchors.centerIn: parent
@@ -121,6 +122,13 @@ Rectangle {
                         required property var modelData
                         required property int index
                         width: 30; height: 30; radius: 15
+                        activeFocusOnTab: true
+                        onActiveFocusChanged: if (activeFocus) dialog.pick = index
+                        Keys.onLeftPressed: dialog.pick = Math.max(0, index - 1)
+                        Keys.onRightPressed: dialog.pick = Math.min(dialog.swatches.length - 1, index + 1)
+                        Keys.onReturnPressed: dialog.submit()
+                        Keys.onEnterPressed: dialog.submit()
+                        FocusRing { gap: 3 }
                         color: modelData[0]
                         border.width: dialog.pick === index ? 3 : 0
                         border.color: FiliTheme.text
