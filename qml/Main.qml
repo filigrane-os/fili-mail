@@ -296,6 +296,8 @@ ApplicationWindow {
     // Next page of the list (token of the last answer), fetched when the end of the list comes near
     property string nextToken: ""
     property bool loadingMore: false
+    // Search on IMAP: "quick" (headers of the mailbox shown), "full" (content of the whole account, merged after), or ""
+    property string searchPhase: ""
     function loadMore() {
         if (nextToken === "" || loading || loadingMore || account === "" || listError !== "")
             return;
@@ -305,13 +307,21 @@ ApplicationWindow {
     function refresh() {
         nextToken = "";
         loadingMore = false;
+        searchPhase = "";
         checkedCount = 0;
         checkAnchor = -1;
         if (account === "")
             return;
         loading = true;
         listError = "";
-        Facteur.list(account, listBox(), listQuery(), "");
+        // IMAP: a quick pass in the mailbox shown (subject, sender, recipients), then the whole account and the content
+        if (query !== "" && isImap()) {
+            searchPhase = "quick";
+            Facteur.list(account, listBox(), "scope:headers " + listQuery(), "");
+        } else {
+            searchPhase = "";
+            Facteur.list(account, listBox(), listQuery(), "");
+        }
     }
 
     function rowOf(id) {
@@ -382,11 +392,19 @@ ApplicationWindow {
 
     Connections {
         target: Facteur
-        function onListed(acc, box, qry, json) {
+        function onListed(acc, box, rawQry, json) {
+            const quick = rawQry.startsWith("scope:headers ");
+            const qry = quick ? rawQry.slice(14) : rawQry;
             if (acc !== win.account || box !== win.listBox() || qry !== win.listQuery())
                 return;
             const r = JSON.parse(json);
-            const more = r.append === true || (!!r.error && win.loadingMore);
+            // The slow pass of a search is merged after the quick one
+            const merge = !quick && win.searchPhase === "full";
+            if (merge) {
+                win.searchPhase = "";
+                if (r.error) return;
+            }
+            const more = !merge && (r.append === true || (!!r.error && win.loadingMore));
             if (more && !win.loadingMore)
                 return; // the answer of a list that was refreshed since
             win.loadingMore = false;
@@ -395,19 +413,25 @@ ApplicationWindow {
                 return;
             }
             win.loading = false;
-            if (!more)
+            if (!more && !merge)
                 messages.clear();
             if (r.error) {
                 win.listError = win.errorText(r.error);
                 return;
             }
-            win.nextToken = r.nextPageToken || "";
+            if (!quick)
+                win.nextToken = r.nextPageToken || "";
             const known = new Set();
-            if (more)
+            if (more || merge)
                 for (let i = 0; i < messages.count; i++) known.add(messages.get(i).id);
             for (const m of r.messages)
                 if ((!listBar.unreadOnly || m.unread) && !known.has(m.id))
                     messages.append({ id: m.id, from: m.from.display || m.from.email || "", subject: m.subject, time: m.time, unread: m.unread, starred: m.starred, checked: false });
+            if (quick) {
+                // Now the full search: content, whole account; its results come after these
+                win.searchPhase = "full";
+                Facteur.list(acc, box, qry, "");
+            }
         }
         // Menu of the fili-bar (fili-mail ctl action NAME)
         function onCommand(name) {
@@ -717,6 +741,7 @@ ApplicationWindow {
             mailbox: win.mailbox
             onAccountChosen: id => win.account = id
             onMailboxChosen: key => win.mailbox = key
+            onBoxOfAccountChosen: (id, key) => { win.account = id; win.mailbox = key }
             labels: win.labels
             onAddLabelRequested: { labelDialog.error = ""; labelDialog.imap = win.isImap(); labelDialog.bridge = win.bridge; labelDialog.open() }
             sectionTitle: win.isImap() && !win.bridge ? Facteur.tr("Folders") : Facteur.tr("Labels")
@@ -788,15 +813,6 @@ ApplicationWindow {
                     y: panes.below ? messageList.height + FiliTheme.borderWidth : 0
                     width: panes.below ? panes.width : panes.width - x
                     height: panes.below ? panes.height - y : panes.height
-                    Compose {
-                        id: composer
-                        anchors.fill: parent
-                        visible: win.composing
-                        busy: win.sending
-                        from: win.account.replace(/^[a-z]+:/, "")
-                        onCancelled: win.composing = false
-                        onSubmitted: fields => { win.sending = true; error = ""; Facteur.send(win.account, JSON.stringify(fields)) }
-                    }
                 }
             }
         }
@@ -850,6 +866,7 @@ ApplicationWindow {
                 const parts = [];
                 if (win.loading) parts.push(win.query !== "" ? Facteur.tr("Searching…") : "…");
                 else if (win.listError === "") {
+                    if (win.searchPhase === "full") parts.push(Facteur.tr("Searching the content…"));
                     parts.push(Facteur.tr("%1 messages, %2 unread").replace("%1", messages.count).replace("%2", win.unreadCount()));
                     if (win.nextToken !== "") parts.push(win.loadingMore ? Facteur.tr("Loading more…") : Facteur.tr("More below"));
                 }
@@ -860,6 +877,17 @@ ApplicationWindow {
             font.pixelSize: FiliTheme.sizeSmall
             color: win.notice !== "" ? FiliTheme.danger : FiliTheme.textSecondary
         }
+    }
+    // The message being written: a card at the bottom right, over the panes
+    Compose {
+        id: composer
+        visible: win.composing
+        z: 60
+        anchors { right: parent.right; rightMargin: FiliTheme.margin; bottom: footer.visible ? footer.top : parent.bottom; bottomMargin: FiliTheme.space2 }
+        busy: win.sending
+        from: win.account.replace(/^[a-z]+:/, "")
+        onCancelled: win.composing = false
+        onSubmitted: fields => { win.sending = true; error = ""; Facteur.send(win.account, JSON.stringify(fields)) }
     }
     LabelDialog {
         id: labelDialog

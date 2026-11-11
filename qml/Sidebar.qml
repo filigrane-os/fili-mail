@@ -13,6 +13,8 @@ Rectangle {
     property string sectionTitle: Facteur.tr("Labels")
     signal accountChosen(string id)
     signal mailboxChosen(string key)
+    // A box of an account that is not the current one
+    signal boxOfAccountChosen(string id, string key)
     signal addAccount()
     signal removeRequested(string id)
 
@@ -106,11 +108,11 @@ Rectangle {
                         }
                     }
                     Repeater {
-                        model: current && acct.open ? side.boxes : []
+                        model: acct.open ? side.boxes : []
                         delegate: Rectangle {
                             width: column.width
                             height: FiliTheme.sideRowHeight
-                            readonly property bool selected: side.mailbox === modelData.key
+                            readonly property bool selected: acct.current && side.mailbox === modelData.key
                             color: selected ? FiliTheme.surfaceHover : row.containsMouse ? FiliTheme.alpha(FiliTheme.surfaceHover, 0.5) : "transparent"
                             Text {
                                 anchors { left: parent.left; right: parent.right; leftMargin: FiliTheme.margin / 2 + FiliTheme.space2; verticalCenter: parent.verticalCenter }
@@ -121,7 +123,7 @@ Rectangle {
                                 font.weight: selected ? FiliTheme.weightAccent : Font.Normal
                                 color: FiliTheme.text
                             }
-                            MouseArea { id: row; anchors.fill: parent; hoverEnabled: true; onClicked: side.mailboxChosen(modelData.key) }
+                            MouseArea { id: row; anchors.fill: parent; hoverEnabled: true; onClicked: acct.current ? side.mailboxChosen(modelData.key) : side.boxOfAccountChosen(acct.info.id, modelData.key) }
                         }
                     }
                     // Labels (Gmail): heading with fold arrow and a button to make one

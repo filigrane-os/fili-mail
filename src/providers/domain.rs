@@ -62,6 +62,29 @@ fn imap_search(text: &str) -> String {
     }
     format!("search:{}", parts.join(" "))
 }
+/// Quick IMAP search: every plain word must be in the subject, the sender or a recipient (headers only, so a server
+/// that decrypts every body to search, like Proton Bridge, answers at once). Operators (from:, to:, subject:) stay.
+pub fn imap_header_search(text: &str) -> String {
+    static TERMS: LazyLock<regex::Regex> = LazyLock::new(|| {
+        regex::Regex::new(r#"(?i)(from|to|subject):\s*(?:"([^"]*)"|(\S*))|"([^"]*)"|(\S+)"#).unwrap()
+    });
+    let mut parts = Vec::new();
+    for term in TERMS.captures_iter(text) {
+        if let Some(field) = term.get(1) {
+            let value = term.get(2).or_else(|| term.get(3)).map(|v| v.as_str()).unwrap_or("").replace('*', "");
+            if !value.is_empty() {
+                parts.push(format!("{} {}", field.as_str().to_uppercase(), quoted(&value)));
+            }
+        } else if let Some(word) = term.get(4).or_else(|| term.get(5)) {
+            let w = quoted(&word.as_str().replace('*', ""));
+            parts.push(format!("OR SUBJECT {w} OR FROM {w} TO {w}"));
+        }
+    }
+    if parts.is_empty() {
+        return String::new();
+    }
+    format!("search:{}", parts.join(" "))
+}
 fn search(id: &str, text: &str) -> String {
     if text.is_empty() {
         return String::new();

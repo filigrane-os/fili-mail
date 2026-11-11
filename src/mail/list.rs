@@ -52,15 +52,36 @@ pub(crate) async fn list_with(
     adapter: &impl ListAdapter,
 ) -> Result<Value, &'static str> {
     let provider_mailbox = provider_mailbox(&request).ok_or("mail_mailbox_unavailable")?;
-    let provider_query = crate::providers::domain::resolve(&json!({
-        "operation":"query",
-        "provider":request.account.provider.id(),
-        "mailbox":provider_mailbox,
-        "search":request.query,
-    }))?["value"]
-        .as_str()
-        .ok_or("mail_mailbox_unavailable")?
-        .to_owned();
+    // "scope:headers TEXT": the quick first pass of a search (subject, sender, recipients only), IMAP
+    let (quick, typed) = match request.query.strip_prefix("scope:headers ") {
+        Some(rest) => (true, rest),
+        None => (false, request.query.as_str()),
+    };
+    let header_query = if quick && matches!(request.account.provider.id(), "imap" | "outlook") {
+        crate::providers::domain::imap_header_search(typed)
+    } else {
+        String::new()
+    };
+    let provider_query = if !header_query.is_empty() {
+        // Without a named folder the quick pass stays in the mailbox shown: scanning the whole account is what is slow
+        match (request.folder.is_empty(), header_query.strip_prefix("search:")) {
+            (true, Some(criteria)) => match crate::providers::domain::mailbox_query(request.account.provider.id(), &provider_mailbox) {
+                Some(mailbox) => format!("{mailbox} {criteria}"),
+                None => header_query,
+            },
+            _ => header_query,
+        }
+    } else {
+        crate::providers::domain::resolve(&json!({
+            "operation":"query",
+            "provider":request.account.provider.id(),
+            "mailbox":provider_mailbox,
+            "search":typed,
+        }))?["value"]
+            .as_str()
+            .ok_or("mail_mailbox_unavailable")?
+            .to_owned()
+    };
     // A named folder (IMAP): `folder:"NAME"`, then what was typed in the search box as IMAP criteria
     let provider_query = if request.folder.is_empty() {
         provider_query
