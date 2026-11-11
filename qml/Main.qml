@@ -161,7 +161,60 @@ ApplicationWindow {
             if (messages.get(i).unread) n++;
         return n;
     }
+    // Messages ticked for a batch action (checkbox, Ctrl/Shift+click, X, Ctrl+A); empty: actions apply to the open message
+    property int checkedCount: 0
+    property bool checkedAnyUnread: false
+    property bool checkedAllStarred: false
+    property int checkAnchor: -1
+    function recount() {
+        let n = 0, unread = false, starred = n === 0;
+        for (let i = 0; i < messages.count; i++) {
+            const m = messages.get(i);
+            if (!m.checked) continue;
+            n++;
+            if (m.unread) unread = true;
+            if (!m.starred) starred = false;
+        }
+        checkedCount = n;
+        checkedAnyUnread = unread;
+        checkedAllStarred = n > 0 && starred;
+    }
+    function checkedIds() {
+        const ids = [];
+        for (let i = 0; i < messages.count; i++)
+            if (messages.get(i).checked) ids.push(messages.get(i).id);
+        return ids;
+    }
+    function clearChecks() {
+        for (let i = 0; i < messages.count; i++)
+            if (messages.get(i).checked) messages.setProperty(i, "checked", false);
+        checkAnchor = -1;
+        recount();
+    }
+    // mode 0: toggle one row; 1: range from the last toggled row (Shift+click)
+    function check(index, mode) {
+        if (index < 0 || index >= messages.count) return;
+        if (mode === 1 && checkAnchor >= 0) {
+            const a = Math.min(checkAnchor, index), b = Math.max(checkAnchor, index);
+            for (let i = a; i <= b; i++) messages.setProperty(i, "checked", true);
+        } else {
+            messages.setProperty(index, "checked", !messages.get(index).checked);
+            checkAnchor = index;
+        }
+        recount();
+    }
+    function checkAll() {
+        for (let i = 0; i < messages.count; i++) messages.setProperty(i, "checked", true);
+        recount();
+    }
+    // The ticked messages if there are any, else the open one
+    function actOnSelection(operation) {
+        if (checkedCount > 0) doActMany(operation, checkedIds());
+        else if (selectedId !== "") doAct(operation, selectedId);
+    }
     function refresh() {
+        checkedCount = 0;
+        checkAnchor = -1;
         if (account === "")
             return;
         loading = true;
@@ -178,25 +231,43 @@ ApplicationWindow {
 
     // Change a message: the list answers at once, the server follows; a refusal reloads the list
     function doAct(operation, id) {
-        const i = rowOf(id);
-        if (i < 0 || account === "")
+        doActMany(operation, [id]);
+    }
+    function doActMany(operation, ids) {
+        if (account === "" || ids.length === 0)
             return;
         if (operation === "archive" || operation === "trash" || operation === "spam") {
-            // The next message takes the place of the one that leaves
-            const next = i + 1 < messages.count ? messages.get(i + 1).id : i > 0 ? messages.get(i - 1).id : "";
-            messages.remove(i);
-            if (id === selectedId) {
-                if (next !== "") choose(next, true); else { selectedId = ""; reader.summary = null; }
+            // The message just after the first one that leaves takes its place
+            let first = messages.count;
+            for (const id of ids) {
+                const i = rowOf(id);
+                if (i >= 0 && i < first) first = i;
             }
-        } else if (operation === "read" || operation === "unread") {
-            messages.setProperty(i, "unread", operation === "unread");
-            if (id === selectedId) reader.unread = operation === "unread";
-        } else if (operation === "star" || operation === "unstar") {
-            messages.setProperty(i, "starred", operation === "star");
-            if (id === selectedId) reader.starred = operation === "star";
+            const leaving = selectedId !== "" && ids.includes(selectedId);
+            for (const id of ids) {
+                const i = rowOf(id);
+                if (i >= 0) messages.remove(i);
+            }
+            if (leaving) {
+                const at = Math.min(first, messages.count - 1);
+                if (at >= 0) choose(messages.get(at).id, true); else { selectedId = ""; reader.summary = null; }
+            }
+        } else {
+            for (const id of ids) {
+                const i = rowOf(id);
+                if (i < 0) continue;
+                if (operation === "read" || operation === "unread") {
+                    messages.setProperty(i, "unread", operation === "unread");
+                    if (id === selectedId) reader.unread = operation === "unread";
+                } else if (operation === "star" || operation === "unstar") {
+                    messages.setProperty(i, "starred", operation === "star");
+                    if (id === selectedId) reader.starred = operation === "star";
+                }
+            }
         }
         notice = "";
-        Facteur.act(account, operation, JSON.stringify([id]));
+        recount();
+        Facteur.act(account, operation, JSON.stringify(ids));
     }
 
     function choose(id, quiet) {
@@ -231,7 +302,7 @@ ApplicationWindow {
             }
             for (const m of r.messages)
                 if (!messageList.unreadOnly || m.unread)
-                    messages.append({ id: m.id, from: m.from.display || m.from.email || "", subject: m.subject, time: m.time, unread: m.unread, starred: m.starred });
+                    messages.append({ id: m.id, from: m.from.display || m.from.email || "", subject: m.subject, time: m.time, unread: m.unread, starred: m.starred, checked: false });
         }
         // Menu of the fili-bar (fili-mail ctl action NAME)
         function onCommand(name) {
@@ -481,10 +552,14 @@ ApplicationWindow {
             height: parent.height
             model: messages
             selectedId: win.selectedId
-            onAct: operation => { if (win.selectedId !== "") win.doAct(operation, win.selectedId) }
+            onAct: operation => win.actOnSelection(operation)
+            onCheck: (index, mode) => win.check(index, mode)
+            onCheckAll: win.checkAll()
+            onClearChecks: win.clearChecks()
+            checkedCount: win.checkedCount
             onStep: delta => win.step(delta)
-            selectedUnread: reader.unread
-            selectedStarred: reader.starred
+            selectedUnread: win.checkedCount > 0 ? win.checkedAnyUnread : reader.unread
+            selectedStarred: win.checkedCount > 0 ? win.checkedAllStarred : reader.starred
             position: win.selectedId !== "" ? (win.rowOf(win.selectedId) + 1) + "/" + messages.count : messages.count > 0 ? "" + messages.count : ""
             canPrev: win.selectedId !== "" && win.rowOf(win.selectedId) > 0
             canNext: win.selectedId !== "" && win.rowOf(win.selectedId) < messages.count - 1

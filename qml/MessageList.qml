@@ -12,6 +12,11 @@ Rectangle {
     signal act(string operation)
     // Previous or next message of the list (-1, +1)
     signal step(int delta)
+    // Ticking: toggle one row (mode 0) or a range (mode 1), all, none
+    signal check(int index, int mode)
+    signal checkAll()
+    signal clearChecks()
+    property int checkedCount: 0
     // State of the selected message, for the action bar
     property bool selectedUnread: false
     property bool selectedStarred: false
@@ -33,7 +38,7 @@ Rectangle {
             x: FiliTheme.space2
             anchors.verticalCenter: parent.verticalCenter
             spacing: 2
-            readonly property bool on: list.selectedId !== ""
+            readonly property bool on: list.selectedId !== "" || list.checkedCount > 0
             IconButton { name: list.selectedUnread ? "mail-open" : "mail"; tip: list.selectedUnread ? Facteur.tr("Mark as read") : Facteur.tr("Mark as unread"); enabledState: parent.on; onClicked: list.act(list.selectedUnread ? "read" : "unread") }
             Rectangle { width: 1; height: 18; anchors.verticalCenter: parent.verticalCenter; color: FiliTheme.border }
             IconButton { name: "trash"; tip: Facteur.tr("Move to trash"); enabledState: parent.on; onClicked: list.act("trash") }
@@ -48,14 +53,14 @@ Rectangle {
             Text {
                 anchors.verticalCenter: parent.verticalCenter
                 rightPadding: FiliTheme.space1
-                text: list.position
+                text: list.checkedCount > 0 ? Facteur.tr("%1 selected").replace("%1", list.checkedCount) : list.position
                 font.family: FiliTheme.font
                 font.pixelSize: FiliTheme.sizeList
                 color: FiliTheme.textSecondary
             }
             IconButton { name: "mail"; toggled: list.unreadOnly; tip: Facteur.tr("Unread only"); onClicked: list.unreadOnly = !list.unreadOnly }
-            IconButton { name: "chevron-left"; tip: Facteur.tr("Previous message"); enabledState: list.canPrev; onClicked: list.step(-1) }
-            IconButton { name: "chevron-right"; tip: Facteur.tr("Next message"); enabledState: list.canNext; onClicked: list.step(1) }
+            IconButton { name: "chevron-left"; tip: Facteur.tr("Previous message"); enabledState: list.canPrev && list.checkedCount === 0; onClicked: list.step(-1) }
+            IconButton { name: "chevron-right"; tip: Facteur.tr("Next message"); enabledState: list.canNext && list.checkedCount === 0; onClicked: list.step(1) }
         }
         Rectangle { anchors { left: parent.left; right: parent.right; bottom: parent.bottom } height: FiliTheme.borderWidth; color: FiliTheme.border }
     }
@@ -74,12 +79,23 @@ Rectangle {
             width: view.width
             height: 52
             readonly property bool selected: model.id === list.selectedId
-            color: selected ? FiliTheme.surfaceHover : hover.containsMouse ? FiliTheme.alpha(FiliTheme.surfaceHover, 0.5) : "transparent"
+            readonly property bool showBox: model.checked || list.checkedCount > 0 || hover.containsMouse
+            color: model.checked ? FiliTheme.surfaceActive : selected ? FiliTheme.surfaceHover : hover.containsMouse ? FiliTheme.alpha(FiliTheme.surfaceHover, 0.5) : "transparent"
             Rectangle { // unread dot: the state is also in the bold sender, colour is never the only signal
-                visible: model.unread
+                visible: model.unread && !row.showBox
                 x: FiliTheme.space2; y: 12
                 width: 6; height: 6; radius: 3
                 color: FiliTheme.accentColor
+            }
+            Rectangle { // tick box: the state is also the check mark, not only the fill
+                visible: row.showBox
+                x: FiliTheme.space2 - 1; y: 9; z: 2
+                width: 14; height: 14; radius: 3
+                color: model.checked ? FiliTheme.accentColor : FiliTheme.surface
+                border.width: FiliTheme.borderWidth
+                border.color: model.checked ? FiliTheme.accentColor : FiliTheme.textSecondary
+                Text { anchors.centerIn: parent; visible: model.checked; text: "✓"; font.pixelSize: 11; font.bold: true; color: FiliTheme.background }
+                MouseArea { anchors { fill: parent; margins: -4 } onClicked: list.check(index, 0) }
             }
             Text {
                 id: from
@@ -119,7 +135,11 @@ Rectangle {
                 color: model.unread ? FiliTheme.text : FiliTheme.textSecondary
             }
             Rectangle { anchors { left: parent.left; right: parent.right; bottom: parent.bottom } height: FiliTheme.borderWidth; color: FiliTheme.border; opacity: 0.5 }
-            MouseArea { id: hover; anchors.fill: parent; hoverEnabled: true; onClicked: { view.currentIndex = index; list.chosen(model.id) } }
+            MouseArea { id: hover; anchors.fill: parent; hoverEnabled: true; onClicked: mouse => {
+                if (mouse.modifiers & Qt.ShiftModifier) list.check(index, 1);
+                else if (mouse.modifiers & Qt.ControlModifier) list.check(index, 0);
+                else { view.currentIndex = index; list.chosen(model.id) }
+            } }
         }
         Keys.onPressed: event => {
             Facteur.keyNav = true;
@@ -129,6 +149,18 @@ Rectangle {
                 view.currentIndex = Math.max(0, view.currentIndex - 1);
             } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
                 if (view.currentItem) list.chosen(view.model.get(view.currentIndex).id);
+                return;
+            } else if (event.key === Qt.Key_X) {
+                list.check(view.currentIndex, 0);
+                event.accepted = true;
+                return;
+            } else if (event.key === Qt.Key_A && (event.modifiers & Qt.ControlModifier)) {
+                list.checkAll();
+                event.accepted = true;
+                return;
+            } else if (event.key === Qt.Key_Escape && list.checkedCount > 0) {
+                list.clearChecks();
+                event.accepted = true;
                 return;
             } else if (event.key === Qt.Key_E) {
                 list.act("archive");

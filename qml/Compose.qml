@@ -79,7 +79,7 @@ Rectangle {
         fileMode: FileDialog.OpenFiles
         onAccepted: compose.addFiles(selectedFiles)
     }
-    Shortcut { sequence: "Ctrl+Shift+A"; enabled: compose.visible; onActivated: picker.open() }
+    Shortcut { sequence: "Ctrl+Shift+U"; enabled: compose.visible; onActivated: picker.open() }
     // Attached files, one chip each (click removes it)
     Flow {
         id: chips
