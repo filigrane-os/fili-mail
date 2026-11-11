@@ -23,7 +23,22 @@ ApplicationWindow {
     // A label (Gmail) is a mailbox named "label:NAME": it lists everything carrying it except spam and trash
     property var labels: []
     function listBox() { return mailbox.startsWith("label:") ? "archive" : mailbox; }
-    function listQuery() { return mailbox.startsWith("label:") ? ("label:\"" + mailbox.slice(6) + "\" " + query).trim() : query; }
+    // Gmail sorts the inbox in categories (tabs above the list)
+    property string category: "primary"
+    readonly property var categories: [
+        { key: "primary", label: Facteur.tr("Primary") },
+        { key: "promotions", label: Facteur.tr("Promotions") },
+        { key: "social", label: Facteur.tr("Social") },
+        { key: "updates", label: Facteur.tr("Updates") },
+        { key: "forums", label: Facteur.tr("Forums") }
+    ]
+    function isGmail() { const a = accounts.find(x => x.id === account); return !!a && a.provider === "gmail"; }
+    function categoriesOn() { return mailbox === "inbox" && isGmail(); }
+    function listQuery() {
+        if (mailbox.startsWith("label:")) return ("label:\"" + mailbox.slice(6) + "\" " + query).trim();
+        if (categoriesOn()) return ("category:" + category + " " + query).trim();
+        return query;
+    }
     function loadLabels() {
         labels = [];
         const a = accounts.find(x => x.id === account);
@@ -364,6 +379,16 @@ ApplicationWindow {
         function onLabelsLoaded(acc, json) {
             if (acc === win.account) win.labels = JSON.parse(json);
         }
+        function onLabelCreated(acc, json) {
+            labelDialog.busy = false;
+            const r = JSON.parse(json);
+            if (r.error) {
+                labelDialog.error = win.errorText(r.error);
+                return;
+            }
+            labelDialog.visible = false;
+            if (acc === win.account) win.loadLabels();
+        }
         function onActed(acc, operation, ids, json) {
             if (acc !== win.account)
                 return;
@@ -410,6 +435,7 @@ ApplicationWindow {
     }
     onAccountChanged: { messages.clear(); selectedId = ""; reader.summary = null; if (mailbox.startsWith("label:")) mailbox = "inbox"; loadLabels(); visit(); refresh() }
     onMailboxChanged: { messages.clear(); selectedId = ""; reader.summary = null; visit(); refresh() }
+    onCategoryChanged: { if (categoriesOn()) { messages.clear(); selectedId = ""; reader.summary = null; refresh() } }
     onQueryChanged: { messages.clear(); selectedId = ""; reader.summary = null; visit(); refresh() }
 
     Shortcut { sequences: ["Ctrl+Q", "Ctrl+W"]; onActivated: Qt.quit() }
@@ -586,6 +612,7 @@ ApplicationWindow {
             onAccountChosen: id => win.account = id
             onMailboxChosen: key => win.mailbox = key
             labels: win.labels
+            onAddLabelRequested: { labelDialog.error = ""; labelDialog.open() }
             onAddAccount: { win.addError = ""; win.adding = true }
             onRemoveRequested: id => win.removing = id
         }
@@ -602,6 +629,9 @@ ApplicationWindow {
             onCheckAll: win.checkAll()
             onClearChecks: win.clearChecks()
             checkedCount: win.checkedCount
+            tabs: win.categoriesOn() ? win.categories : []
+            tab: win.category
+            onTabChosen: key => win.category = key
             onStep: delta => win.step(delta)
             selectedUnread: win.checkedCount > 0 ? win.checkedAnyUnread : reader.unread
             selectedStarred: win.checkedCount > 0 ? win.checkedAllStarred : reader.starred
@@ -664,6 +694,11 @@ ApplicationWindow {
         font.family: FiliTheme.font
         font.pixelSize: FiliTheme.sizeList
         color: FiliTheme.danger
+    }
+    LabelDialog {
+        id: labelDialog
+        onCancelled: visible = false
+        onCreated: (name, background, text) => { busy = true; error = ""; Facteur.createLabel(win.account, name, background, text) }
     }
     WindowPanel {
         id: windowPanel

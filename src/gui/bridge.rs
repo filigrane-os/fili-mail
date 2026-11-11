@@ -31,6 +31,13 @@ pub mod qobject {
         #[qsignal]
         #[cxx_name = "labelsLoaded"]
         fn labels_loaded(self: Pin<&mut Facteur>, account: &QString, result: &QString);
+        // Create a Gmail label with a colour (hex background and text, from Gmail's palette); answered by `labelCreated`
+        #[qinvokable]
+        #[cxx_name = "createLabel"]
+        fn create_label(self: Pin<&mut Facteur>, account: &QString, name: &QString, background: &QString, text: &QString);
+        #[qsignal]
+        #[cxx_name = "labelCreated"]
+        fn label_created(self: Pin<&mut Facteur>, account: &QString, result: &QString);
         // Window management under niri (the window panel of the toolbar)
         #[qinvokable]
         #[cxx_name = "windowControl"]
@@ -280,6 +287,20 @@ impl qobject::Facteur {
             labels.sort_by_key(|l| l["rawName"].as_str().unwrap_or("").to_lowercase());
             let out = Value::Array(labels).to_string();
             let _ = qt.queue(move |f| f.labels_loaded(&QString::from(&account), &QString::from(&out)));
+        });
+    }
+
+    pub fn create_label(self: Pin<&mut Self>, account: &QString, name: &QString, background: &QString, text: &QString) {
+        let (account, name, background, text) = (account.to_string(), name.to_string(), background.to_string(), text.to_string());
+        let qt = self.qt_thread();
+        let (runtime, session) = engine();
+        runtime.spawn(async move {
+            let params = json!({"accountId": account, "name": name, "color": {"backgroundColor": background, "textColor": text}});
+            let out = match session.dispatch("gmail.createLabel", &params).await {
+                Ok(v) => v.to_string(),
+                Err(e) => error_json(e),
+            };
+            let _ = qt.queue(move |f| f.label_created(&QString::from(&account), &QString::from(&out)));
         });
     }
 

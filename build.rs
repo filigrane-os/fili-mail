@@ -20,6 +20,7 @@ fn main() {
                 "qml/Main.qml",
                 "qml/AccountSetup.qml",
                 "qml/Sidebar.qml",
+                "qml/LabelDialog.qml",
                 "qml/MessageList.qml",
                 "qml/Reader.qml",
                 "qml/FiliScrollBar.qml",

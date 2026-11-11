@@ -17,6 +17,10 @@ Rectangle {
     signal checkAll()
     signal clearChecks()
     property int checkedCount: 0
+    // Category tabs above the messages (Gmail inbox); empty: no tabs
+    property var tabs: []
+    property string tab: ""
+    signal tabChosen(string key)
     // State of the selected message, for the action bar
     property bool selectedUnread: false
     property bool selectedStarred: false
@@ -65,9 +69,43 @@ Rectangle {
         Rectangle { anchors { left: parent.left; right: parent.right; bottom: parent.bottom } height: FiliTheme.borderWidth; color: FiliTheme.border }
     }
 
+    Rectangle {
+        id: tabRow
+        visible: list.tabs.length > 0
+        anchors { left: parent.left; right: parent.right; top: bar.bottom }
+        height: visible ? 30 : 0
+        color: FiliTheme.background
+        Row {
+            anchors { left: parent.left; leftMargin: FiliTheme.space2; verticalCenter: parent.verticalCenter }
+            spacing: 2
+            Repeater {
+                model: list.tabs
+                Rectangle {
+                    required property var modelData
+                    readonly property bool on: list.tab === modelData.key
+                    width: tabText.implicitWidth + 2 * FiliTheme.space3
+                    height: 24
+                    radius: FiliTheme.radiusControl
+                    color: on ? FiliTheme.surfaceActive : tabArea.containsMouse ? FiliTheme.surfaceHover : "transparent"
+                    Text {
+                        id: tabText
+                        anchors.centerIn: parent
+                        text: modelData.label
+                        font.family: FiliTheme.font
+                        font.pixelSize: FiliTheme.sizeList
+                        font.weight: on ? FiliTheme.weightAccent : Font.Normal
+                        color: on ? FiliTheme.text : FiliTheme.textSecondary
+                    }
+                    MouseArea { id: tabArea; anchors.fill: parent; hoverEnabled: true; onClicked: list.tabChosen(modelData.key) }
+                }
+            }
+        }
+        Rectangle { anchors { left: parent.left; right: parent.right; bottom: parent.bottom } height: FiliTheme.borderWidth; color: FiliTheme.border; visible: parent.visible }
+    }
+
     ListView {
         id: view
-        anchors { left: parent.left; right: parent.right; top: bar.bottom; bottom: parent.bottom }
+        anchors { left: parent.left; right: parent.right; top: tabRow.bottom; bottom: parent.bottom }
         clip: true
         focus: true
         activeFocusOnTab: true

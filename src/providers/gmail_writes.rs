@@ -71,7 +71,7 @@ fn plan(method: &str, params: &Value) -> Result<Plan, &'static str> {
     let allowed: &[&str] = match method {
         "gmail.modify" => &["accountId", "id", "addLabelIds", "removeLabelIds"],
         "gmail.batchModify" => &["accountId", "ids", "addLabelIds", "removeLabelIds"],
-        "gmail.createLabel" => &["accountId", "name"],
+        "gmail.createLabel" => &["accountId", "name", "color"],
         "gmail.renameLabel" => &["accountId", "id", "name"],
         "gmail.deleteLabel" | "gmail.trash" | "gmail.untrash" | "gmail.deleteDraft" => {
             &["accountId", "id"]
@@ -114,9 +114,19 @@ fn plan(method: &str, params: &Value) -> Result<Plan, &'static str> {
         }
         "gmail.createLabel" => {
             result.path = vec!["labels".into()];
-            result.body = Some(
-                json!({"name":field(params,"name",true)?,"labelListVisibility":"labelShow","messageListVisibility":"show"}),
-            );
+            let mut body = json!({"name":field(params,"name",true)?,"labelListVisibility":"labelShow","messageListVisibility":"show"});
+            // Optional colour: Gmail only takes colours of its own palette and refuses the others
+            if let Some(color) = params.get("color").filter(|c| !c.is_null()) {
+                let hex = |key: &str| {
+                    color[key]
+                        .as_str()
+                        .filter(|s| s.len() == 7 && s.starts_with('#') && s[1..].chars().all(|c| c.is_ascii_hexdigit()))
+                        .map(str::to_lowercase)
+                        .ok_or("invalid_params")
+                };
+                body["color"] = json!({"backgroundColor":hex("backgroundColor")?,"textColor":hex("textColor")?});
+            }
+            result.body = Some(body);
         }
         "gmail.renameLabel" | "gmail.deleteLabel" => {
             result.path = vec!["labels".into(), field(params, "id", true)?.into()];
