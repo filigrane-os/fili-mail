@@ -9,6 +9,9 @@ Rectangle {
     property string error: ""
     // Sender shown on the first line (the account)
     property string from: ""
+    // Threading of a reply (Message-ID answered, References chain); empty otherwise
+    property string inReplyTo: ""
+    property string references: ""
     color: FiliTheme.backgroundDeep
 
     signal submitted(var fields)
@@ -21,6 +24,8 @@ Rectangle {
         bcc.text = draft.bcc || "";
         subject.text = draft.subject || "";
         body.text = draft.body || "";
+        inReplyTo = draft.inReplyTo || "";
+        references = draft.references || "";
         error = "";
         if (to.text === "") to.forceActiveFocus(); else { body.forceActiveFocus(); body.cursorPosition = 0 }
     }
@@ -30,7 +35,7 @@ Rectangle {
             error = Facteur.tr("Add at least one recipient.");
             return;
         }
-        submitted({ to: to.text, cc: cc.text, bcc: bcc.text, subject: subject.text, body: body.text });
+        submitted({ to: to.text, cc: cc.text, bcc: bcc.text, subject: subject.text, body: body.text, inReplyTo: inReplyTo, references: references });
     }
 
     Keys.onEscapePressed: compose.cancelled()

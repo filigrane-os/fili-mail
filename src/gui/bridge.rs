@@ -475,6 +475,8 @@ async fn send_message(session: &Session, account: &str, fields: &str) -> Result<
         "bcc": address_list(&text("bcc")),
         "subject": text("subject"),
         "body": text("body"),
+        "inReplyTo": text("inReplyTo"),
+        "references": text("references"),
         "execute": true,
     });
     let mut result = session.dispatch("mail.send", &params).await?;

@@ -141,6 +141,9 @@ pub struct SendRequest {
     pub attachments: Vec<AttachmentInput>,
     pub execute: bool,
     pub send_id: Option<String>,
+    /// Message-ID being answered and the thread's References (both empty for a new message)
+    pub in_reply_to: String,
+    pub references: String,
 }
 
 fn params_object<'a>(
@@ -328,6 +331,8 @@ impl TryFrom<&Value> for SendRequest {
                 "attachments",
                 "execute",
                 "sendId",
+                "inReplyTo",
+                "references",
             ],
         )?;
         let from = optional_string(object, "from", "")?;
@@ -373,6 +378,8 @@ impl TryFrom<&Value> for SendRequest {
             body: optional_string(object, "body", "")?,
             attachments,
             execute: execute(object)?,
+            in_reply_to: optional_string(object, "inReplyTo", "")?,
+            references: optional_string(object, "references", "")?,
             send_id: object
                 .get("sendId")
                 .map(|value| {

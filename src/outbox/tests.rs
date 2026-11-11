@@ -214,6 +214,8 @@ async fn mail_send_preview_is_write_free_and_execute_keeps_one_durable_job() {
             attachments: vec![],
             execute,
             send_id: Some("explicit-send-1".into()),
+            in_reply_to: String::new(),
+            references: String::new(),
         }
     }
     let dir = Temp::new();
@@ -417,6 +419,8 @@ async fn mail_send_idempotency_survives_sent_payload_removal_and_restart() {
                 attachments: vec![],
                 execute: true,
                 send_id: Some("replay".into()),
+                in_reply_to: String::new(),
+                references: String::new(),
             },
             &json!([{"email":"a@example.org"}]),
         )

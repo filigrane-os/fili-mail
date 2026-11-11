@@ -24,7 +24,7 @@ pub(crate) trait IdentityLookup: Send + Sync {
 
 pub(crate) struct Prepared {
     pub account: Account,
-    fields: Value,
+    pub(super) fields: Value,
     preview: Value,
 }
 
@@ -237,7 +237,7 @@ pub(crate) fn prepare(request: &SendRequest, aliases: &Value) -> Result<Prepared
         .collect::<Result<Vec<_>>>()?;
     Ok(Prepared {
         account: request.account.clone(),
-        fields: json!({"from":email,"fromName":name,"to":to.join(", "),"cc":cc.join(", "),"bcc":bcc.join(", "),"subject":request.subject,"body":request.body,"attachments":attachments}),
+        fields: json!({"from":email,"fromName":name,"to":to.join(", "),"cc":cc.join(", "),"bcc":bcc.join(", "),"subject":request.subject,"body":request.body,"attachments":attachments,"inReplyTo":request.in_reply_to,"references":request.references}),
         preview: json!({"dryRun":true,"executed":false,"accountId":request.account.id,"from":display(email,name),"to":to,"cc":cc,"bcc":bcc,"subject":request.subject,"body":request.body,"attachments":attachments.iter().map(|file|json!({"name":file["filename"],"size":file["size"]})).collect::<Vec<_>>()}),
     })
 }

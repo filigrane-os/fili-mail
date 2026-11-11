@@ -82,6 +82,11 @@ ApplicationWindow {
             };
         }
         composing = true;
+        if (kind === "reply" || kind === "replyall") {
+            const s = reader.summary;
+            draft.inReplyTo = s.messageId || "";
+            draft.references = ((s.inReplyTo || "") + " " + (s.messageId || "")).trim();
+        }
         composer.open(draft);
     }
 

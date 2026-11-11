@@ -16,6 +16,8 @@ fn request() -> SendRequest {
         attachments: vec![],
         execute: false,
         send_id: None,
+        in_reply_to: String::new(),
+        references: String::new(),
     }
 }
 
@@ -480,4 +482,17 @@ else:
     for path in recorded["paths"].as_array().unwrap() {
         assert!(!std::path::Path::new(path.as_str().unwrap()).exists());
     }
+}
+
+#[test]
+fn a_reply_carries_its_threading_headers_into_the_message() {
+    let mut reply = request();
+    reply.in_reply_to = "<b@example.org>".into();
+    reply.references = "<a@example.org> <b@example.org>".into();
+    let prepared = send::prepare(&reply, &identities()).unwrap();
+    let raw = crate::message::compose::build(&prepared.fields).unwrap();
+    let bytes = base64::Engine::decode(&base64::engine::general_purpose::URL_SAFE_NO_PAD, raw["raw"].as_str().unwrap()).unwrap();
+    let text = String::from_utf8(bytes).unwrap();
+    assert!(text.contains("In-Reply-To: <b@example.org>"), "{text}");
+    assert!(text.contains("References: <a@example.org> <b@example.org>"), "{text}");
 }
