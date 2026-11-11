@@ -53,6 +53,7 @@ async fn list_translates_canonical_mailbox_and_returns_summaries() {
             query: String::new(),
             limit: 25,
             page_token: String::new(),
+            folder: String::new(),
         },
         &recording_adapter(
             seen.clone(),
@@ -92,6 +93,7 @@ async fn list_uses_explicit_provider_mappings_and_preserves_continuation() {
                 query: String::new(),
                 limit: 12,
                 page_token: "opaque-provider-token".into(),
+                folder: String::new(),
             },
             &recording_adapter(
                 seen.clone(),
@@ -122,6 +124,7 @@ async fn list_search_overrides_the_selected_mailbox() {
             query: "project orbital".into(),
             limit: 25,
             page_token: String::new(),
+            folder: String::new(),
         },
         &recording_adapter(
             seen.clone(),
@@ -143,6 +146,7 @@ async fn list_rejects_a_mailbox_without_an_explicit_provider_mapping() {
             query: String::new(),
             limit: 25,
             page_token: String::new(),
+            folder: String::new(),
         },
         &recording_adapter(seen.clone(), json!({})),
     )
@@ -161,6 +165,7 @@ async fn list_rejects_a_continuation_when_the_provider_omits_a_listed_summary() 
             query: String::new(),
             limit: 25,
             page_token: String::new(),
+            folder: String::new(),
         },
         &recording_adapter(
             Arc::new(Mutex::new(Vec::new())),
@@ -184,6 +189,7 @@ async fn list_rejects_raw_provider_resources_in_place_of_summaries() {
             query: String::new(),
             limit: 25,
             page_token: String::new(),
+            folder: String::new(),
         },
         &recording_adapter(
             Arc::new(Mutex::new(Vec::new())),
@@ -197,4 +203,45 @@ async fn list_rejects_raw_provider_resources_in_place_of_summaries() {
     .await
     .unwrap_err();
     assert_eq!(error, "mail_list_incomplete");
+}
+
+#[tokio::test]
+async fn an_imap_folder_is_listed_by_name_with_the_search_as_criteria() {
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    for (query, expected) in [
+        ("", "folder:\"Labels/Services Publics\""),
+        ("orbital", "folder:\"Labels/Services Publics\" TEXT \"orbital\""),
+    ] {
+        list_with(
+            ListRequest {
+                account: account(Provider::Imap),
+                mailbox: Mailbox::Inbox,
+                query: query.into(),
+                limit: 25,
+                page_token: String::new(),
+                folder: "Labels/Services Publics".into(),
+            },
+            &recording_adapter(
+                seen.clone(),
+                json!({"ids":["one"],"messages":[message("one")],"nextPageToken":"","estimate":1}),
+            ),
+        )
+        .await
+        .unwrap();
+        assert_eq!(seen.lock().unwrap().last().unwrap()["query"], expected);
+    }
+    // Only IMAP has named folders
+    assert!(list_with(
+        ListRequest {
+            account: account(Provider::Gmail),
+            mailbox: Mailbox::Inbox,
+            query: String::new(),
+            limit: 25,
+            page_token: String::new(),
+            folder: "x".into(),
+        },
+        &recording_adapter(seen, json!({}))
+    )
+    .await
+    .is_err());
 }

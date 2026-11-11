@@ -125,7 +125,7 @@ Rectangle {
                     // Labels (Gmail): heading with fold arrow and a button to make one
                     Rectangle {
                         id: labelsHead
-                        visible: current && acct.open && modelData.provider === "gmail"
+                        visible: current && acct.open && (modelData.provider === "gmail" || side.labels.length > 0)
                         readonly property bool open: !side.isFolded("labels:" + modelData.id)
                         width: parent.width
                         height: visible ? FiliTheme.sideRowHeight + FiliTheme.space4 : 0
@@ -140,7 +140,7 @@ Rectangle {
                         }
                         Text {
                             anchors { left: lArrow.right; leftMargin: FiliTheme.space2; bottom: parent.bottom; bottomMargin: (FiliTheme.sideRowHeight - height) / 2 }
-                            text: Facteur.tr("Labels")
+                            text: modelData.provider === "gmail" || (side.labels.length > 0 && side.labels[0].group !== "Folders") ? Facteur.tr("Labels") : Facteur.tr("Folders")
                             font.family: FiliTheme.font
                             font.pixelSize: FiliTheme.sizeSmall
                             font.weight: FiliTheme.weightAccent
@@ -148,6 +148,7 @@ Rectangle {
                         }
                         MouseArea { id: lhArea; anchors.fill: parent; hoverEnabled: true; onClicked: side.toggle("labels:" + modelData.id) }
                         IconButton {
+                            visible: modelData.provider === "gmail"
                             anchors { right: parent.right; rightMargin: FiliTheme.space2; bottom: parent.bottom; bottomMargin: (FiliTheme.sideRowHeight - height) / 2 }
                             glyph: "+"
                             tip: Facteur.tr("New label")
@@ -155,11 +156,11 @@ Rectangle {
                         }
                     }
                     Repeater {
-                        model: current && acct.open && labelsHead.open && acct.info.provider === "gmail" ? side.labels : []
+                        model: current && acct.open && labelsHead.open ? side.labels : []
                         delegate: Rectangle {
                             width: column.width
                             height: FiliTheme.sideRowHeight
-                            readonly property string key: "label:" + modelData.rawName
+                            readonly property string key: modelData.folder ? "folder:" + modelData.id : "label:" + modelData.rawName
                             readonly property bool selected: side.mailbox === key
                             color: selected ? FiliTheme.surfaceHover : lrow.containsMouse ? FiliTheme.alpha(FiliTheme.surfaceHover, 0.5) : "transparent"
                             Rectangle { // colour of the label: a dot (grey ring when the label has none)
@@ -193,7 +194,7 @@ Rectangle {
                                 hoverEnabled: true
                                 acceptedButtons: Qt.LeftButton | Qt.RightButton
                                 onClicked: mouse => {
-                                    if (mouse.button === Qt.RightButton) { const p = lrow.mapToItem(null, mouse.x, mouse.y); side.contextRequested("label", modelData, p.x, p.y); }
+                                    if (mouse.button === Qt.RightButton) { if (modelData.folder) return; const p = lrow.mapToItem(null, mouse.x, mouse.y); side.contextRequested("label", modelData, p.x, p.y); }
                                     else side.mailboxChosen(key);
                                 }
                             }

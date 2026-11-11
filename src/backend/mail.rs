@@ -1089,6 +1089,7 @@ mod tests {
                     query: String::new(),
                     limit: 25,
                     page_token: String::new(),
+                    folder: String::new(),
                 },
                 "role:inbox".into(),
             )

@@ -35,7 +35,7 @@ ApplicationWindow {
     }
     // A label (Gmail) is a mailbox named "label:NAME": it lists everything carrying it except spam and trash
     property var labels: []
-    function listBox() { return mailbox.startsWith("label:") ? "archive" : mailbox; }
+    function listBox() { return mailbox.startsWith("label:") ? "archive" : mailbox; } // "folder:NAME" (IMAP) goes through as is
     // Gmail sorts the inbox in categories (tabs above the list)
     property string category: "primary"
     readonly property var categories: [
@@ -80,6 +80,7 @@ ApplicationWindow {
         labels = [];
         const a = accounts.find(x => x.id === account);
         if (a && a.provider === "gmail") Facteur.loadLabels(account);
+        else if (a && (a.provider === "imap" || a.provider === "outlook")) Facteur.loadFolders(account);
     }
     // Search text applied to the list (typed text waits a moment in the toolbar field)
     property string query: ""
@@ -214,7 +215,7 @@ ApplicationWindow {
     }
     function boxLabel() {
         const names = { inbox: Facteur.tr("Inbox"), unread: Facteur.tr("Unread"), starred: Facteur.tr("Starred"), sent: Facteur.tr("Sent"), drafts: Facteur.tr("Drafts"), archive: Facteur.tr("Archive"), spam: Facteur.tr("Spam"), trash: Facteur.tr("Trash") };
-        return names[mailbox] || (mailbox.startsWith("label:") ? mailbox.slice(6) : mailbox);
+        return names[mailbox] || (mailbox.startsWith("label:") ? mailbox.slice(6) : mailbox.startsWith("folder:") ? ((labels.find(l => l.id === mailbox.slice(7)) || {}).rawName || mailbox.slice(7)) : mailbox);
     }
     function unreadCount() {
         let n = 0;
@@ -514,7 +515,7 @@ ApplicationWindow {
         visit();
         refresh();
     }
-    onAccountChanged: { messages.clear(); selectedId = ""; reader.summary = null; if (mailbox.startsWith("label:")) mailbox = "inbox"; loadLabels(); visit(); refresh() }
+    onAccountChanged: { messages.clear(); selectedId = ""; reader.summary = null; if (mailbox.startsWith("label:") || mailbox.startsWith("folder:")) mailbox = "inbox"; loadLabels(); visit(); refresh() }
     onMailboxChanged: { messages.clear(); selectedId = ""; reader.summary = null; visit(); refresh() }
     onCategoryChanged: { if (categoriesOn()) { messages.clear(); selectedId = ""; reader.summary = null; refresh() } }
     onQueryChanged: { messages.clear(); selectedId = ""; reader.summary = null; visit(); refresh() }

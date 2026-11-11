@@ -38,6 +38,10 @@ pub mod qobject {
         #[qsignal]
         #[cxx_name = "labelCreated"]
         fn label_created(self: Pin<&mut Facteur>, account: &QString, result: &QString);
+        // Folders and labels of an IMAP account (Proton Bridge: `Labels/...`); answered by `labelsLoaded`
+        #[qinvokable]
+        #[cxx_name = "loadFolders"]
+        fn load_folders(self: Pin<&mut Facteur>, account: &QString);
         // Window management under niri (the window panel of the toolbar)
         #[qinvokable]
         #[cxx_name = "windowControl"]
@@ -356,6 +360,33 @@ impl qobject::Facteur {
         let _ = std::fs::write(&path, lines.join("\n") + "\n");
     }
 
+    pub fn load_folders(self: Pin<&mut Self>, account: &QString) {
+        let account = account.to_string();
+        let qt = self.qt_thread();
+        let (runtime, session) = engine();
+        runtime.spawn(async move {
+            let answer = session.dispatch("imap.folders", &json!({"accountId": account})).await.unwrap_or_default();
+            let mut folders: Vec<Value> = answer["labels"]
+                .as_array()
+                .cloned()
+                .unwrap_or_default()
+                .into_iter()
+                // Folders and labels the user made: not the system boxes the sidebar already has, nor "Labels"/"Folders" themselves
+                .filter(|l| l["system"] == false)
+                .filter(|l| !matches!(l["rawName"].as_str(), Some("Labels" | "Folders" | "All Mail" | "INBOX" | "Starred")))
+                .map(|l| {
+                    let raw = l["rawName"].as_str().unwrap_or("");
+                    let shown = l["name"].as_str().unwrap_or(raw);
+                    let name = shown.strip_prefix("Labels/").or_else(|| shown.strip_prefix("Folders/")).unwrap_or(shown);
+                    json!({"id": raw, "rawName": name, "color": "", "unread": 0, "folder": true, "group": if raw.starts_with("Folders/") { "Folders" } else { "Labels" }})
+                })
+                .collect();
+            folders.sort_by_key(|l| (l["group"].as_str().unwrap_or("").to_owned(), l["rawName"].as_str().unwrap_or("").to_lowercase()));
+            let out = Value::Array(folders).to_string();
+            let _ = qt.queue(move |f| f.labels_loaded(&QString::from(&account), &QString::from(&out)));
+        });
+    }
+
     pub fn window_control(&self) -> bool {
         fili_mail::window::available()
     }
@@ -558,7 +589,11 @@ impl qobject::Facteur {
         let qt = self.qt_thread();
         let (runtime, session) = engine();
         runtime.spawn(async move {
-            let mut params = json!({"account": account, "mailbox": mailbox, "query": query, "limit": 50});
+            // "folder:NAME" names an IMAP folder to list instead of one of the fixed mailboxes
+            let mut params = match mailbox.strip_prefix("folder:") {
+                Some(folder) => json!({"account": account, "mailbox": "inbox", "folder": folder, "query": query, "limit": 50}),
+                None => json!({"account": account, "mailbox": mailbox, "query": query, "limit": 50}),
+            };
             if !token.is_empty() {
                 params["pageToken"] = json!(token);
             }

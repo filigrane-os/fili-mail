@@ -108,6 +108,8 @@ pub struct ListRequest {
     pub query: String,
     pub limit: u16,
     pub page_token: String,
+    /// IMAP: a folder of the account to list instead of the mailbox (empty: the mailbox)
+    pub folder: String,
 }
 
 pub struct ReadRequest {
@@ -241,15 +243,18 @@ impl TryFrom<&Value> for ListRequest {
     fn try_from(value: &Value) -> Result<Self, Self::Error> {
         let object = params_object(
             value,
-            &["account", "mailbox", "query", "limit", "pageToken"],
+            &["account", "mailbox", "query", "limit", "pageToken", "folder"],
         )?;
         let mailbox = Mailbox::try_from(optional_string(object, "mailbox", "inbox")?.as_str())?;
         let query = optional_string(object, "query", "")?;
         let page_token = optional_string(object, "pageToken", "")?;
+        let folder = optional_string(object, "folder", "")?;
         if query.len() > MAX_QUERY
             || page_token.len() > MAX_QUERY
             || query.chars().any(char::is_control)
             || page_token.chars().any(char::is_control)
+            || folder.len() > 1024
+            || folder.chars().any(char::is_control)
         {
             return Err("invalid_params");
         }
@@ -265,6 +270,7 @@ impl TryFrom<&Value> for ListRequest {
             query,
             limit,
             page_token,
+            folder,
         })
     }
 }

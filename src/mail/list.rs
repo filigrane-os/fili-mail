@@ -61,6 +61,26 @@ pub(crate) async fn list_with(
         .as_str()
         .ok_or("mail_mailbox_unavailable")?
         .to_owned();
+    // A named folder (IMAP): `folder:"NAME"`, then what was typed in the search box as IMAP criteria
+    let provider_query = if request.folder.is_empty() {
+        provider_query
+    } else {
+        if !matches!(request.account.provider.id(), "imap" | "outlook") {
+            return Err("mail_mailbox_unavailable");
+        }
+        let folder = crate::providers::domain::resolve(&json!({
+            "operation":"labelQuery",
+            "provider":request.account.provider.id(),
+            "value":request.folder,
+        }))?["value"]
+            .as_str()
+            .ok_or("mail_mailbox_unavailable")?
+            .to_owned();
+        match provider_query.strip_prefix("search:") {
+            Some(criteria) => format!("{folder} {criteria}"),
+            None => folder,
+        }
+    };
     let page = complete_page(adapter.list(&request, provider_query).await?)?;
     Ok(json!({
         "accountId":request.account.id,
