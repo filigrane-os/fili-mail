@@ -700,7 +700,7 @@ ApplicationWindow {
             }
             TextInput {
                 id: searchInput
-                anchors { fill: parent; leftMargin: FiliTheme.space2; rightMargin: FiliTheme.space2 }
+                anchors { fill: parent; leftMargin: FiliTheme.space2; rightMargin: FiliTheme.space2 + 22 }
                 verticalAlignment: TextInput.AlignVCenter
                 clip: true
                 font.family: FiliTheme.font
@@ -708,16 +708,20 @@ ApplicationWindow {
                 color: FiliTheme.text
                 selectionColor: FiliTheme.surfaceActive
                 selectedTextColor: FiliTheme.text
-                onTextChanged: searchWait.restart()
+                // The search starts on Enter or on the button, not while typing (a search can take long)
+                onTextChanged: if (text.trim() === "" && win.query !== "") win.query = ""
                 Keys.onEscapePressed: { text = ""; win.query = ""; focus = false }
-                Keys.onReturnPressed: { searchWait.stop(); win.query = text.trim(); focus = false }
+                Keys.onReturnPressed: { win.query = text.trim(); focus = false }
+                Keys.onEnterPressed: { win.query = text.trim(); focus = false }
                 Keys.onDownPressed: focus = false
             }
-            // The list follows the typing after a short pause
-            Timer {
-                id: searchWait
-                interval: 450
-                onTriggered: win.query = searchInput.text.trim()
+            IconButton {
+                name: "search"
+                tip: Facteur.tr("Search")
+                anchors { right: parent.right; rightMargin: 1; verticalCenter: parent.verticalCenter }
+                height: parent.height - 2
+                width: 24
+                onClicked: win.query = searchInput.text.trim()
             }
         }
     }

@@ -13,6 +13,7 @@ Item {
     height: size
 
     readonly property var paths: ({
+        "search": "m21 21-4.34-4.34 M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16z",
         "minus": "M5 12h14",
         "x": "M18 6 6 18 M6 6l12 12",
         "maximize": "M8 3H5a2 2 0 0 0-2 2v3 M21 8V5a2 2 0 0 0-2-2h-3 M3 16v3a2 2 0 0 0 2 2h3 M16 21h3a2 2 0 0 0 2-2v-3",
