@@ -124,7 +124,7 @@ pub mod qobject {
         );
         // Messages of a mailbox of an account, narrowed by a search text (may be empty); answered by `listed` (JSON: {messages, estimate} or {error})
         #[qinvokable]
-        fn list(self: Pin<&mut Facteur>, account: &QString, mailbox: &QString, query: &QString);
+        fn list(self: Pin<&mut Facteur>, account: &QString, mailbox: &QString, query: &QString, token: &QString);
         #[qsignal]
         fn listed(
             self: Pin<&mut Facteur>,
@@ -553,14 +553,21 @@ impl qobject::Facteur {
         });
     }
 
-    pub fn list(self: Pin<&mut Self>, account: &QString, mailbox: &QString, query: &QString) {
-        let (account, mailbox, query) = (account.to_string(), mailbox.to_string(), query.to_string());
+    pub fn list(self: Pin<&mut Self>, account: &QString, mailbox: &QString, query: &QString, token: &QString) {
+        let (account, mailbox, query, token) = (account.to_string(), mailbox.to_string(), query.to_string(), token.to_string());
         let qt = self.qt_thread();
         let (runtime, session) = engine();
         runtime.spawn(async move {
-            let params = json!({"account": account, "mailbox": mailbox, "query": query, "limit": 50});
+            let mut params = json!({"account": account, "mailbox": mailbox, "query": query, "limit": 50});
+            if !token.is_empty() {
+                params["pageToken"] = json!(token);
+            }
             let out = match session.dispatch("mail.list", &params).await {
-                Ok(v) => v.to_string(),
+                Ok(mut v) => {
+                    // The page continues the list when it was asked with a token
+                    v["append"] = json!(!token.is_empty());
+                    v.to_string()
+                }
                 Err(e) => error_json(e),
             };
             let _ = qt.queue(move |f| {

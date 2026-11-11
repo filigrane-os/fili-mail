@@ -36,6 +36,11 @@ Rectangle {
         folded = next;
     }
     signal addLabelRequested()
+    // Icon of an account's service: Gmail, Proton (by its domain) or a plain IMAP server
+    function serviceIcon(a) {
+        if (/@(proton\.me|protonmail\.com|pm\.me)$/i.test(a.email || "")) return "shield";
+        return a.provider === "gmail" ? "mail" : "server";
+    }
     // Right click: kind "account" (data: the account) or "label" (data: the label), at window position x, y
     signal contextRequested(string kind, var data, real x, real y)
 
@@ -67,8 +72,15 @@ Rectangle {
                             font.pixelSize: FiliTheme.sizeSmall
                             color: FiliTheme.muted
                         }
+                        Icon {
+                            id: service
+                            anchors { left: arrow.right; leftMargin: FiliTheme.space2; bottom: parent.bottom; bottomMargin: (FiliTheme.sideRowHeight - height) / 2 }
+                            name: side.serviceIcon(modelData)
+                            size: 14
+                            color: FiliTheme.accentColor
+                        }
                         Text {
-                            anchors { left: arrow.right; leftMargin: FiliTheme.space2; right: parent.right; rightMargin: FiliTheme.space2; bottom: parent.bottom; bottomMargin: (FiliTheme.sideRowHeight - height) / 2 }
+                            anchors { left: service.right; leftMargin: FiliTheme.space2; right: parent.right; rightMargin: FiliTheme.space2; bottom: parent.bottom; bottomMargin: (FiliTheme.sideRowHeight - height) / 2 }
                             text: (modelData.label !== "" ? modelData.label : modelData.email) + (modelData.provider === "imap" ? "  ·  IMAP" : modelData.provider === "gmail" ? "  ·  Gmail" : "")
                             elide: Text.ElideRight
                             font.family: FiliTheme.font

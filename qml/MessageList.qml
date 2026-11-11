@@ -17,12 +17,46 @@ Rectangle {
     signal checkAll()
     signal clearChecks()
     property int checkedCount: 0
+    // The end of the list is near: the next page can be fetched
+    signal nearEnd()
 
     color: FiliTheme.background
 
+    // Master tick box: ticks every message of the list, or none
+    Rectangle {
+        id: head
+        anchors { left: parent.left; right: parent.right; top: parent.top }
+        height: 30
+        color: FiliTheme.background
+        readonly property bool all: view.count > 0 && list.checkedCount === view.count
+        readonly property bool some: list.checkedCount > 0 && !all
+        Rectangle {
+            x: FiliTheme.space2
+            anchors.verticalCenter: parent.verticalCenter
+            width: 14; height: 14; radius: 3
+            color: head.all || head.some ? FiliTheme.accentColor : FiliTheme.surface
+            border.width: FiliTheme.borderWidth
+            border.color: head.all || head.some ? FiliTheme.accentColor : FiliTheme.textSecondary
+            Text { anchors.centerIn: parent; visible: head.all; text: "✓"; font.pixelSize: 11; font.bold: true; color: FiliTheme.background }
+            Rectangle { visible: head.some; anchors.centerIn: parent; width: 8; height: 2; color: FiliTheme.background }
+        }
+        Text {
+            x: FiliTheme.space2 + 28
+            anchors.verticalCenter: parent.verticalCenter
+            text: list.checkedCount > 0 ? Facteur.tr("%1 selected").replace("%1", list.checkedCount) : Facteur.tr("Select all")
+            font.family: FiliTheme.font
+            font.pixelSize: FiliTheme.sizeList
+            color: FiliTheme.textSecondary
+        }
+        MouseArea { anchors.fill: parent; enabled: view.count > 0; onClicked: head.all || head.some ? list.clearChecks() : list.checkAll() }
+        Rectangle { anchors { left: parent.left; right: parent.right; bottom: parent.bottom } height: FiliTheme.borderWidth; color: FiliTheme.border }
+    }
+
     ListView {
         id: view
-        anchors { left: parent.left; right: parent.right; top: parent.top; bottom: parent.bottom }
+        anchors { left: parent.left; right: parent.right; top: head.bottom; bottom: parent.bottom }
+        onContentYChanged: if (contentHeight - contentY - height < 400) list.nearEnd()
+        onCountChanged: Qt.callLater(() => { if (contentHeight - contentY - height < 400) list.nearEnd() })
         clip: true
         focus: true
         activeFocusOnTab: true
@@ -38,13 +72,13 @@ Rectangle {
             color: model.checked ? FiliTheme.surfaceActive : selected ? FiliTheme.surfaceHover : hover.containsMouse ? FiliTheme.alpha(FiliTheme.surfaceHover, 0.5) : "transparent"
             Rectangle { // unread dot: the state is also in the bold sender, colour is never the only signal
                 visible: model.unread && !row.showBox
-                x: FiliTheme.space2; y: 12
+                x: FiliTheme.space2 + 4; y: 23
                 width: 6; height: 6; radius: 3
                 color: FiliTheme.accentColor
             }
             Rectangle { // tick box: the state is also the check mark, not only the fill
                 visible: row.showBox
-                x: FiliTheme.space2 - 1; y: 9; z: 2
+                x: FiliTheme.space2; y: 19; z: 2
                 width: 14; height: 14; radius: 3
                 color: model.checked ? FiliTheme.accentColor : FiliTheme.surface
                 border.width: FiliTheme.borderWidth
@@ -54,7 +88,7 @@ Rectangle {
             }
             Text {
                 id: from
-                x: FiliTheme.space2 + 14; y: 7
+                x: FiliTheme.space2 + 28; y: 7
                 width: row.width - x - when.width - FiliTheme.space4
                 text: model.from
                 elide: Text.ElideRight

@@ -266,14 +266,25 @@ ApplicationWindow {
         if (checkedCount > 0) doActMany(operation, checkedIds());
         else if (selectedId !== "") doAct(operation, selectedId);
     }
+    // Next page of the list (token of the last answer), fetched when the end of the list comes near
+    property string nextToken: ""
+    property bool loadingMore: false
+    function loadMore() {
+        if (nextToken === "" || loading || loadingMore || account === "" || listError !== "")
+            return;
+        loadingMore = true;
+        Facteur.list(account, listBox(), listQuery(), nextToken);
+    }
     function refresh() {
+        nextToken = "";
+        loadingMore = false;
         checkedCount = 0;
         checkAnchor = -1;
         if (account === "")
             return;
         loading = true;
         listError = "";
-        Facteur.list(account, listBox(), listQuery());
+        Facteur.list(account, listBox(), listQuery(), "");
     }
 
     function rowOf(id) {
@@ -347,15 +358,28 @@ ApplicationWindow {
         function onListed(acc, box, qry, json) {
             if (acc !== win.account || box !== win.listBox() || qry !== win.listQuery())
                 return;
-            win.loading = false;
             const r = JSON.parse(json);
-            messages.clear();
+            const more = r.append === true || (!!r.error && win.loadingMore);
+            if (more && !win.loadingMore)
+                return; // the answer of a list that was refreshed since
+            win.loadingMore = false;
+            if (more && r.error) {
+                win.notice = win.errorText(r.error);
+                return;
+            }
+            win.loading = false;
+            if (!more)
+                messages.clear();
             if (r.error) {
                 win.listError = win.errorText(r.error);
                 return;
             }
+            win.nextToken = r.nextPageToken || "";
+            const known = new Set();
+            if (more)
+                for (let i = 0; i < messages.count; i++) known.add(messages.get(i).id);
             for (const m of r.messages)
-                if (!listBar.unreadOnly || m.unread)
+                if ((!listBar.unreadOnly || m.unread) && !known.has(m.id))
                     messages.append({ id: m.id, from: m.from.display || m.from.email || "", subject: m.subject, time: m.time, unread: m.unread, starred: m.starred, checked: false });
         }
         // Menu of the fili-bar (fili-mail ctl action NAME)
@@ -650,7 +674,7 @@ ApplicationWindow {
     }
 
     Row {
-        anchors { top: toolbar.visible ? toolbarLine.bottom : parent.top; bottom: parent.bottom; left: parent.left; right: parent.right }
+        anchors { top: toolbar.visible ? toolbarLine.bottom : parent.top; bottom: footer.visible ? footer.top : parent.bottom; left: parent.left; right: parent.right }
         visible: !win.adding && win.accounts.length > 0
         Sidebar {
             width: FiliTheme.sidebarWidth
@@ -708,6 +732,7 @@ ApplicationWindow {
                     onStep: delta => win.step(delta)
                     emptyText: win.listError !== "" ? win.listError : win.loading ? "…" : Facteur.tr("No message")
                     onChosen: id => win.choose(id)
+                    onNearEnd: win.loadMore()
                 }
                 Rectangle {
                     x: panes.below ? 0 : messageList.width
@@ -765,13 +790,42 @@ ApplicationWindow {
             TextButton { label: Facteur.tr("Cancel"); onClicked: win.removing = "" }
         }
     }
-    Text {
-        visible: win.notice !== "" && win.removing === ""
-        anchors { right: parent.right; bottom: parent.bottom; margins: FiliTheme.space3 }
-        text: win.notice
-        font.family: FiliTheme.font
-        font.pixelSize: FiliTheme.sizeList
-        color: FiliTheme.danger
+    // Footer: where we are, how much is loaded, what is selected, what went wrong
+    Rectangle {
+        id: footer
+        visible: !win.adding && win.accounts.length > 0
+        anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+        height: FiliTheme.statusHeight
+        color: FiliTheme.backgroundDeep
+        Rectangle { anchors { left: parent.left; right: parent.right; top: parent.top } height: FiliTheme.borderWidth; color: FiliTheme.border }
+        Text {
+            id: where
+            anchors { left: parent.left; leftMargin: FiliTheme.margin; verticalCenter: parent.verticalCenter }
+            text: win.account.replace(/^[a-z]+:/, "") + "  ·  " + win.boxLabel() + (win.query !== "" ? "  ·  " + Facteur.tr("Search: %1").replace("%1", win.query) : "")
+            font.family: FiliTheme.font
+            font.pixelSize: FiliTheme.sizeSmall
+            color: FiliTheme.textSecondary
+        }
+        Text {
+            anchors { right: parent.right; rightMargin: FiliTheme.margin; verticalCenter: parent.verticalCenter }
+            width: Math.max(0, parent.width - where.width - 3 * FiliTheme.margin)
+            horizontalAlignment: Text.AlignRight
+            elide: Text.ElideLeft
+            text: {
+                if (win.notice !== "") return win.notice;
+                const parts = [];
+                if (win.loading) parts.push("…");
+                else if (win.listError === "") {
+                    parts.push(Facteur.tr("%1 messages, %2 unread").replace("%1", messages.count).replace("%2", win.unreadCount()));
+                    if (win.nextToken !== "") parts.push(win.loadingMore ? Facteur.tr("Loading more…") : Facteur.tr("More below"));
+                }
+                if (win.checkedCount > 0) parts.push(Facteur.tr("%1 selected").replace("%1", win.checkedCount));
+                return parts.join("  ·  ");
+            }
+            font.family: FiliTheme.font
+            font.pixelSize: FiliTheme.sizeSmall
+            color: win.notice !== "" ? FiliTheme.danger : FiliTheme.textSecondary
+        }
     }
     LabelDialog {
         id: labelDialog
