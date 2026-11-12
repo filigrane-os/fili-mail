@@ -248,6 +248,28 @@ void litehtml::table_grid::distribute_width( int width, int start, int end )
 				cols_width += column->max_width - column->min_width;
 			}
 
+			// Filigrane: the spare width of columns with percent widths is shared in proportion to those
+			// percentages (two 33.3% columns end up equal, as in a browser), not to their content
+			float percents = 0;
+			for(const auto& column : distribute_columns)
+			{
+				percents += column->css_width.is_predefined() ? 0 : column->css_width.val();
+			}
+			if(step == 1 && percents > 0)
+			{
+				for(const auto& column : distribute_columns)
+				{
+					int add = round_f( (float) width * (column->css_width.val() / percents) );
+					column->width += add;
+					added_width += add;
+				}
+				if(added_width < width)
+				{
+					distribute_columns.front()->width += width - added_width;
+				}
+				break;
+			}
+
 			if(cols_width)
 			{
 				int add = width / (int) distribute_columns.size();

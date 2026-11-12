@@ -28,6 +28,22 @@ index 679d921..6884899 100644
 +	}
  	html_tag::parse_attributes();
  }
+diff --git a/src/line_box.cpp b/src/line_box.cpp
+index e739e63..5bc45f6 100644
+--- a/src/line_box.cpp
++++ b/src/line_box.cpp
+@@ -571,7 +571,10 @@ bool litehtml::line_box::can_hold(const std::unique_ptr<line_box_item>& item, wh
+ 
+ 		// force new line if the last placed element was line break
+ 		// Skip If there are the only break item - this is float clearing
+-		if (last_el && last_el->src_el()->is_break() && m_items.size() > 1)
++		// Filigrane: only a <br clear=...> alone in its line is float clearing; a plain lone <br> (the second of
++		// "a<br><br>b") is a blank line, so what follows starts another line
++		if (last_el && last_el->src_el()->is_break() &&
++			(m_items.size() > 1 || last_el->src_el()->css().get_clear() == clear_none))
+ 		{
+ 			return false;
+ 		}
 diff --git a/src/media_query.cpp b/src/media_query.cpp
 index 8c2afff..7cee79e 100644
 --- a/src/media_query.cpp
@@ -146,3 +162,36 @@ index fdff1f8..8afcf02 100644
      }
  
      min_table_width += table_width_spacing;
+diff --git a/src/table.cpp b/src/table.cpp
+index da272c0..3e1b229 100644
+--- a/src/table.cpp
++++ b/src/table.cpp
+@@ -248,6 +248,28 @@ void litehtml::table_grid::distribute_width( int width, int start, int end )
+ 				cols_width += column->max_width - column->min_width;
+ 			}
+ 
++			// Filigrane: the spare width of columns with percent widths is shared in proportion to those
++			// percentages (two 33.3% columns end up equal, as in a browser), not to their content
++			float percents = 0;
++			for(const auto& column : distribute_columns)
++			{
++				percents += column->css_width.is_predefined() ? 0 : column->css_width.val();
++			}
++			if(step == 1 && percents > 0)
++			{
++				for(const auto& column : distribute_columns)
++				{
++					int add = round_f( (float) width * (column->css_width.val() / percents) );
++					column->width += add;
++					added_width += add;
++				}
++				if(added_width < width)
++				{
++					distribute_columns.front()->width += width - added_width;
++				}
++				break;
++			}
++
+ 			if(cols_width)
+ 			{
+ 				int add = width / (int) distribute_columns.size();

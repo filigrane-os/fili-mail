@@ -571,7 +571,10 @@ bool litehtml::line_box::can_hold(const std::unique_ptr<line_box_item>& item, wh
 
 		// force new line if the last placed element was line break
 		// Skip If there are the only break item - this is float clearing
-		if (last_el && last_el->src_el()->is_break() && m_items.size() > 1)
+		// Filigrane: only a <br clear=...> alone in its line is float clearing; a plain lone <br> (the second of
+		// "a<br><br>b") is a blank line, so what follows starts another line
+		if (last_el && last_el->src_el()->is_break() &&
+			(m_items.size() > 1 || last_el->src_el()->css().get_clear() == clear_none))
 		{
 			return false;
 		}

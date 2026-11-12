@@ -14,4 +14,8 @@
   - `el_td.cpp`: the `cellpadding` of the table around gives its cells' padding (upstream kept the 1px default).
   - `render_block.cpp`: a `min-width` counts in the width a table cell measures for its content (upstream laid a
     `min-width:375px` button out in a cell a few pixels wide).
+  - `line_box.cpp`: the second of two `<br>` in a row is a blank line (upstream glued the next text to it, so
+    `a<br><br>b` had no blank line).
+  - `table.cpp`: spare width of percent-width columns is shared in proportion to the percentages (upstream: to
+    their content, so two 33% buttons came out unequal).
 
