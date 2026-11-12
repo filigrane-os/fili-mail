@@ -13,7 +13,7 @@ Program name: `fili-mail`. Display name (alias): **Facteur** (`facteur` also wor
   (Gmail), labels and folders in the sidebar (create, rename, recolour, delete), search.
 - Reader with HTML mail (remote pictures on request), attachments saved to Downloads.
 - Writing in a card at the bottom right: reply, reply all, forward, Cc/Bcc, attachments, threading headers.
-- Preview beside the list or under it, window buttons and the niri window panel like Casier.
+- Preview beside the list or under it (following the window size), window buttons and the niri window panel like Casier.
 - Daemon (`fili-mail daemon`): IMAP IDLE where available, notifications over D-Bus, unread counter for the bar.
 - Menu exposed to the fili-bar (`fili-mail ctl action NAME`), settings in `~/.config/filigrane/fili-mail.toml`.
 

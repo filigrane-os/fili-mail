@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.0
+
+First stable release.
+
+- The preview follows the window: beside the list when the window fills the screen (full screen, maximized column), under it when the window takes part of the screen. The layout button and Ctrl+Shift+P flip it until the window changes size class; the stored "preview" setting is gone.
+- Unread count after the name of each Gmail category tab, read from the category label counters (one light request per tab).
+
 ## 0.2.0
 
 - Headless window: the header and the footer can be hidden with `[window] header = false` / `footer = false` in `~/.config/filigrane/theme.toml` or `fili-mail.toml`, with `--no-header` / `--no-footer` (and `--header` / `--footer`) at launch, or from Settings > Appearance of the shell. Open windows follow the file live. Ctrl+F shows the search; the footer comes back for an operation, an error or a notice. New menu entries Show Header and Show Status Bar (`fili-mail ctl action toggle-header|toggle-footer`) change one window only.
