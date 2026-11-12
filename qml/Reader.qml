@@ -204,12 +204,16 @@ Rectangle {
                         Text {
                             x: FiliTheme.space3 + 14 + FiliTheme.space2
                             anchors.verticalCenter: parent.verticalCenter
+                            // Stops short of the Unsubscribe button, elided when the window is narrow
+                            width: Math.max(0, parent.width - x - unsubscribeButton.width - 2 * FiliTheme.space2)
+                            elide: Text.ElideRight
                             text: Facteur.tr("This message comes from a mailing list.")
                             font.family: FiliTheme.font
                             font.pixelSize: FiliTheme.sizeList
                             color: FiliTheme.textSecondary
                         }
                         TextButton {
+                            id: unsubscribeButton
                             anchors { right: parent.right; rightMargin: FiliTheme.space2; verticalCenter: parent.verticalCenter }
                             label: Facteur.tr("Unsubscribe")
                             onClicked: reader.unsubscribe(reader.unsubscribeUrl)
