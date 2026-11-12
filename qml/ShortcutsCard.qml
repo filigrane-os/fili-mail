@@ -31,6 +31,7 @@ Rectangle {
         { title: Facteur.tr("Reader"), rows: [
             ["↑ ↓  Space  PageUp  PageDown", Facteur.tr("Scroll")],
             ["Tab  Enter", Facteur.tr("Attachments: save")],
+            ["Ctrl+C  Ctrl+A", Facteur.tr("Copy, select all")],
             ["Esc", Facteur.tr("Back to the list")]
         ] },
         { title: Facteur.tr("Sidebar"), rows: [

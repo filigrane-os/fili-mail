@@ -66,8 +66,24 @@ ApplicationWindow {
             : [{ id: "edit", label: Facteur.tr("Edit label…") }, { id: "delete", label: Facteur.tr("Delete label…"), danger: true }];
         popup.openAt(x, y, entries);
     }
+    // Right click on the page of a message: link, picture and selection actions
+    function openPageMenu(x, y, link, image) {
+        contextKind = "page";
+        contextData = link;
+        const entries = [];
+        if (link !== "") {
+            entries.push({ id: "open-link", label: Facteur.tr("Open Link") });
+            entries.push({ id: "copy-link", label: link.startsWith("mailto:") ? Facteur.tr("Copy Email Address") : Facteur.tr("Copy Link Address") });
+        }
+        if (image) entries.push({ id: "copy-image", label: Facteur.tr("Copy Image") });
+        if (reader.hasSelection) entries.push({ id: "copy", label: Facteur.tr("Copy") });
+        entries.push({ id: "select-all", label: Facteur.tr("Select All") });
+        popup.openAt(x, y, entries);
+    }
     function runContext(id) {
-        if (contextKind === "account") {
+        if (contextKind === "page") {
+            reader.pageAction(id, contextData);
+        } else if (contextKind === "account") {
             if (id === "remove") { removing = contextData.id; return; }
             const d = JSON.parse(Facteur.accountDetails(contextData.id));
             if (d.error) { notice = errorText(d.error); return; }
@@ -426,6 +442,7 @@ ApplicationWindow {
         reader.attachments = [];
         reader.body = "";
         reader.rich = "";
+        reader.html = "";
         reader.unsubscribeUrl = "";
         reader.remoteImages = 0;
         reader.error = "";
@@ -496,6 +513,9 @@ ApplicationWindow {
                 else win.step(name === "next-message" ? 1 : -1);
             }
             else if (name === "refresh") win.refresh();
+            else if (name === "load-pictures") { if (reader.remoteImages > 0 && !reader.loadingImages) { reader.loadingImages = true; Facteur.loadImages(win.account, win.selectedId) } }
+            else if (name === "copy") { if (!win.composing && !win.adding) reader.copySelection() }
+            else if (name === "select-all") { if (!win.composing && !win.adding) reader.selectAllText() }
             else if (boxes[name]) { win.adding = false; win.mailbox = boxes[name] }
             else if (onMessage) win.doAct(name, win.selectedId);
         }
@@ -520,6 +540,7 @@ ApplicationWindow {
             reader.summary = r.message.summary;
             reader.body = r.message.nativeContent.body.text;
             reader.rich = r.message.rich || "";
+            reader.html = r.message.html || "";
             reader.remoteImages = r.message.remoteImages || 0;
             reader.unsubscribeUrl = (r.message.unsubscribe && r.message.unsubscribe.urls && r.message.unsubscribe.urls[0]) || "";
             reader.attachments = r.message.nativeContent.attachments || [];
@@ -896,6 +917,7 @@ ApplicationWindow {
                     onOpenAttachment: index => Facteur.openAttachment(win.account, win.selectedId, reader.attachments[index].attachmentId, reader.attachments[index].filename)
                     onSaveAllAttachments: Facteur.saveAllAttachments(win.account, win.selectedId, JSON.stringify(reader.attachments.filter(a => !!a.attachmentId).map(a => ({ attachmentId: a.attachmentId, filename: a.filename }))))
                     onSaveAttachment: index => Facteur.saveAttachment(win.account, win.selectedId, reader.attachments[index].attachmentId, reader.attachments[index].filename)
+                    onPageMenu: (x, y, link, image) => win.openPageMenu(x, y, link, image)
                     onLoadImages: { reader.loadingImages = true; Facteur.loadImages(win.account, win.selectedId) }
                     x: panes.below ? 0 : messageList.width + FiliTheme.borderWidth
                     y: panes.below ? messageList.height + FiliTheme.borderWidth : 0

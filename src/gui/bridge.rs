@@ -980,10 +980,56 @@ async fn fetch_pictures(sources: &[String]) -> Value {
     Value::Object(out)
 }
 
+/// HTML for HtmlView, written back from the document tree the engine checked node by node (`mail_read`): text
+/// keeps its entities; a style sheet (kept by the sanitizer's layout mode, `safe_css`) is written raw.
+fn layout_html(node: &Value) -> String {
+    fn write(node: &Value, raw: bool, out: &mut String) {
+        match node["type"].as_str() {
+            Some("text") => {
+                let text = node["text"].as_str().unwrap_or("");
+                if raw && !text.contains("</") {
+                    out.push_str(text)
+                } else {
+                    out.push_str(&text.replace('<', "&lt;").replace('>', "&gt;"))
+                }
+            }
+            Some("root") => node["children"].as_array().into_iter().flatten().for_each(|c| write(c, false, out)),
+            Some("element") => {
+                let name = node["name"].as_str().unwrap_or("span");
+                if !name.bytes().all(|b| b.is_ascii_alphanumeric()) {
+                    return;
+                }
+                out.push('<');
+                out.push_str(name);
+                for attr in node["attrs"].as_array().into_iter().flatten() {
+                    let (Some(key), Some(value)) = (attr["name"].as_str(), attr["value"].as_str()) else { continue };
+                    if key.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-') {
+                        // Attributes keep their entities, except the link target, which the engine decoded once
+                        let value = if key == "href" { value.replace('&', "&amp;") } else { value.to_owned() };
+                        out.push_str(&format!(" {key}=\"{}\"", value.replace('"', "&quot;")));
+                    }
+                }
+                out.push('>');
+                if matches!(name, "img" | "br" | "hr" | "col" | "wbr" | "area" | "input") {
+                    return;
+                }
+                let sheet = name == "style";
+                node["children"].as_array().into_iter().flatten().for_each(|c| write(c, sheet, out));
+                out.push_str(&format!("</{name}>"));
+            }
+            _ => {}
+        }
+    }
+    let mut out = String::new();
+    write(node, false, &mut out);
+    out
+}
+
 /// One message for the window: the engine's read, its HTML as rich text (pictures stored in the cache) and, when
 /// the sender's remote pictures were held back, how many there are. `load`: fetch them and read again with them.
 async fn read_message(session: &Session, account: &str, id: &str, load: bool) -> Result<Value, &'static str> {
-    let mut params = json!({"account": account, "id": id});
+    // Layout mode: the sanitized HTML stays whole (tables, style sheets) for HtmlView (litehtml)
+    let mut params = json!({"account": account, "id": id, "layout": true});
     let mut value = session.dispatch("mail.read", &params).await?;
     let sources: Vec<String> = value["message"]["nativeRender"]["remoteImageSources"]
         .as_array()
@@ -1000,6 +1046,7 @@ async fn read_message(session: &Session, account: &str, id: &str, load: bool) ->
     }
     let message = &mut value["message"];
     if message["nativeContent"]["body"]["source"] == "html" {
+        message["html"] = json!(layout_html(&message["nativeRender"]["document"]));
         let rich = fili_mail::message::rich::rich_text(&message["nativeRender"], &message["links"], &|uri| {
             fili_mail::message::picture::store_data_uri(uri)
         });

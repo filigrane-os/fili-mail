@@ -115,7 +115,8 @@ pub struct ListRequest {
 pub struct ReadRequest {
     pub account: Account,
     pub id: String,
-    /// Optional {"allowRemoteImages": bool, "remoteImageData": {url: data URI}} for the reader (Null: no remote image)
+    /// Optional {"allowRemoteImages": bool, "remoteImageData": {url: data URI}, "layout": bool} for the reader (Null:
+    /// no remote image); layout keeps the sanitized HTML whole (tables, style sheets) for a real layout engine
     pub images: Value,
 }
 
@@ -279,19 +280,22 @@ impl TryFrom<&Value> for ReadRequest {
     type Error = &'static str;
 
     fn try_from(value: &Value) -> Result<Self, Self::Error> {
-        let object = params_object(value, &["account", "id", "allowRemoteImages", "remoteImageData"])?;
+        let object = params_object(value, &["account", "id", "allowRemoteImages", "remoteImageData", "layout"])?;
         let id = object
             .get("id")
             .and_then(Value::as_str)
             .ok_or("invalid_params")?;
         let data = object.get("remoteImageData").cloned().unwrap_or_else(|| json!({}));
-        if !data.is_object() || object.get("allowRemoteImages").is_some_and(|v| !v.is_boolean()) {
+        if !data.is_object()
+            || object.get("allowRemoteImages").is_some_and(|v| !v.is_boolean())
+            || object.get("layout").is_some_and(|v| !v.is_boolean())
+        {
             return Err("invalid_params");
         }
         Ok(Self {
             account: account(object)?,
             id: opaque_id(id)?,
-            images: json!({"allowRemoteImages":object.get("allowRemoteImages").unwrap_or(&json!(false)),"remoteImageData":data}),
+            images: json!({"allowRemoteImages":object.get("allowRemoteImages").unwrap_or(&json!(false)),"remoteImageData":data,"layout":object.get("layout").unwrap_or(&json!(false))}),
         })
     }
 }

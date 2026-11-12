@@ -82,7 +82,8 @@ fn safe_body(value: &Value) -> Result<Value, &'static str> {
     Ok(json!({"text":text,"source":source,"bodyDirection":direction}))
 }
 
-/// The few presentation attributes the window draws: image source and size, colors, alignment, width.
+/// The presentation attributes the window draws: image source and size, colors, alignment, width, table layout and
+/// style-sheet hooks.
 /// Values are only data for the rich-text writer, which validates each one again.
 fn shown_attrs(name: &str, attrs: Option<&Value>) -> Vec<Value> {
     attrs
@@ -95,6 +96,9 @@ fn shown_attrs(name: &str, attrs: Option<&Value>) -> Vec<Value> {
             let allowed = match key {
                 "src" => name == "img" && value.len() <= 12 * 1024 * 1024 && value.to_ascii_lowercase().starts_with("data:image/"),
                 "width" | "height" | "align" | "bgcolor" | "color" | "style" | "alt" => value.len() <= 2048,
+                // Layout of tables and the hooks of the message's own style sheet (inert names)
+                "class" | "id" | "valign" | "cellpadding" | "cellspacing" | "border" | "colspan" | "rowspan" | "dir"
+                | "face" | "size" => value.len() <= 1024,
                 _ => false,
             };
             (allowed && !value.chars().any(|c| c.is_control())).then(|| json!({"name":key,"value":value}))
@@ -157,16 +161,19 @@ fn safe_render(value: &Value) -> Result<(Value, Vec<Value>), &'static str> {
                 !name.is_empty() && name.len() <= 128 && !name.chars().any(char::is_control)
             })
             .ok_or("mail_read_invalid_reader")?;
+        let mut attrs = shown_attrs(name, node.get("attrs"));
         if name == "a"
             && let Some(link) = super::read_links::link(value, &children)
         {
+            // Only a vetted destination (http, https, mailto) comes back as the link's target
+            attrs.push(json!({"name":"href","value":link["url"]}));
             links.push(link);
         }
         Ok(json!({
             "type":"element",
             "name":name,
             "selfClosing":node.get("selfClosing").and_then(Value::as_bool).unwrap_or(false),
-            "attrs":shown_attrs(name, node.get("attrs")),
+            "attrs":attrs,
             "children":children,
         }))
     }
@@ -304,6 +311,7 @@ pub(crate) async fn read_with(
                     "remoteImageData":request.images.get("remoteImageData").cloned().unwrap_or_else(|| json!({})),
                     "withReader":true,
                     "keepColors":true,
+                    "layout":request.images["layout"] == true,
                 },
             }),
         )

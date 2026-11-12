@@ -7,6 +7,11 @@ pub mod theme;
 use cxx_qt_lib::{QGuiApplication, QQmlApplicationEngine, QString, QUrl};
 
 /// Open the window; returns the process exit code.
+unsafe extern "C" {
+    // src/gui/html/htmlview.cpp: the HTML reader as `Fili.Html 1.0`
+    fn fili_register_html_view();
+}
+
 pub fn run() -> i32 {
     // Static initializers of the Qt side (cxx-qt types, this crate, the QML module). Named here, they are linked in:
     // the package also has a library crate, which hides them from the linker otherwise.
@@ -24,6 +29,8 @@ pub fn run() -> i32 {
     let mut app = QGuiApplication::new();
     // Wayland app-id (niri rules, fili-mail.desktop)
     QGuiApplication::set_desktop_file_name(&QString::from("fili-mail"));
+    // SAFETY: registers a QML type; the application object exists and no engine has loaded yet
+    unsafe { fili_register_html_view() };
     let mut engine = QQmlApplicationEngine::new();
     if let Some(engine) = engine.as_mut() {
         engine.load(&QUrl::from("qrc:/qt/qml/Fili/Mail/qml/Main.qml"));

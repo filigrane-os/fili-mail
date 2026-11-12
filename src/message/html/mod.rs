@@ -187,8 +187,9 @@ fn resource(n: &str) -> bool {
             | "cite"
     )
 }
-fn clean_attrs(n: &mut Node, colors: bool, styles: Vec<(String, String)>) {
-    let centre = !matches!(n.name.as_str(), "td" | "th");
+fn clean_attrs(n: &mut Node, colors: bool, layout: bool, styles: Vec<(String, String)>) {
+    // Qt's rich text centred whole blocks; a layout engine centres as the sender meant
+    let centre = !layout && !matches!(n.name.as_str(), "td" | "th");
     let mut seen = HashSet::new();
     let is_img = n.name == "img";
     let is_link = n.name == "a";
@@ -324,11 +325,37 @@ impl<'a> Images<'a> {
         }
     }
 }
-fn clean(n: &mut Node, images: &mut Images<'_>, colors: bool) {
+/// A style sheet a layout engine may read: nothing that loads (`@import`, `url()`), runs (`expression`,
+/// `behavior`, `-moz-binding`) or hides itself (escapes, `</`); None drops the whole sheet.
+pub fn safe_css(css: &str) -> Option<String> {
+    let lower = css.to_ascii_lowercase();
+    if css.len() > 256 * 1024
+        || css.contains('\\')
+        || css.contains("</")
+        || ["expression", "behavior", "-moz-binding", "javascript:"].iter().any(|w| lower.contains(w))
+    {
+        return None;
+    }
+    // Quoted strings first: a font URL often holds `;` (`wght@400;700`) or `)`
+    let css = re!(r#"(?i)url\s*\(\s*(?:"[^"]*"|'[^']*'|[^)]*)\s*\)"#).replace_all(css, "none");
+    let css = re!(r#"(?i)@import(?:"[^"]*"|'[^']*'|[^;"'])*;?"#).replace_all(&css, "");
+    Some(css.into_owned())
+}
+
+fn clean(n: &mut Node, images: &mut Images<'_>, colors: bool, layout: bool) {
     let mut kept = vec![];
     for mut c in std::mem::take(&mut n.children) {
         if c.kind == "text" {
             kept.push(c);
+            continue;
+        }
+        if layout && c.name == "style" {
+            let css: String = c.children.iter().filter(|t| t.kind == "text").map(|t| t.text.as_str()).collect();
+            if let Some(css) = safe_css(&css) {
+                c.attrs.clear();
+                c.children = vec![Node::text(&css)];
+                kept.push(c);
+            }
             continue;
         }
         if dropped(&c.name) {
@@ -365,11 +392,11 @@ fn clean(n: &mut Node, images: &mut Images<'_>, colors: bool) {
                 c.set("dir", &value.trim().to_ascii_lowercase())
             }
         }
-        clean_attrs(&mut c, colors, styles);
+        clean_attrs(&mut c, colors, layout, styles);
         if c.name == "img" && !images.keep(&mut c) {
             continue;
         }
-        clean(&mut c, images, colors);
+        clean(&mut c, images, colors, layout);
         if c.children.iter().any(|c| c.name == "img") {
             let styles = declarations(c.attr("style"))
                 .into_iter()
@@ -508,15 +535,19 @@ pub fn sanitize(source: &str, options: &Value) -> Result<Value, &'static str> {
         Value::Null
     };
     let mut images = Images::new(options);
-    clean(&mut root, &mut images, options["keepColors"] == true);
-    if options["keepTables"] != true {
+    // Layout mode (a real HTML/CSS engine draws it): tables, colours, centring and style sheets stay
+    let layout = options["layout"] == true;
+    clean(&mut root, &mut images, options["keepColors"] == true || layout, layout);
+    if options["keepTables"] != true && !layout {
         flatten_tables(
             &mut root,
             bounded_option(options, "keepTableDepth", 2, 128),
             0,
         )
     }
-    collapse(&mut root);
+    if !layout {
+        collapse(&mut root);
+    }
     let html = serialize(&root)?;
     let size = measure(&root, &html);
     let heavy = too_heavy_to_draw(&root, &size);

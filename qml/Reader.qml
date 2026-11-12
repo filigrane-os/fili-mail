@@ -2,6 +2,7 @@
 import QtQuick
 import QtQuick.Controls.Basic
 import Fili.Mail
+import Fili.Html
 
 Rectangle {
     id: reader
@@ -10,6 +11,8 @@ Rectangle {
     property string body: ""
     // Sanitized rich text of an HTML message (empty: show body as plain text)
     property string rich: ""
+    // Sanitized HTML of the message, laid out by HtmlView (litehtml); `rich` is the fallback
+    property string html: ""
     property string error: ""
     property bool starred: false
     property bool unread: false
@@ -31,6 +34,19 @@ Rectangle {
     signal saveAttachment(int index)
     signal openAttachment(int index)
     signal saveAllAttachments()
+    // Right click on the HTML page, at (x, y) in the window: the link and whether a picture is under it
+    signal pageMenu(real x, real y, string link, bool image)
+    readonly property bool hasSelection: reader.html !== "" && page.hasSelection
+    // Selection of the HTML page (Edit menu, Ctrl+C, Ctrl+A)
+    function copySelection() { return reader.html !== "" && page.copy(); }
+    function selectAllText() { if (reader.html !== "") page.selectAll(); }
+    function pageAction(id, link) {
+        if (id === "open-link") Qt.openUrlExternally(link);
+        else if (id === "copy-link") page.copyText(link.startsWith("mailto:") ? decodeURIComponent(link.slice(7).split("?")[0]) : link);
+        else if (id === "copy-image") page.copyImage();
+        else if (id === "copy") page.copy();
+        else if (id === "select-all") page.selectAll();
+    }
     // Escape: back to the list
     signal leave()
     function focusReader() { scroller.forceActiveFocus(); }
@@ -86,6 +102,9 @@ Rectangle {
             else if (event.key === Qt.Key_PageUp) go(scroller.contentY - scroller.height * 0.9);
             else if (event.key === Qt.Key_Home) go(top);
             else if (event.key === Qt.Key_End) go(max);
+            else if (event.matches(StandardKey.Copy)) reader.copySelection();
+            else if (event.matches(StandardKey.SelectAll)) reader.selectAllText();
+            else if (event.key === Qt.Key_Escape && page.hasSelection) page.clearSelection();
             else if (event.key === Qt.Key_Escape) reader.leave();
             else if (plain && event.key === Qt.Key_R) reader.reply();
             else if (plain && event.key === Qt.Key_A) reader.replyAll();
@@ -322,7 +341,35 @@ Rectangle {
             }
             // HTML mail is drawn on paper: senders choose their colors for a white page
             Rectangle {
-                visible: reader.rich !== ""
+                id: paper
+                visible: reader.html !== ""
+                width: parent.width
+                height: page.contentHeight + 2 * FiliTheme.space3
+                radius: FiliTheme.radiusControl
+                color: "#ffffff"
+                clip: true
+                // Only the visible slice of the page is drawn: the view follows the scroll
+                readonly property real sliceTop: Math.max(0, Math.min(page.contentHeight, scroller.contentY - content.y - paper.y - FiliTheme.space3))
+                HtmlView {
+                    id: page
+                    x: FiliTheme.space3
+                    y: FiliTheme.space3 + paper.sliceTop
+                    width: parent.width - 2 * FiliTheme.space3
+                    height: Math.max(1, Math.min(scroller.height, page.contentHeight - paper.sliceTop))
+                    viewportY: paper.sliceTop
+                    html: reader.html
+                    fontFamily: FiliTheme.font
+                    fontSize: FiliTheme.size
+                    onLinkActivated: url => Qt.openUrlExternally(url)
+                    onHoveredLinkChanged: reader.hovered = hoveredLink
+                    onContextMenuRequested: (x, y, link, image) => {
+                        const p = page.mapToItem(null, x, y);
+                        reader.pageMenu(p.x, p.y, link, image);
+                    }
+                }
+            }
+            Rectangle {
+                visible: reader.html === "" && reader.rich !== ""
                 width: parent.width
                 height: richText.implicitHeight + 2 * FiliTheme.space3
                 radius: FiliTheme.radiusControl
@@ -346,7 +393,7 @@ Rectangle {
                 }
             }
             Text {
-                visible: reader.rich === ""
+                visible: reader.rich === "" && reader.html === ""
                 width: parent.width
                 text: reader.body
                 wrapMode: Text.Wrap

@@ -412,3 +412,37 @@ fn table_parts_stay_in_their_own_table() {
         "<table><tr><td><table><tr><td>x</td></tr></table></td><td>y</td></tr></table>"
     );
 }
+
+#[test]
+fn layout_mode_keeps_tables_style_sheets_and_centring_but_nothing_that_loads() {
+    let source = r#"<html><head><style>@import url(https://x.example/a.css); .card > p { color: #333; background: url(https://x.example/t.png) } </style><style>p { width: expression(alert(1)) }</style></head>
+<body><table align="center"><tr><td align="center"><p class="x" style="text-align:center">Hi</p></td></tr></table><script>bad()</script></body></html>"#;
+    let out = sanitize(source, &json!({"layout":true}))
+        .unwrap()["html"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert!(out.contains(".card > p"), "{out}");
+    assert!(!out.contains("@import") && !out.contains("url(") && !out.contains("expression"), "{out}");
+    assert!(out.contains("<table") && out.contains("<td align=\"center\""), "{out}");
+    assert!(out.contains("text-align:center") || out.contains("text-align: center"), "{out}");
+    assert!(!out.contains("bad()"), "{out}");
+    // Without the layout mode the sheets are still dropped
+    let plain = sanitize(source, &json!({})).unwrap()["html"].as_str().unwrap().to_owned();
+    assert!(!plain.contains(".card"), "{plain}");
+}
+
+#[test]
+fn safe_css_refuses_escapes_and_closing_tags() {
+    assert!(safe_css("p{color:red}").is_some());
+    assert!(safe_css("p{content:'\\75rl(x)'}").is_none());
+    assert!(safe_css("p{}</style><script>").is_none());
+}
+
+#[test]
+fn safe_css_drops_a_whole_font_import_and_every_url() {
+    let css = "@import url('https://fonts.example/css2?family=Noto+Sans:wght@400;700&display=swap');p{color:red}";
+    assert_eq!(safe_css(css).as_deref(), Some("p{color:red}"));
+    assert_eq!(safe_css("@import \"a;b.css\";p{}").as_deref(), Some("p{}"));
+    assert_eq!(safe_css("p{background:url( \"x).png\" )}").as_deref(), Some("p{background:none}"));
+}

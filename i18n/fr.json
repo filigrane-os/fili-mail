@@ -217,5 +217,12 @@
  "Minimise, discard": "Réduire, abandonner",
  "Other": "Autre",
  "This list": "Cette liste",
- "Quit": "Quitter"
+ "Quit": "Quitter",
+ "Open Link": "Ouvrir le lien",
+ "Copy Link Address": "Copier l'adresse du lien",
+ "Copy Email Address": "Copier l'adresse e-mail",
+ "Copy Image": "Copier l'image",
+ "Copy": "Copier",
+ "Select All": "Tout sélectionner",
+ "Copy, select all": "Copier, tout sélectionner"
 }

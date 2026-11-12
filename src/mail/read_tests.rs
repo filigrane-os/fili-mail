@@ -114,7 +114,7 @@ async fn read_returns_only_safe_reader_content_without_conversation_metadata() {
     assert_eq!(calls[0].1["cacheOnly"], false);
     assert_eq!(
         calls[0].1["options"],
-        json!({"allowRemoteImages":false,"remoteImageData":{},"withReader":true,"keepColors":true})
+        json!({"allowRemoteImages":false,"remoteImageData":{},"withReader":true,"keepColors":true,"layout":false})
     );
 }
 
@@ -163,9 +163,10 @@ async fn read_exposes_links_and_unsubscribe_metadata_without_fetching_destinatio
         );
         assert!(!result.to_string().contains("not-exported"));
         assert!(!result.to_string().contains("tracker.example"));
+        // The anchor keeps only its vetted destination (decoded once), never the raw attribute
         assert_eq!(
             result["message"]["nativeRender"]["document"]["children"][0]["attrs"],
-            json!([])
+            json!([{"name":"href","value":"https://news.example.org/leave?a=1&b=2"}])
         );
         let calls = calls.lock().unwrap();
         assert_eq!(calls.len(), 1);

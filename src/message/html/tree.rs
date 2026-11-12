@@ -388,7 +388,12 @@ fn write(n: &Node, out: &mut String) -> Result<(), &'static str> {
             out.push('>')
         }
         for c in &n.children {
-            write(c, out)?
+            // A style sheet kept by the layout mode is raw text (`>` is a selector there); `safe_css` refused `</`
+            if n.name == "style" && c.kind == "text" {
+                out.push_str(&c.text)
+            } else {
+                write(c, out)?
+            }
         }
         if n.kind != "root" {
             out.push_str("</");
