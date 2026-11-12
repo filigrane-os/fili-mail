@@ -173,6 +173,13 @@ pub mod qobject {
         #[qsignal]
         #[cxx_name = "unreadCounted"]
         fn unread_counted(self: Pin<&mut Facteur>, account: &QString, count: i32);
+        // Unread messages of one Gmail category of an account's inbox; answered by `categoryCounted`
+        #[qinvokable]
+        #[cxx_name = "countCategory"]
+        fn count_category(self: Pin<&mut Facteur>, account: &QString, category: &QString);
+        #[qsignal]
+        #[cxx_name = "categoryCounted"]
+        fn category_counted(self: Pin<&mut Facteur>, account: &QString, category: &QString, count: i32);
         // One message; answered by `opened` (JSON)
         #[qinvokable]
         #[cxx_name = "openMessage"]
@@ -725,6 +732,25 @@ impl qobject::Facteur {
                 Err(_) => -1,
             };
             let _ = qt.queue(move |f| f.unread_counted(&QString::from(&account), count));
+        });
+    }
+
+    pub fn count_category(self: Pin<&mut Self>, account: &QString, category: &QString) {
+        let (account, category) = (account.to_string(), category.to_string());
+        let qt = self.qt_thread();
+        let (runtime, session) = engine();
+        runtime.spawn(async move {
+            // Gmail keeps an exact unread count on each category label (one light request, no message read);
+            // the list estimate is a placeholder and listing the messages reads each of them
+            let label = match category.as_str() {
+                "primary" => "CATEGORY_PERSONAL".to_owned(),
+                other => format!("CATEGORY_{}", other.to_uppercase()),
+            };
+            let count = match session.dispatch("gmail.labelCounts", &json!({"accountId": account, "id": label})).await {
+                Ok(v) => v["unread"].as_u64().map_or(-1, |n| n.min(i32::MAX as u64) as i32),
+                Err(_) => -1,
+            };
+            let _ = qt.queue(move |f| f.category_counted(&QString::from(&account), &QString::from(&category), count));
         });
     }
 

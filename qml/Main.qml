@@ -47,12 +47,14 @@ ApplicationWindow {
     property var accounts: []
     property string account: ""
     property string mailbox: "inbox"
-    // Reader beside the list ("right", default) or under it ("below"); the choice is kept
-    property string preview: Facteur.uiGet("preview") === "below" ? "below" : "right"
-    function togglePreview() {
-        preview = preview === "below" ? "right" : "below";
-        Facteur.uiSet("preview", preview);
-    }
+    // Reader beside the list when the window fills the screen (full screen, maximized column),
+    // under it when the window takes only part of the screen. The toggle flips it until the window
+    // changes size class.
+    readonly property bool wide: win.screen ? win.width >= win.screen.width * 0.8 : true
+    property string previewOverride: ""
+    onWideChanged: previewOverride = ""
+    readonly property string preview: previewOverride !== "" ? previewOverride : (wide ? "right" : "below")
+    function togglePreview() { previewOverride = preview === "below" ? "right" : "below"; }
     // A label (Gmail) is a mailbox named "label:NAME": it lists everything carrying it except spam and trash
     property var labels: []
     function listBox() { return mailbox.startsWith("label:") ? "archive" : mailbox; } // "folder:NAME" (IMAP) goes through as is
@@ -364,9 +366,14 @@ ApplicationWindow {
     }
     // Unread messages of each account's inbox ({accountId: count}), shown in the sidebar
     property var unreadCounts: ({})
+    // Unread messages of each Gmail category tab ({key: count}) of the current account
+    property var categoryCounts: ({})
     function countUnread() {
         for (const a of accounts)
             Facteur.countUnread(a.id);
+        if (isGmail())
+            for (const c of categories)
+                Facteur.countCategory(account, c.key);
     }
     Timer { interval: 60000; running: win.accounts.length > 0; repeat: true; triggeredOnStart: true; onTriggered: win.countUnread() }
     function appendMessages(list, known) {
@@ -475,6 +482,12 @@ ApplicationWindow {
             const next = Object.assign({}, win.unreadCounts);
             if (count >= 0) next[acc] = count;
             win.unreadCounts = next;
+        }
+        function onCategoryCounted(acc, cat, count) {
+            if (acc !== win.account || count < 0) return;
+            const next = Object.assign({}, win.categoryCounts);
+            next[cat] = count;
+            win.categoryCounts = next;
         }
         function onListed(acc, box, rawQry, json) {
             const quick = rawQry.startsWith("scope:headers ");
@@ -658,7 +671,7 @@ ApplicationWindow {
         visit();
         refresh();
     }
-    onAccountChanged: { messages.clear(); selectedId = ""; reader.summary = null; if (mailbox.startsWith("label:") || mailbox.startsWith("folder:")) mailbox = "inbox"; loadLabels(); visit(); refresh() }
+    onAccountChanged: { categoryCounts = ({}); messages.clear(); selectedId = ""; reader.summary = null; if (mailbox.startsWith("label:") || mailbox.startsWith("folder:")) mailbox = "inbox"; loadLabels(); visit(); refresh() }
     onMailboxChanged: { messages.clear(); selectedId = ""; reader.summary = null; visit(); refresh() }
     onCategoryChanged: { if (categoriesOn()) { messages.clear(); selectedId = ""; reader.summary = null; refresh() } }
     onQueryChanged: { messages.clear(); selectedId = ""; reader.summary = null; visit(); refresh() }
@@ -887,6 +900,7 @@ ApplicationWindow {
                 checkedCount: win.checkedCount
                 onAct: operation => win.actOnSelection(operation)
                 tabs: win.categoriesOn() ? win.categories : []
+                tabCounts: win.categoryCounts
                 tab: win.category
                 onTabChosen: key => win.category = key
                 onStep: delta => win.step(delta)

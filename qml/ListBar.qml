@@ -12,6 +12,8 @@ Rectangle {
     property string selectedId: ""
     property var tabs: []
     property string tab: ""
+    // {tab key: unread messages}, shown after the tab name
+    property var tabCounts: ({})
     property bool selectedUnread: false
     property bool selectedStarred: false
     property string position: ""
@@ -75,7 +77,7 @@ Rectangle {
                 Rectangle {
                     required property var modelData
                     readonly property bool on: list.tab === modelData.key
-                    width: tabIcon.width + FiliTheme.space2 + tabText.implicitWidth + 2 * FiliTheme.space4
+                    width: tabIcon.width + FiliTheme.space2 + tabText.implicitWidth + (tabBadge.visible ? FiliTheme.space2 + tabBadge.implicitWidth : 0) + 2 * FiliTheme.space4
                     height: FiliTheme.tabHeight
                     radius: FiliTheme.radiusControl
                     color: on ? FiliTheme.surfaceActive : tabArea.containsMouse ? FiliTheme.surfaceHover : "transparent"
@@ -96,6 +98,17 @@ Rectangle {
                         font.pixelSize: FiliTheme.sizeList
                         font.weight: on ? FiliTheme.weightAccent : Font.Normal
                         color: on ? FiliTheme.text : FiliTheme.textSecondary
+                    }
+                    Text {
+                        id: tabBadge
+                        readonly property int n: list.tabCounts[modelData.key] || 0
+                        visible: n > 0
+                        x: tabText.x + tabText.implicitWidth + FiliTheme.space2
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "" + n
+                        font.family: FiliTheme.font
+                        font.pixelSize: FiliTheme.sizeSmall
+                        color: on ? FiliTheme.accentColor : FiliTheme.muted
                     }
                     MouseArea { id: tabArea; anchors.fill: parent; hoverEnabled: true; onClicked: list.tabChosen(modelData.key) }
                 }
