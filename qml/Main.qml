@@ -12,6 +12,26 @@ ApplicationWindow {
         windowButtons = !windowButtons;
         Facteur.uiSet("window_buttons", windowButtons ? "1" : "0");
     }
+    // Header (toolbar) and footer (status bar): hidden when the settings say so (Settings > Appearance, [window] header|footer,
+    // --no-header, --no-footer), and followed live. The search (Ctrl+F) shows the header while it is used, a notice or an error
+    // shows the footer for its duration. The bar menu entries "Show Header" / "Show Status Bar" change them for this window only
+    property bool showHeader: Facteur.header()
+    property bool showFooter: Facteur.footer()
+    property bool searchOpen: false
+    readonly property bool mainView: !adding && accounts.length > 0
+    readonly property bool headerShown: mainView && (showHeader || searchOpen || searchInput.text !== "")
+    readonly property bool footerShown: mainView && (showFooter || notice !== "")
+    function openSearch() {
+        searchOpen = true;
+        searchInput.forceActiveFocus();
+    }
+    Connections {
+        target: Facteur
+        function onThemeChanged() {
+            win.showHeader = Facteur.header();
+            win.showFooter = Facteur.footer();
+        }
+    }
     // Fonts embedded in the binary (fonts/, licenses/): same look on every distribution
     FontLoader { source: "qrc:/qt/qml/Fili/Mail/fonts/Jost-Variable.ttf" }
     FontLoader { source: "qrc:/qt/qml/Fili/Mail/fonts/JetBrainsMono-Variable.ttf" }
@@ -502,7 +522,9 @@ ApplicationWindow {
             if (name === "about") aboutCard.show();
             else if (name === "shortcuts") shortcutsCard.show();
             else if (name === "close") Qt.quit();
-            else if (name === "window-actions") { if (toolbar.visible) windowPanel.visible ? windowPanel.close() : windowPanel.open() }
+            else if (name === "window-actions") { if (win.mainView) windowPanel.visible ? windowPanel.close() : windowPanel.open() }
+            else if (name === "toggle-header") win.showHeader = !win.showHeader;
+            else if (name === "toggle-footer") win.showFooter = !win.showFooter;
             else if (name === "toggle-window-buttons") win.toggleWindowButtons();
             else if (name === "add-account") { win.addError = ""; win.adding = true }
             else if (name === "new-message") win.startCompose("new");
@@ -662,11 +684,11 @@ ApplicationWindow {
     Shortcut { sequences: ["Escape"]; enabled: win.deletingLabel !== null; onActivated: win.deletingLabel = null }
     Shortcut { sequences: ["Return", "Enter"]; enabled: win.removing !== ""; onActivated: Facteur.removeAccount(win.removing) }
     Shortcut { sequences: ["Escape"]; enabled: win.removing !== ""; onActivated: win.removing = "" }
-    Shortcut { sequences: ["Ctrl+Shift+W"]; enabled: toolbar.visible; onActivated: windowPanel.visible ? windowPanel.close() : windowPanel.open() }
+    Shortcut { sequences: ["Ctrl+Shift+W"]; enabled: win.mainView; onActivated: windowPanel.visible ? windowPanel.close() : windowPanel.open() }
     Shortcut { sequences: ["F5", "Ctrl+R"]; enabled: !win.adding && win.account !== ""; onActivated: win.refresh() }
     Shortcut { sequences: ["Alt+Left"]; enabled: !win.adding && win.hindex > 0; onActivated: win.go(-1) }
     Shortcut { sequences: ["Alt+Right"]; enabled: !win.adding && win.hindex < win.history.length - 1; onActivated: win.go(1) }
-    Shortcut { sequences: ["Ctrl+F"]; enabled: !win.adding && win.account !== "" && !win.composing; onActivated: searchInput.forceActiveFocus() }
+    Shortcut { sequences: ["Ctrl+F"]; enabled: !win.adding && win.account !== "" && !win.composing; onActivated: win.openSearch() }
     Shortcut { sequences: ["Ctrl+N"]; enabled: !win.adding && win.account !== ""; onActivated: win.startCompose("new") }
     Shortcut { sequences: ["Ctrl+Shift+R"]; enabled: !win.adding && !win.composing; onActivated: win.startCompose("reply") }
     Shortcut { sequences: ["Ctrl+Alt+R"]; enabled: !win.adding && !win.composing; onActivated: win.startCompose("replyall") }
@@ -694,9 +716,9 @@ ApplicationWindow {
     // Toolbar: back and forward (places visited), title and counts, search, refresh, new message
     Rectangle {
         id: toolbar
-        visible: !win.adding && win.accounts.length > 0
+        visible: win.headerShown
         width: parent.width
-        height: FiliTheme.toolbarHeight
+        height: win.headerShown ? FiliTheme.toolbarHeight : 0
         color: FiliTheme.background
         Rectangle {
             x: FiliTheme.margin
@@ -806,6 +828,7 @@ ApplicationWindow {
                 selectedTextColor: FiliTheme.text
                 // The search starts on Enter or on the button, not while typing (a search can take long)
                 onTextChanged: if (text.trim() === "" && win.query !== "") win.query = ""
+                onActiveFocusChanged: if (!activeFocus && text === "") win.searchOpen = false
                 Keys.onEscapePressed: { text = ""; win.query = ""; focus = false }
                 Keys.onReturnPressed: { win.query = text.trim(); focus = false }
                 Keys.onEnterPressed: { win.query = text.trim(); focus = false }
@@ -897,7 +920,7 @@ ApplicationWindow {
                     onReply: win.startCompose("reply")
                     onReplyAll: win.startCompose("replyall")
                     onForward: win.startCompose("forward")
-                    onSearchRequested: searchInput.forceActiveFocus()
+                    onSearchRequested: win.openSearch()
                 }
                 Rectangle {
                     x: panes.below ? 0 : messageList.width
@@ -953,7 +976,7 @@ ApplicationWindow {
     // Footer: where we are, how much is loaded, what is selected, what went wrong
     Rectangle {
         id: footer
-        visible: !win.adding && win.accounts.length > 0
+        visible: win.footerShown
         anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
         height: FiliTheme.statusHeight
         color: FiliTheme.backgroundDeep

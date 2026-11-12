@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.0
+
+- Headless window: the header and the footer can be hidden with `[window] header = false` / `footer = false` in `~/.config/filigrane/theme.toml` or `fili-mail.toml`, with `--no-header` / `--no-footer` (and `--header` / `--footer`) at launch, or from Settings > Appearance of the shell. Open windows follow the file live. Ctrl+F shows the search; the footer comes back for an operation, an error or a notice. New menu entries Show Header and Show Status Bar (`fili-mail ctl action toggle-header|toggle-footer`) change one window only.
+
 ## 0.1.0
 
 First release of Facteur, the mail client of Filigrane, forked from Omamail 0.11.3 (a7b2441).

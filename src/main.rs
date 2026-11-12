@@ -5,7 +5,7 @@ mod gui;
 fn main() {
     // No argument: the window (Facteur). Everything else is the command line and the daemon, which never start Qt.
     #[cfg(feature = "gui")]
-    if std::env::args().len() == 1 {
+    if std::env::args().skip(1).all(|a| fili_mail::window_parts::is_flag(&a)) {
         if ctl::focus_existing() {
             return;
         }

@@ -13,6 +13,9 @@ pub mod qobject {
         #[qml_singleton]
         #[qproperty(bool, light, READ, NOTIFY = theme_changed)]
         #[qproperty(QString, accent, READ, NOTIFY = theme_changed)]
+        // Counts the changes of the settings files (fili-mail.toml, theme.toml): bindings that read it, and the header and
+        // footer of the window (Main.qml, onThemeChanged), follow a change made while the window is open
+        #[qproperty(i32, settings_rev, cxx_name = "settingsRev", READ, NOTIFY = theme_changed)]
         #[qproperty(bool, key_nav, cxx_name = "keyNav")]
         type Facteur = super::FacteurRust;
 
@@ -62,6 +65,13 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "windowAction"]
         fn window_action(self: &Facteur, name: &QString) -> bool;
+        // Header and footer of the window: false = hidden ([window] header|footer, --no-header, --no-footer)
+        #[qinvokable]
+        #[cxx_name = "header"]
+        fn header(self: &Facteur) -> bool;
+        #[qinvokable]
+        #[cxx_name = "footer"]
+        fn footer(self: &Facteur) -> bool;
         // Interface state kept between runs (~/.local/state/filigrane/mail/ui, lines key=value)
         #[qinvokable]
         #[cxx_name = "uiGet"]
@@ -231,6 +241,7 @@ use std::{env, path::PathBuf, sync::OnceLock};
 pub struct FacteurRust {
     light: bool,
     accent: QString,
+    settings_rev: i32,
     key_nav: bool,
 }
 
@@ -298,6 +309,43 @@ impl cxx_qt::Initialize for Facteur {
                 });
             });
         }
+        // Follow the settings directory (~/.config/filigrane: fili-mail.toml, theme.toml written by `fili-theme font|header|footer`
+        // or by hand): same thread model as below
+        let qt = self.qt_thread();
+        std::thread::spawn(move || {
+            let dir = fili_mail::window_parts::config_dir();
+            let Ok(c) = std::ffi::CString::new(dir.as_os_str().as_encoded_bytes()) else {
+                return;
+            };
+            // SAFETY: plain inotify calls on a descriptor owned by this thread.
+            let fd = unsafe { libc::inotify_init1(libc::IN_CLOEXEC) };
+            if fd < 0
+                || unsafe {
+                    libc::inotify_add_watch(
+                        fd,
+                        c.as_ptr(),
+                        libc::IN_CLOSE_WRITE | libc::IN_MOVED_TO | libc::IN_CREATE,
+                    )
+                } < 0
+            {
+                return;
+            }
+            let mut buf = [0u8; 4096];
+            loop {
+                // SAFETY: reads into a buffer of the stated length.
+                if unsafe { libc::read(fd, buf.as_mut_ptr().cast(), buf.len()) } <= 0 {
+                    return;
+                }
+                let sent = qt.queue(move |mut f| {
+                    let rev = f.settings_rev.wrapping_add(1);
+                    f.as_mut().rust_mut().settings_rev = rev;
+                    f.as_mut().theme_changed();
+                });
+                if sent.is_err() {
+                    return;
+                }
+            }
+        });
         // Follow the state directory (inotify, thread blocked on read: no wake-up while nothing changes)
         let qt = self.qt_thread();
         std::thread::spawn(move || {
@@ -375,6 +423,14 @@ impl qobject::Facteur {
             };
             let _ = qt.queue(move |f| f.label_created(&QString::from(&account), &QString::from(&out)));
         });
+    }
+
+    pub fn header(&self) -> bool {
+        fili_mail::window_parts::shown_now("header")
+    }
+
+    pub fn footer(&self) -> bool {
+        fili_mail::window_parts::shown_now("footer")
     }
 
     pub fn ui_get(&self, key: &QString) -> QString {

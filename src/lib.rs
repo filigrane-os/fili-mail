@@ -22,3 +22,4 @@ pub mod public_http;
 pub mod sync;
 pub mod tls;
 pub mod window;
+pub mod window_parts;
