@@ -80,6 +80,7 @@
  "Version": "Version",
  "Search": "Rechercher",
  "Search: %1": "Recherche: %1",
+ "Clear search": "Effacer la recherche",
  "%1 messages, %2 unread": "%1 messages, %2 non lus",
  "Pictures are hidden: the sender could see that you read this message.": "Images masquées: l'expéditeur pourrait voir que vous avez lu ce message.",
  "Load pictures (%1)": "Afficher les images (%1)",

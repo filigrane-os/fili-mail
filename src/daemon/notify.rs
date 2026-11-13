@@ -31,7 +31,7 @@ async fn send(title: &str, body: &str) {
     let _ = Command::new("notify-send")
         .args([
             "--app-name=Facteur",
-            "--icon=mail-unread",
+            "--icon=fili-mail",
             "--category=email.arrived",
             "--expire-time=8000",
             "--",

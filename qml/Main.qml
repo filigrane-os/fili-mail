@@ -831,7 +831,7 @@ ApplicationWindow {
             }
             TextInput {
                 id: searchInput
-                anchors { fill: parent; leftMargin: FiliTheme.space2; rightMargin: FiliTheme.space2 + 22 }
+                anchors { fill: parent; leftMargin: FiliTheme.space2; rightMargin: FiliTheme.space2 + 22 + (searchInput.text !== "" ? 24 : 0) }
                 verticalAlignment: TextInput.AlignVCenter
                 clip: true
                 font.family: FiliTheme.font
@@ -846,6 +846,16 @@ ApplicationWindow {
                 Keys.onReturnPressed: { win.query = text.trim(); focus = false }
                 Keys.onEnterPressed: { win.query = text.trim(); focus = false }
                 Keys.onDownPressed: focus = false
+            }
+            // Clears the search in progress (same as Escape in the field)
+            IconButton {
+                visible: searchInput.text !== "" || win.query !== ""
+                name: "x"
+                tip: Facteur.tr("Clear search")
+                anchors { right: parent.right; rightMargin: 25; verticalCenter: parent.verticalCenter }
+                height: parent.height - 2
+                width: 24
+                onClicked: { searchInput.text = ""; win.query = ""; win.searchOpen = false }
             }
             IconButton {
                 name: "search"

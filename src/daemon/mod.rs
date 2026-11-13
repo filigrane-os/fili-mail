@@ -115,6 +115,19 @@ async fn sync_watches(
     }
 }
 
+/// The exact unread total of the inbox. A watch snapshot only carries the list "estimate", which
+/// Gmail documents as approximate (it is often far off); the label counters are exact.
+async fn exact_unread(session: &Session, account: &str) -> Option<u64> {
+    if provider_of(account) != "gmail" {
+        return None;
+    }
+    let label = session
+        .dispatch("gmail.labelCounts", &json!({"accountId":account,"id":"INBOX"}))
+        .await
+        .ok()?;
+    label["unread"].as_u64()
+}
+
 async fn unread_messages(session: &Session, account: &str) -> Result<Vec<Message>, &'static str> {
     let params = json!({"account":account,"mailbox":"inbox","limit":LIST_LIMIT});
     let page = session.dispatch("mail.list", &params).await?;
@@ -153,8 +166,12 @@ async fn serve() {
                 }
                 let snapshot = &event.value["params"];
                 let Some(account) = snapshot["accountId"].as_str().map(str::to_owned) else { continue };
+                let unread = match exact_unread(&session, &account).await {
+                    Some(n) => n,
+                    None => snapshot["estimate"].as_u64().unwrap_or(0),
+                };
                 counts.insert(account.clone(), json!({
-                    "unread": snapshot["estimate"].as_u64().unwrap_or(0),
+                    "unread": unread,
                     "error": snapshot["error"].as_str().unwrap_or(""),
                 }));
                 state::write(&watched, &counts, recent.make_contiguous());

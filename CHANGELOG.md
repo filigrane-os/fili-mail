@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.1
+
+- The bar's unread total is exact for Gmail: the daemon reads the INBOX label counter instead of the list estimate.
+- Clear button in the search field (clears the search in progress, like Escape).
+- New-mail notifications use the Facteur icon.
+
 ## 1.0.0
 
 First stable release.
