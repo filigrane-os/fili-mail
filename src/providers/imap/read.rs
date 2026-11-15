@@ -478,6 +478,33 @@ fn page(
     let can_continue = next < ordered.len() || more;
     json!({"ids":ids,"threadIds":[],"nextPageToken":if can_continue{next.to_string()}else{String::new()},"estimate":if more{ordered.len().max(offset+limit+1)}else{ordered.len()}})
 }
+/// What a folder looked like when its dates were last read: (UIDVALIDITY, UIDNEXT, EXISTS) of the SELECT answer, and the
+/// arrival date of each UID. A date never changes, and the same triple means the same set of UIDs (mail only arrives
+/// with a higher UIDNEXT and leaves by lowering EXISTS), so a list can skip reading 17 000 dates again.
+struct FolderDates {
+    state: (u64, u64, u64),
+    dates: BTreeMap<u32, i64>,
+}
+static FOLDER_DATES: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<String, FolderDates>>> =
+    std::sync::LazyLock::new(Default::default);
+
+/// (UIDVALIDITY, UIDNEXT, EXISTS) from a SELECT answer; None when the server leaves one out (then nothing is reused).
+fn select_state(data: &[u8]) -> Option<(u64, u64, u64)> {
+    let text = String::from_utf8_lossy(data);
+    let after = |marker: &str| -> Option<u64> {
+        let rest = &text[text.find(marker)? + marker.len()..];
+        rest.split(|c: char| !c.is_ascii_digit()).next()?.parse().ok()
+    };
+    let exists = text.lines().find_map(|line| {
+        let mut words = line.split_whitespace();
+        match (words.next(), words.next(), words.next()) {
+            (Some("*"), Some(n), Some(word)) if word.eq_ignore_ascii_case("EXISTS") => n.parse().ok(),
+            _ => None,
+        }
+    })?;
+    Some((after("[UIDVALIDITY ")?, after("[UIDNEXT ")?, exists))
+}
+
 async fn list(w: &mut Wire, p: &Value, boxes: &Mailboxes) -> Result<Value> {
     let limit = p["limit"].as_u64().unwrap_or(25).clamp(1, 100) as usize;
     let offset = p["pageToken"]
@@ -488,7 +515,9 @@ async fn list(w: &mut Wire, p: &Value, boxes: &Mailboxes) -> Result<Value> {
         .min(10_000_000);
     let (folder, criteria) = query(p["query"].as_str().unwrap_or(""))?;
     let folder = resolve(boxes, &folder)?;
-    command(w, &format!("SELECT {}", quote(&folder)?)).await?;
+    let selected = command(w, &format!("SELECT {}", quote(&folder)?)).await?;
+    let state = select_state(&selected);
+    let cache_key = format!("{}\u{0}{}", p["accountId"], folder);
     let mut found = Vec::new();
     let mut ceiling = None;
     if let Some(token) = p["continuation"].as_str() {
@@ -530,11 +559,24 @@ async fn list(w: &mut Wire, p: &Value, boxes: &Mailboxes) -> Result<Value> {
         // Keep the compact, response-limited UID snapshot. Batches of snapshot
         // UIDs bound the larger date responses without walking gaps in sparse
         // UIDs or relying on sequence numbers that move when mail is expunged.
-        let mut snapshot: Vec<_> = fetched_dates(&command(w, "UID FETCH 1:* (UID)").await?)?
-            .into_keys()
-            .collect();
-        let mut dates = BTreeMap::new();
-        for window in snapshot.chunks(4096) {
+        // Same folder state as when the dates were read: nothing to ask. Same UIDVALIDITY: the dates already known stay.
+        let (same, known) = match (state, FOLDER_DATES.lock().ok()) {
+            (Some(state), Some(cache)) => match cache.get(&cache_key).filter(|c| c.state.0 == state.0) {
+                Some(c) => (c.state == state, c.dates.clone()),
+                None => (false, BTreeMap::new()),
+            },
+            _ => (false, BTreeMap::new()),
+        };
+        let mut snapshot: Vec<u32> = if same {
+            known.keys().copied().collect()
+        } else {
+            fetched_dates(&command(w, "UID FETCH 1:* (UID)").await?)?
+                .into_keys()
+                .collect()
+        };
+        let unknown: Vec<u32> = snapshot.iter().copied().filter(|uid| !known.contains_key(uid)).collect();
+        let mut dates: BTreeMap<u32, i64> = known.into_iter().filter(|(uid, _)| snapshot.binary_search(uid).is_ok()).collect();
+        for window in unknown.chunks(4096) {
             // Name the batch by its first and last UID, never as a list: 1795
             // four-digit UIDs make a 9 KB argument, which Stalwart refuses with
             // `BAD [PARSE] Argument exceeds maximum length of 4096 bytes` and
@@ -559,6 +601,9 @@ async fn list(w: &mut Wire, p: &Value, boxes: &Mailboxes) -> Result<Value> {
             );
         }
         snapshot.retain(|uid| dates.contains_key(uid));
+        if let (Some(state), Ok(mut cache)) = (state, FOLDER_DATES.lock()) {
+            cache.insert(cache_key.clone(), FolderDates { state, dates: dates.clone() });
+        }
         if let Some(ceiling) = ceiling {
             snapshot.retain(|uid| *uid <= ceiling)
         }

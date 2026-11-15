@@ -8,9 +8,13 @@ Rectangle {
     signal act(string operation)
     signal step(int delta)
     signal tabChosen(string key)
+    signal tabsToggled()
     property int checkedCount: 0
     property string selectedId: ""
     property var tabs: []
+    // The inbox of this account can be shown in category tabs; tabsOn: they are shown now
+    property bool tabsAvailable: false
+    property bool tabsOn: true
     property string tab: ""
     // {tab key: unread messages}, shown after the tab name
     property var tabCounts: ({})
@@ -57,6 +61,7 @@ Rectangle {
                 font.pixelSize: FiliTheme.sizeList
                 color: FiliTheme.textSecondary
             }
+            IconButton { visible: list.tabsAvailable; name: "tag"; toggled: list.tabsOn; tip: list.tabsOn ? Facteur.tr("Hide category tabs") : Facteur.tr("Show category tabs"); onClicked: list.tabsToggled() }
             IconButton { name: "filter"; toggled: list.unreadOnly; tip: Facteur.tr("Unread only"); onClicked: list.unreadOnly = !list.unreadOnly }
         }
         Rectangle { anchors { left: parent.left; right: parent.right; bottom: parent.bottom } height: FiliTheme.borderWidth; color: FiliTheme.border }

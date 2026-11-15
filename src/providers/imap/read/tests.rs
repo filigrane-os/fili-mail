@@ -424,3 +424,12 @@ async fn a_command_that_is_never_answered_ends_the_call() {
     );
     peer.abort();
 }
+
+#[test]
+fn select_state_reads_validity_next_and_exists() {
+    let data = b"* FLAGS (\\Seen)\r\n* 17319 EXISTS\r\n* 0 RECENT\r\n* OK [UIDVALIDITY 1700000000] ok\r\n* OK [UIDNEXT 20001] ok\r\nO1 OK [READ-WRITE] done\r\n";
+    assert_eq!(super::select_state(data), Some((1_700_000_000, 20001, 17319)));
+    // A server that leaves one out is never reused
+    assert_eq!(super::select_state(b"* 3 EXISTS\r\n* OK [UIDNEXT 4] ok\r\n"), None);
+    assert_eq!(super::select_state(b"* OK [UIDVALIDITY 1] ok\r\n* OK [UIDNEXT 4] ok\r\n"), None);
+}

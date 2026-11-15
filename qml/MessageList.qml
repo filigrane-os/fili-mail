@@ -10,6 +10,8 @@ Rectangle {
     // A list is being fetched: placeholder rows while empty, a thin moving bar over the rows already shown
     property bool loading: false
     signal chosen(string id)
+    // Right click on a row: its index and the pointer position in the window
+    signal contextRequested(int index, real x, real y)
     // Keyboard action on the current message: archive, trash, star, unread
     signal act(string operation)
     // Previous or next message of the list (-1, +1)
@@ -135,7 +137,8 @@ Rectangle {
                 color: model.unread ? FiliTheme.text : FiliTheme.textSecondary
             }
             Rectangle { anchors { left: parent.left; right: parent.right; bottom: parent.bottom } height: FiliTheme.borderWidth; color: FiliTheme.border; opacity: 0.5 }
-            MouseArea { id: hover; anchors.fill: parent; hoverEnabled: true; onClicked: mouse => {
+            MouseArea { id: hover; anchors.fill: parent; hoverEnabled: true; acceptedButtons: Qt.LeftButton | Qt.RightButton; onClicked: mouse => {
+                if (mouse.button === Qt.RightButton) { const p = row.mapToItem(null, mouse.x, mouse.y); list.contextRequested(index, p.x, p.y); return }
                 if (mouse.modifiers & Qt.ShiftModifier) list.check(index, 1);
                 else if (mouse.modifiers & Qt.ControlModifier) list.check(index, 0);
                 else { view.currentIndex = index; list.chosen(model.id) }

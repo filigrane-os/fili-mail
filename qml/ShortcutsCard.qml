@@ -15,7 +15,7 @@ Rectangle {
             ["Alt+1  Alt+2  Alt+3", Facteur.tr("Sidebar, list, reader")],
             ["Ctrl+F  /", Facteur.tr("Search (Enter starts it, Esc clears)")],
             ["Alt+←  Alt+→", Facteur.tr("Back / forward")],
-            ["Ctrl+1 … Ctrl+5", Facteur.tr("Category tabs (Gmail)")],
+            ["Ctrl+1 … Ctrl+5", Facteur.tr("Category tabs")],
             ["Ctrl+U", Facteur.tr("Unread messages only")],
             ["Ctrl+Shift+P", Facteur.tr("Preview beside or under the list")],
             ["F5  Ctrl+R", Facteur.tr("Refresh")],

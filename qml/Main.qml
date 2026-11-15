@@ -68,7 +68,14 @@ ApplicationWindow {
         { key: "forums", label: Facteur.tr("Forums"), icon: "chat" }
     ]
     function isGmail() { const a = accounts.find(x => x.id === account); return !!a && a.provider === "gmail"; }
-    function categoriesOn() { return mailbox === "inbox" && isGmail(); }
+    // Tabs above the inbox list, or the whole inbox in one list ("Show Category Tabs" in the bar menu); Gmail only:
+    // other accounts have no categories on their server, and sorting them here would be slower than the list itself
+    property bool categoryTabs: Facteur.uiGet("category_tabs") !== "0"
+    function toggleCategoryTabs() {
+        categoryTabs = !categoryTabs;
+        Facteur.uiSet("category_tabs", categoryTabs ? "1" : "0");
+    }
+    function categoriesOn() { return mailbox === "inbox" && categoryTabs && isGmail(); }
     function listQuery() {
         if (mailbox.startsWith("label:")) return ("label:\"" + mailbox.slice(6) + "\" " + query).trim();
         if (categoriesOn()) return ("category:" + category + " " + query).trim();
@@ -102,8 +109,37 @@ ApplicationWindow {
         entries.push({ id: "select-all", label: Facteur.tr("Select All") });
         popup.openAt(x, y, entries);
     }
+    // Right click on a message of the list: the ticked messages when it is one of them, else this one alone
+    property string pendingCompose: ""
+    function openMessageMenu(index, x, y) {
+        const row = messages.get(index);
+        if (!row || row.id.startsWith("draft:")) return;
+        const multi = checkedCount > 0 && row.checked;
+        const unread = multi ? checkedAnyUnread : row.unread;
+        const starred = multi ? checkedAllStarred : row.starred;
+        contextKind = "message";
+        contextData = { ids: multi ? checkedIds() : [row.id], id: row.id };
+        const entries = [];
+        if (!multi) {
+            entries.push({ id: "reply", label: Facteur.tr("Reply") });
+            entries.push({ id: "replyall", label: Facteur.tr("Reply all") });
+            entries.push({ id: "forward", label: Facteur.tr("Forward") });
+        }
+        entries.push({ id: unread ? "read" : "unread", label: unread ? Facteur.tr("Mark as read") : Facteur.tr("Mark as unread") });
+        entries.push({ id: starred ? "unstar" : "star", label: starred ? Facteur.tr("Remove star") : Facteur.tr("Star message") });
+        entries.push({ id: "archive", label: Facteur.tr("Archive message") });
+        entries.push({ id: "spam", label: Facteur.tr("Mark as spam") });
+        entries.push({ id: "trash", label: Facteur.tr("Move to trash"), danger: true });
+        popup.openAt(x, y, entries);
+    }
     function runContext(id) {
-        if (contextKind === "page") {
+        if (contextKind === "message") {
+            if (id === "reply" || id === "replyall" || id === "forward") {
+                // Writing needs the message open: open it first, the answer starts the draft (onOpened)
+                if (selectedId === contextData.id && reader.summary !== null) startCompose(id);
+                else { pendingCompose = id; choose(contextData.id); }
+            } else doActMany(id, contextData.ids);
+        } else if (contextKind === "page") {
             reader.pageAction(id, contextData);
         } else if (contextKind === "account") {
             if (id === "remove") { removing = contextData.id; return; }
@@ -451,7 +487,7 @@ ApplicationWindow {
     function countUnread() {
         for (const a of accounts)
             Facteur.countUnread(a.id);
-        if (isGmail())
+        if (isGmail() && categoryTabs)
             for (const c of categories)
                 Facteur.countCategory(account, c.key);
     }
@@ -464,7 +500,7 @@ ApplicationWindow {
     function refresh() {
         // What the mailbox showed last time, at once; the server's answer replaces it
         if (messages.count === 0 && account !== "" && query === "") {
-            const kept = Facteur.cachedList(account, listBox());
+            const kept = Facteur.cachedList(account, listBox() + (categoriesOn() ? "#" + category : ""));
             if (kept !== "") {
                 try { appendMessages(JSON.parse(kept).messages || [], new Set()) } catch (e) {}
             }
@@ -642,6 +678,7 @@ ApplicationWindow {
             else if (name === "toggle-header") win.showHeader = !win.showHeader;
             else if (name === "toggle-footer") win.showFooter = !win.showFooter;
             else if (name === "toggle-window-buttons") win.toggleWindowButtons();
+            else if (name === "toggle-category-tabs") win.toggleCategoryTabs();
             else if (name === "add-account") { win.addError = ""; win.adding = true }
             else if (name === "new-message") win.startCompose("new");
             else if (name === "reply" || name === "forward") win.startCompose(name);
@@ -676,12 +713,14 @@ ApplicationWindow {
             const r = JSON.parse(json);
             reader.loadingNext = false;
             if (r.error) {
+                win.pendingCompose = "";
                 reader.summary = null;
                 reader.error = win.errorText(r.error);
                 return;
             }
             reader.summary = r.message.summary;
             reader.body = r.message.nativeContent.body.text;
+            if (win.pendingCompose !== "") { const kind = win.pendingCompose; win.pendingCompose = ""; Qt.callLater(() => win.startCompose(kind)); }
             reader.rich = r.message.rich || "";
             reader.html = r.message.html || "";
             reader.remoteImages = r.message.remoteImages || 0;
@@ -742,7 +781,10 @@ ApplicationWindow {
             if (r.error) {
                 win.notice = win.errorText(r.error);
                 win.refresh();
-            } else Facteur.countUnread(acc);
+            } else {
+                Facteur.countUnread(acc);
+                if (win.categoriesOn()) Facteur.countCategory(acc, win.category);
+            }
         }
         function onAccountRemoved(json) {
             const r = JSON.parse(json);
@@ -781,8 +823,9 @@ ApplicationWindow {
         refresh();
     }
     onSelectedIdChanged: if (selectedId === "") reader.loadingNext = false
-    onAccountChanged: { categoryCounts = ({}); messages.clear(); selectedId = ""; reader.summary = null; if (mailbox.startsWith("label:") || mailbox.startsWith("folder:")) mailbox = "inbox"; loadLabels(); visit(); refresh() }
+    onAccountChanged: { categoryCounts = ({}); category = "primary"; messages.clear(); selectedId = ""; reader.summary = null; if (mailbox.startsWith("label:") || mailbox.startsWith("folder:")) mailbox = "inbox"; loadLabels(); visit(); refresh() }
     onMailboxChanged: { messages.clear(); selectedId = ""; reader.summary = null; visit(); refresh() }
+    onCategoryTabsChanged: { messages.clear(); selectedId = ""; reader.summary = null; refresh() }
     onCategoryChanged: { if (categoriesOn()) { messages.clear(); selectedId = ""; reader.summary = null; refresh() } }
     onQueryChanged: { messages.clear(); selectedId = ""; reader.summary = null; visit(); refresh() }
 
@@ -1020,6 +1063,9 @@ ApplicationWindow {
                 checkedCount: win.checkedCount
                 onAct: operation => win.actOnSelection(operation)
                 tabs: win.categoriesOn() ? win.categories : []
+                tabsAvailable: win.mailbox === "inbox" && win.isGmail()
+                tabsOn: win.categoryTabs
+                onTabsToggled: win.toggleCategoryTabs()
                 tabCounts: win.categoryCounts
                 tab: win.category
                 onTabChosen: key => win.category = key
@@ -1049,6 +1095,7 @@ ApplicationWindow {
                     onStep: delta => win.step(delta)
                     loading: win.loading && win.listError === ""
                     emptyText: win.listError !== "" ? win.listError : Facteur.tr("No message")
+                    onContextRequested: (index, x, y) => win.openMessageMenu(index, x, y)
                     onChosen: id => id.startsWith("draft:") ? win.openLocalDraft(id) : win.choose(id)
                     onNearEnd: win.loadMore()
                     onReply: win.startCompose("reply")

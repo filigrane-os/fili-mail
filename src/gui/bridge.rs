@@ -819,8 +819,14 @@ impl qobject::Facteur {
                     // The page continues the list when it was asked with a token
                     v["append"] = json!(!token.is_empty());
                     fili_mail::contacts::remember(&v["messages"]);
-                    if token.is_empty() && query.is_empty() {
-                        store_list_cache(&account, &mailbox, &v);
+                    // The first page of a mailbox, or of one of its category tabs ("category:KEY" alone), is kept
+                    let key = if query.is_empty() {
+                        Some(mailbox.clone())
+                    } else {
+                        query.strip_prefix("category:").filter(|k| !k.contains(char::is_whitespace)).map(|k| format!("{mailbox}#{k}"))
+                    };
+                    if let (true, Some(key)) = (token.is_empty(), key) {
+                        store_list_cache(&account, &key, &v);
                     }
                     v.to_string()
                 }
