@@ -176,8 +176,14 @@ ApplicationWindow {
     onNoticeChanged: if (notice === "") noticeFolder = ""
 
     // Message being written (the pane next to the list shows the form instead of the reader)
-    property bool composing: false
+    // Several messages can be written at once: one card each in the dock, one of them open, the others reduced to a bar
+    property string activeDraft: ""
+    // The cards are one frame with a tab each; the frame is reduced to its header bar when minimised
+    property bool dockMinimized: false
+    readonly property bool composing: activeDraft !== "" && !dockMinimized
     property bool sending: false
+    property string sendingKey: ""
+    ListModel { id: draftModel }
 
     ListModel { id: messages }
 
@@ -190,7 +196,7 @@ ApplicationWindow {
     }
     // kind: "new", "reply" or "forward"
     function startCompose(kind) {
-        if (account === "" || (kind !== "new" && reader.summary === null))
+        if (account === "" || (kind !== "new" && (reader.summary === null || reader.loadingNext)))
             return;
         let draft = {};
         if (kind === "reply") {
@@ -219,13 +225,69 @@ ApplicationWindow {
                     + "\n" + Facteur.tr("Date: %1").replace("%1", s.fullTime) + "\n" + Facteur.tr("Subject: %1").replace("%1", s.subject) + "\n\n" + reader.body
             };
         }
-        composing = true;
         if (kind === "reply" || kind === "replyall") {
             const s = reader.summary;
             draft.inReplyTo = s.messageId || "";
             draft.references = ((s.inReplyTo || "") + " " + (s.messageId || "")).trim();
         }
-        composer.open(draft);
+        openDraft(account, draft, "");
+    }
+
+    function newKey() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6) }
+    function openDraft(acc, draft, key) {
+        dockMinimized = false;
+        if (key !== "" && draftIndex(key) >= 0) {
+            activeDraft = key;
+            return;
+        }
+        key = key || newKey();
+        draftModel.append({ key: key, account: acc, init: JSON.stringify(draft), title: draft.subject || "" });
+        activeDraft = key;
+    }
+    function draftIndex(key) {
+        for (let i = 0; i < draftModel.count; i++)
+            if (draftModel.get(i).key === key) return i;
+        return -1;
+    }
+    // The card leaves the dock; its copy on this computer stays unless the draft is thrown away or sent
+    function closeDraft(key, forget) {
+        const i = draftIndex(key);
+        if (i >= 0) draftModel.remove(i);
+        if (activeDraft === key) activeDraft = draftModel.count > 0 ? draftModel.get(draftModel.count - 1).key : "";
+        if (forget) Facteur.deleteDraft(key);
+        showLocalDrafts();
+    }
+    function keepDraft(key, acc, fields) {
+        const empty = !(fields.to.trim() || fields.cc.trim() || fields.bcc.trim() || fields.subject.trim() || fields.body.trim() || fields.files.length);
+        if (empty) Facteur.deleteDraft(key);
+        else Facteur.saveDraft(key, JSON.stringify(Object.assign({ key: key, account: acc, savedAt: Date.now() }, fields)));
+        showLocalDrafts();
+    }
+    function localDrafts() {
+        try { return JSON.parse(Facteur.drafts()) } catch (e) { return [] }
+    }
+    // Drafts found from an earlier run come back as bars in the dock
+    function restoreDrafts() {
+        for (const d of localDrafts())
+            if (d.key && accounts.some(a => a.id === d.account) && draftIndex(d.key) < 0)
+                draftModel.append({ key: d.key, account: d.account, init: JSON.stringify(d), title: d.subject || "" });
+        if (draftModel.count > 0) {
+            activeDraft = draftModel.get(0).key;
+            dockMinimized = true;
+        }
+    }
+    // The Drafts mailbox lists the ones kept here first (the server does not have them)
+    function showLocalDrafts() {
+        for (let i = messages.count - 1; i >= 0; i--)
+            if (messages.get(i).id.startsWith("draft:")) messages.remove(i);
+        if (mailbox !== "drafts" || query !== "" || account === "") return;
+        const mine = localDrafts().filter(d => d.account === account).sort((a, b) => b.savedAt - a.savedAt);
+        mine.forEach((d, i) => messages.insert(i, { id: "draft:" + d.key, from: Facteur.tr("Draft"), subject: d.subject || Facteur.tr("(no subject)"), time: d.to || "", unread: false, starred: false, checked: false }));
+    }
+    function openLocalDraft(id) {
+        const key = id.slice(6);
+        const d = localDrafts().find(x => x.key === key);
+        if (d) openDraft(d.account, d, key);
     }
 
     function errorText(code) {
@@ -296,6 +358,23 @@ ApplicationWindow {
         const names = { inbox: Facteur.tr("Inbox"), unread: Facteur.tr("Unread"), starred: Facteur.tr("Starred"), sent: Facteur.tr("Sent"), drafts: Facteur.tr("Drafts"), archive: Facteur.tr("Archive"), spam: Facteur.tr("Spam"), trash: Facteur.tr("Trash") };
         return names[mailbox] || (mailbox.startsWith("label:") ? mailbox.slice(6) : mailbox.startsWith("folder:") ? ((labels.find(l => l.id === mailbox.slice(7)) || {}).rawName || mailbox.slice(7)) : mailbox);
     }
+    // Unread rows of the list, kept up to date as the rows change (a binding cannot see a role change by itself)
+    property int unreadTotal: 0
+    function updateUnreadTotal() { unreadTotal = unreadCount() }
+    Connections {
+        target: messages
+        function onDataChanged() { win.updateUnreadTotal() }
+        function onRowsInserted() { win.updateUnreadTotal() }
+        function onRowsRemoved() { win.updateUnreadTotal() }
+        function onModelReset() { win.updateUnreadTotal() }
+    }
+    // The inbox count of the sidebar follows an action at once (the server's figure comes after)
+    function bumpUnread(delta) {
+        if (delta === 0 || account === "") return;
+        const next = Object.assign({}, unreadCounts);
+        next[account] = Math.max(0, (next[account] || 0) + delta);
+        unreadCounts = next;
+    }
     function unreadCount() {
         let n = 0;
         for (let i = 0; i < messages.count; i++)
@@ -356,6 +435,7 @@ ApplicationWindow {
     // Next page of the list (token of the last answer), fetched when the end of the list comes near
     property string nextToken: ""
     property bool loadingMore: false
+    property int autoPages: 0
     // Search on IMAP: "quick" (headers of the mailbox shown), "full" (content of the whole account, merged after), or ""
     property string searchPhase: ""
     function loadMore() {
@@ -388,8 +468,10 @@ ApplicationWindow {
             if (kept !== "") {
                 try { appendMessages(JSON.parse(kept).messages || [], new Set()) } catch (e) {}
             }
+            showLocalDrafts();
         }
         nextToken = "";
+        autoPages = 0;
         loadingMore = false;
         searchPhase = "";
         checkedCount = 0;
@@ -421,8 +503,25 @@ ApplicationWindow {
         doActMany(operation, [id]);
     }
     function doActMany(operation, ids) {
+        // Drafts kept on this computer: only removing makes sense
+        const local = ids.filter(id => id.startsWith("draft:"));
+        if (local.length > 0) {
+            if (operation === "trash" || operation === "archive" || operation === "spam")
+                for (const id of local) closeDraft(id.slice(6), true);
+            ids = ids.filter(id => !id.startsWith("draft:"));
+        }
         if (account === "" || ids.length === 0)
             return;
+        let delta = 0;
+        for (const id of ids) {
+            const i = rowOf(id);
+            if (i < 0) continue;
+            const wasUnread = messages.get(i).unread;
+            if (operation === "read" && wasUnread) delta--;
+            else if (operation === "unread" && !wasUnread) delta++;
+            else if ((operation === "archive" || operation === "trash" || operation === "spam") && wasUnread) delta--;
+        }
+        bumpUnread(delta);
         if (operation === "archive" || operation === "trash" || operation === "spam") {
             // The message just after the first one that leaves takes its place
             let first = messages.count;
@@ -458,6 +557,8 @@ ApplicationWindow {
     }
 
     function choose(id, quiet) {
+        if (id.startsWith("draft:"))
+            return;
         selectedId = id;
         const row = rowOf(id);
         reader.unread = row >= 0 ? messages.get(row).unread : false;
@@ -465,14 +566,9 @@ ApplicationWindow {
         // Opening a message reads it
         if (row >= 0 && messages.get(row).unread)
             doAct("read", id);
-        reader.summary = null;
-        reader.attachments = [];
-        reader.body = "";
-        reader.rich = "";
-        reader.html = "";
-        reader.unsubscribeUrl = "";
-        reader.remoteImages = 0;
+        // The message shown stays until this one arrives (`onOpened`): no blank page in between
         reader.error = "";
+        reader.loadingNext = true;
         Facteur.openMessage(account, id);
     }
 
@@ -522,6 +618,13 @@ ApplicationWindow {
             if (more || merge)
                 for (let i = 0; i < messages.count; i++) known.add(messages.get(i).id);
             win.appendMessages(r.messages, known);
+            win.showLocalDrafts();
+            // "Unread only" filters the pages as they come: while few rows pass and more pages exist, fetch some more
+            // (a few pages at most, so a mailbox without unread mail does not read everything)
+            if (!quick && listBar.unreadOnly && win.nextToken !== "" && messages.count < 25 && win.autoPages < 4) {
+                win.autoPages++;
+                Qt.callLater(win.loadMore);
+            }
             if (quick) {
                 // Now the full search: content, whole account; its results come after these
                 win.searchPhase = "full";
@@ -555,20 +658,25 @@ ApplicationWindow {
             else if (onMessage) win.doAct(name, win.selectedId);
         }
         function onSent(json) {
+            const key = win.sendingKey;
             win.sending = false;
+            win.sendingKey = "";
             const r = JSON.parse(json);
             if (r.error) {
-                composer.error = win.errorText(r.error);
+                const card = dock.cardOf(key);
+                if (card) card.error = win.errorText(r.error);
                 return;
             }
-            win.composing = false;
+            win.closeDraft(key, true);
             win.notice = "";
         }
         function onOpened(id, json) {
             if (id !== win.selectedId)
                 return;
             const r = JSON.parse(json);
+            reader.loadingNext = false;
             if (r.error) {
+                reader.summary = null;
                 reader.error = win.errorText(r.error);
                 return;
             }
@@ -634,7 +742,7 @@ ApplicationWindow {
             if (r.error) {
                 win.notice = win.errorText(r.error);
                 win.refresh();
-            }
+            } else Facteur.countUnread(acc);
         }
         function onAccountRemoved(json) {
             const r = JSON.parse(json);
@@ -668,9 +776,11 @@ ApplicationWindow {
 
     Component.onCompleted: {
         loadAccounts();
+        restoreDrafts();
         visit();
         refresh();
     }
+    onSelectedIdChanged: if (selectedId === "") reader.loadingNext = false
     onAccountChanged: { categoryCounts = ({}); messages.clear(); selectedId = ""; reader.summary = null; if (mailbox.startsWith("label:") || mailbox.startsWith("folder:")) mailbox = "inbox"; loadLabels(); visit(); refresh() }
     onMailboxChanged: { messages.clear(); selectedId = ""; reader.summary = null; visit(); refresh() }
     onCategoryChanged: { if (categoriesOn()) { messages.clear(); selectedId = ""; reader.summary = null; refresh() } }
@@ -764,7 +874,7 @@ ApplicationWindow {
             }
             Text {
                 width: parent.width
-                text: win.loading ? "…" : win.listError !== "" ? "" : Facteur.tr("%1 messages, %2 unread").replace("%1", messages.count).replace("%2", win.unreadCount())
+                text: win.loading ? (win.query !== "" ? Facteur.tr("Searching…") : Facteur.tr("Loading…")) : win.listError !== "" ? "" : Facteur.tr("%1 messages, %2 unread").replace("%1", messages.count).replace("%2", win.unreadTotal)
                 elide: Text.ElideRight
                 font.family: FiliTheme.font
                 font.pixelSize: FiliTheme.sizeList
@@ -916,7 +1026,6 @@ ApplicationWindow {
                 onStep: delta => win.step(delta)
                 selectedUnread: win.checkedCount > 0 ? win.checkedAnyUnread : reader.unread
                 selectedStarred: win.checkedCount > 0 ? win.checkedAllStarred : reader.starred
-                position: win.selectedId !== "" ? (win.rowOf(win.selectedId) + 1) + "/" + messages.count : messages.count > 0 ? "" + messages.count : ""
                 canPrev: win.selectedId !== "" && win.rowOf(win.selectedId) > 0
                 canNext: win.selectedId !== "" && win.rowOf(win.selectedId) < messages.count - 1
             }
@@ -938,8 +1047,9 @@ ApplicationWindow {
                     onClearChecks: win.clearChecks()
                     checkedCount: win.checkedCount
                     onStep: delta => win.step(delta)
-                    emptyText: win.listError !== "" ? win.listError : win.loading ? (win.query !== "" ? Facteur.tr("Searching…") : "…") : Facteur.tr("No message")
-                    onChosen: id => win.choose(id)
+                    loading: win.loading && win.listError === ""
+                    emptyText: win.listError !== "" ? win.listError : Facteur.tr("No message")
+                    onChosen: id => id.startsWith("draft:") ? win.openLocalDraft(id) : win.choose(id)
                     onNearEnd: win.loadMore()
                     onReply: win.startCompose("reply")
                     onReplyAll: win.startCompose("replyall")
@@ -1021,10 +1131,10 @@ ApplicationWindow {
             text: {
                 if (win.notice !== "") return win.notice;
                 const parts = [];
-                if (win.loading) parts.push(win.query !== "" ? Facteur.tr("Searching…") : "…");
+                if (win.loading) parts.push(win.query !== "" ? Facteur.tr("Searching…") : Facteur.tr("Loading…"));
                 else if (win.listError === "") {
                     if (win.searchPhase === "full") parts.push(Facteur.tr("Searching the content…"));
-                    parts.push(Facteur.tr("%1 messages, %2 unread").replace("%1", messages.count).replace("%2", win.unreadCount()));
+                    parts.push(Facteur.tr("%1 messages, %2 unread").replace("%1", messages.count).replace("%2", win.unreadTotal));
                     if (win.nextToken !== "") parts.push(win.loadingMore ? Facteur.tr("Loading more…") : Facteur.tr("More below"));
                 }
                 if (win.checkedCount > 0) parts.push(Facteur.tr("%1 selected").replace("%1", win.checkedCount));
@@ -1042,16 +1152,67 @@ ApplicationWindow {
             }
         }
     }
-    // The message being written: a card at the bottom right, over the panes
-    Compose {
-        id: composer
-        visible: win.composing
+    // The messages being written: one frame at the bottom right, flush with the footer and never wider than the window.
+    // Its header holds a tab per draft; only the open one is drawn (all stay alive, so nothing typed is lost).
+    Item {
+        id: dock
         z: 60
-        anchors { right: parent.right; rightMargin: FiliTheme.margin; bottom: footer.visible ? footer.top : parent.bottom; bottomMargin: FiliTheme.space2 }
-        busy: win.sending
-        from: win.account.replace(/^[a-z]+:/, "")
-        onCancelled: win.composing = false
-        onSubmitted: fields => { win.sending = true; error = ""; Facteur.send(win.account, JSON.stringify(fields)) }
+        anchors { right: parent.right; rightMargin: FiliTheme.margin; bottom: footer.visible ? footer.top : parent.bottom }
+        width: parent.width - 2 * FiliTheme.margin
+        height: parent.height - (footer.visible ? footer.height : 0)
+        function cardOf(key) {
+            const i = win.draftIndex(key);
+            return i >= 0 ? cards.itemAt(i) : null;
+        }
+        Repeater {
+            id: cards
+            model: draftModel
+            delegate: Item {
+                id: slot
+                required property int index
+                required property string key
+                required property string account
+                required property string init
+                anchors { right: parent.right; bottom: parent.bottom }
+                width: card.width
+                height: card.height
+                visible: win.activeDraft === slot.key
+                property alias card: card
+                property alias error: card.error
+                Compose {
+                    id: card
+                    draftKey: slot.key
+                    tabs: draftModel
+                    tabCount: draftModel.count
+                    roomWidth: dock.width + 2 * FiliTheme.margin
+                    roomHeight: dock.height
+                    minimized: win.dockMinimized
+                    current: win.activeDraft === slot.key && !win.dockMinimized
+                    busy: win.sending && win.sendingKey === slot.key
+                    from: slot.account.replace(/^[a-z]+:/, "")
+                    Component.onCompleted: open(JSON.parse(slot.init), win.composing && win.activeDraft === slot.key)
+                    onTitleChanged: draftModel.setProperty(slot.index, "title", title)
+                    onMinimizeToggled: win.dockMinimized = !win.dockMinimized
+                    onTabChosen: key => { win.activeDraft = key; win.dockMinimized = false }
+                    onTabClosed: key => {
+                        const other = dock.cardOf(key), i = win.draftIndex(key);
+                        if (other && i >= 0) win.keepDraft(key, draftModel.get(i).account, other.card.fields());
+                        win.closeDraft(key, false);
+                    }
+                    onNewRequested: win.startCompose("new")
+                    onEdited: fields => { win.keepDraft(slot.key, slot.account, fields); savedAt = "now" }
+                    onCancelled: { win.keepDraft(slot.key, slot.account, fields()); win.closeDraft(slot.key, false) }
+                    onDiscarded: win.closeDraft(slot.key, true)
+                    onSubmitted: fields => {
+                        if (win.sending) { error = Facteur.tr("Another message is being sent."); return }
+                        win.sending = true;
+                        win.sendingKey = slot.key;
+                        error = "";
+                        Facteur.send(slot.account, JSON.stringify(fields));
+                    }
+                }
+            }
+        }
     }
     LabelDialog {
         id: labelDialog

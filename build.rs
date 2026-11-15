@@ -31,6 +31,7 @@ fn main() {
                 "qml/WindowPanel.qml",
                 "qml/KineticScroll.qml",
                 "qml/Compose.qml",
+                "qml/LoadingBar.qml",
                 "qml/AboutCard.qml",
                 "qml/ShortcutsCard.qml",
                 "qml/Icon.qml",

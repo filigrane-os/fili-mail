@@ -23,6 +23,9 @@ Rectangle {
     // Pictures of the sender held back (number), and whether they are being fetched
     property int remoteImages: 0
     property bool loadingImages: false
+    // Another message was chosen: the one shown stays until the new one has arrived
+    property bool loadingNext: false
+    onSummaryChanged: scroller.contentY = scroller.originY
     signal act(string operation)
     signal reply()
     signal replyAll()
@@ -64,7 +67,7 @@ Rectangle {
     Text {
         anchors.centerIn: parent
         visible: reader.summary === null && reader.error === ""
-        text: Facteur.tr("Select a message to read it")
+        text: reader.loadingNext ? Facteur.tr("Loading…") : Facteur.tr("Select a message to read it")
         font.family: FiliTheme.font
         font.pixelSize: FiliTheme.size
         color: FiliTheme.muted
@@ -410,6 +413,9 @@ Rectangle {
         }
     }
     FocusRing { target: scroller; gap: -2; shown: scroller.activeFocus }
+    // The message on screen is the previous one until the chosen message is here
+    LoadingBar { active: reader.loadingNext; anchors { left: parent.left; right: parent.right; top: parent.top } }
+    Rectangle { visible: reader.loadingNext && reader.summary !== null; anchors.fill: scroller; color: reader.color; opacity: 0.35 }
     FiliScrollBar {
         flick: scroller
         visible: needed && reader.summary !== null

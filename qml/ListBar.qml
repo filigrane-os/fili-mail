@@ -16,7 +16,6 @@ Rectangle {
     property var tabCounts: ({})
     property bool selectedUnread: false
     property bool selectedStarred: false
-    property string position: ""
     property bool canPrev: false
     property bool canNext: false
     // Only unread messages (the list is filtered when loaded)
@@ -53,12 +52,12 @@ Rectangle {
             Text {
                 anchors.verticalCenter: parent.verticalCenter
                 rightPadding: FiliTheme.space1
-                text: list.checkedCount > 0 ? Facteur.tr("%1 selected").replace("%1", list.checkedCount) : list.position
+                text: list.checkedCount > 0 ? Facteur.tr("%1 selected").replace("%1", list.checkedCount) : ""
                 font.family: FiliTheme.font
                 font.pixelSize: FiliTheme.sizeList
                 color: FiliTheme.textSecondary
             }
-            IconButton { name: "mail"; toggled: list.unreadOnly; tip: Facteur.tr("Unread only"); onClicked: list.unreadOnly = !list.unreadOnly }
+            IconButton { name: "filter"; toggled: list.unreadOnly; tip: Facteur.tr("Unread only"); onClicked: list.unreadOnly = !list.unreadOnly }
         }
         Rectangle { anchors { left: parent.left; right: parent.right; bottom: parent.bottom } height: FiliTheme.borderWidth; color: FiliTheme.border }
     }

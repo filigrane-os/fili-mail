@@ -166,6 +166,16 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "cachedList"]
         fn cached_list(self: &Facteur, account: &QString, mailbox: &QString) -> QString;
+        // Drafts being written are kept on this computer as they are typed (one private file each): save one (JSON
+        // fields of the form), forget one, list them all (JSON array of {key, account, savedAt, ...fields})
+        #[qinvokable]
+        #[cxx_name = "saveDraft"]
+        fn save_draft(self: &Facteur, key: &QString, json: &QString);
+        #[qinvokable]
+        #[cxx_name = "deleteDraft"]
+        fn delete_draft(self: &Facteur, key: &QString);
+        #[qinvokable]
+        fn drafts(self: &Facteur) -> QString;
         // Unread messages of an account's inbox; answered by `unreadCounted` (-1 when the server did not answer)
         #[qinvokable]
         #[cxx_name = "countUnread"]
@@ -720,6 +730,43 @@ impl qobject::Facteur {
         QString::from(text.unwrap_or_default())
     }
 
+    pub fn save_draft(&self, key: &QString, json: &QString) {
+        use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
+        use std::io::Write;
+        let Some(file) = draft_file(&key.to_string()) else { return };
+        if let Some(dir) = file.parent() {
+            let _ = std::fs::DirBuilder::new().recursive(true).mode(0o700).create(dir);
+        }
+        // Written aside then renamed: a crash never leaves half a draft
+        let tmp = file.with_extension("tmp");
+        if let Ok(mut out) = std::fs::OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).open(&tmp) {
+            if out.write_all(json.to_string().as_bytes()).is_ok() {
+                let _ = std::fs::rename(&tmp, &file);
+            }
+        }
+    }
+
+    pub fn delete_draft(&self, key: &QString) {
+        if let Some(file) = draft_file(&key.to_string()) {
+            let _ = std::fs::remove_file(file);
+        }
+    }
+
+    pub fn drafts(&self) -> QString {
+        let mut out = Vec::new();
+        if let Some(dir) = draft_file("x").and_then(|f| f.parent().map(PathBuf::from)) {
+            for entry in std::fs::read_dir(dir).into_iter().flatten().flatten() {
+                if entry.path().extension().is_some_and(|e| e == "json")
+                    && let Ok(text) = std::fs::read_to_string(entry.path())
+                    && let Ok(v) = serde_json::from_str::<Value>(&text)
+                {
+                    out.push(v);
+                }
+            }
+        }
+        QString::from(Value::Array(out).to_string())
+    }
+
     pub fn count_unread(self: Pin<&mut Self>, account: &QString) {
         let account = account.to_string();
         let qt = self.qt_thread();
@@ -943,6 +990,13 @@ fn list_cache_file(account: &str, mailbox: &str) -> Option<PathBuf> {
     let base = env::var_os("XDG_CACHE_HOME").map(PathBuf::from).filter(|p| p.is_absolute()).or_else(|| env::var_os("HOME").map(|h| PathBuf::from(h).join(".cache")))?;
     let safe = |s: &str| s.chars().map(|c| if c.is_ascii_alphanumeric() || c == '.' || c == '-' { c } else { '_' }).collect::<String>();
     Some(base.join("fili-mail/lists").join(format!("{}__{}.json", safe(account), safe(mailbox))))
+}
+
+/// Where a draft being written is kept (private: it holds recipients and text).
+fn draft_file(key: &str) -> Option<PathBuf> {
+    let base = env::var_os("XDG_STATE_HOME").map(PathBuf::from).filter(|p| p.is_absolute()).or_else(|| env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/state")))?;
+    let safe: String = key.chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' { c } else { '_' }).collect();
+    Some(base.join("fili-mail/drafts").join(format!("{safe}.json")))
 }
 
 fn store_list_cache(account: &str, mailbox: &str, answer: &Value) {

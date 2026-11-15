@@ -33,13 +33,18 @@ Rectangle {
         { key: "trash", label: Facteur.tr("Trash") }
     ]
 
-    // Sections folded by the user: "account:<id>" (the whole account) and "labels:<id>"
-    property var folded: ({})
-    function isFolded(key) { return folded[key] === true; }
+    // Sections folded by the user: "account:<id>" (one account) and "labels" (the Labels / Folders heading, the same for
+    // every account so it stays as left when the account changes). Kept between runs.
+    property var folded: {
+        try { return JSON.parse(Facteur.uiGet("folded") || "{}") } catch (e) { return ({}) }
+    }
+    function foldKey(key) { return key.startsWith("labels:") ? "labels" : key; }
+    function isFolded(key) { return folded[foldKey(key)] === true; }
     function toggle(key) {
         const next = Object.assign({}, folded);
-        next[key] = !isFolded(key);
+        next[foldKey(key)] = !isFolded(key);
         folded = next;
+        Facteur.uiSet("folded", JSON.stringify(next));
     }
     signal addLabelRequested()
     // Icon of an account's service: Gmail, Proton (by its domain) or a plain IMAP server

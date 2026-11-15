@@ -17,8 +17,23 @@ Rectangle {
     property string references: ""
     // Files to attach: {path, name}
     property var files: []
+    // Several cards live side by side: the window decides which one is open (the others are reduced to their bar)
     property bool minimized: false
+    // This card has the keyboard shortcuts
+    property bool current: false
+    property string draftKey: ""
+    // Every draft being written ({key, title}): they are the tabs of the header; `draftKey` is the one this card holds
+    property var tabs: null
+    property int tabCount: 1
+    readonly property string title: subject.text.trim()
+    signal tabChosen(string key)
+    signal tabClosed(string key)
+    signal newRequested()
+    onCurrentChanged: if (current && !minimized) Qt.callLater(() => { if (to.text === "") to.forceActiveFocus(); else body.forceActiveFocus() })
     property bool expanded: false
+    // The draft kept on this computer as it is typed; the time of the last copy ("" while there is none)
+    property string savedAt: ""
+    property bool loaded: false
     property bool showCc: false
     property bool showBcc: false
     function addFiles(urls) {
@@ -75,10 +90,29 @@ Rectangle {
     }
 
     signal submitted(var fields)
+    // Closed with the draft kept (Escape, close button) or thrown away (trash)
     signal cancelled()
+    signal discarded()
+    // The bar was clicked: open or reduce this card
+    signal minimizeToggled()
+    signal activate()
+    // The form changed and rests for a moment: the draft to keep
+    signal edited(var fields)
+
+    function fields() {
+        return { to: to.text, cc: cc.text, bcc: bcc.text, subject: subject.text, body: body.text, inReplyTo: inReplyTo, references: references, files: files };
+    }
+    // Nothing typed: no draft to keep
+    function isEmpty() {
+        return to.text.trim() === "" && cc.text.trim() === "" && bcc.text.trim() === "" && subject.text.trim() === "" && body.text.trim() === "" && files.length === 0;
+    }
+    function changed() { if (loaded) { savedAt = ""; keep.restart() } }
+    Timer { id: keep; interval: 1500; onTriggered: if (!compose.busy) compose.edited(compose.fields()) }
+    onFilesChanged: changed()
 
     // Fill the form and put the cursor where typing starts
-    function open(draft) {
+    function open(draft, focus) {
+        loaded = false;
         to.text = draft.to || "";
         cc.text = draft.cc || "";
         bcc.text = draft.bcc || "";
@@ -88,9 +122,10 @@ Rectangle {
         body.text = draft.body || "";
         inReplyTo = draft.inReplyTo || "";
         references = draft.references || "";
-        files = [];
+        files = draft.files || [];
         error = "";
-        minimized = false;
+        loaded = true;
+        if (focus === false) return;
         if (to.text === "") to.forceActiveFocus(); else { body.forceActiveFocus(); body.cursorPosition = 0 }
     }
     function submit() {
@@ -102,8 +137,11 @@ Rectangle {
         submitted({ to: to.text, cc: cc.text, bcc: bcc.text, subject: subject.text, body: body.text, inReplyTo: inReplyTo, references: references, attachments: files.map(f => ({ path: f.path, name: f.name, size: 0 })) });
     }
 
-    width: Math.min(expanded ? parent.width - 2 * FiliTheme.margin : 640, parent.width - 2 * FiliTheme.margin)
-    height: minimized ? head.height : Math.min(expanded ? parent.height - 2 * FiliTheme.margin : 580, parent.height - 2 * FiliTheme.margin)
+    // The card sits in a dock: its room is `room` (the window) minus the margins
+    property real roomWidth: 800
+    property real roomHeight: 600
+    width: minimized ? Math.min(roomWidth - 2 * FiliTheme.margin, Math.max(300, tabCount * 150 + 120)) : Math.min(expanded ? roomWidth - 2 * FiliTheme.margin : 640, roomWidth - 2 * FiliTheme.margin)
+    height: minimized ? head.height : Math.min(expanded ? roomHeight - 2 * FiliTheme.margin : 580, roomHeight - 2 * FiliTheme.margin)
     radius: FiliTheme.radiusWindow
     color: FiliTheme.surface
     border.width: FiliTheme.borderWidth
@@ -111,10 +149,10 @@ Rectangle {
     clip: true
 
     Keys.onEscapePressed: compose.cancelled()
-    Shortcut { sequences: ["Ctrl+Return", "Ctrl+Enter"]; enabled: compose.visible; onActivated: compose.submit() }
-    Shortcut { sequences: ["Ctrl+Shift+C"]; enabled: compose.visible && !compose.minimized; onActivated: { compose.showCc = true; cc.forceActiveFocus() } }
-    Shortcut { sequences: ["Ctrl+Shift+B"]; enabled: compose.visible && !compose.minimized; onActivated: { compose.showBcc = true; bcc.forceActiveFocus() } }
-    Shortcut { sequences: ["Ctrl+M"]; enabled: compose.visible; onActivated: compose.minimized = !compose.minimized }
+    Shortcut { sequences: ["Ctrl+Return", "Ctrl+Enter"]; enabled: compose.current && !compose.minimized; onActivated: compose.submit() }
+    Shortcut { sequences: ["Ctrl+Shift+C"]; enabled: compose.current && !compose.minimized; onActivated: { compose.showCc = true; cc.forceActiveFocus() } }
+    Shortcut { sequences: ["Ctrl+Shift+B"]; enabled: compose.current && !compose.minimized; onActivated: { compose.showBcc = true; bcc.forceActiveFocus() } }
+    Shortcut { sequences: ["Ctrl+M"]; enabled: compose.current; onActivated: compose.minimizeToggled() }
 
     // A field of the card: no frame, a line under it
     component Line: TextField {
@@ -132,6 +170,7 @@ Rectangle {
         enabled: !compose.busy
         // To, Cc and Bcc suggest addresses while typing
         property bool recipient: false
+        onTextChanged: compose.changed()
         onTextEdited: if (recipient) compose.suggest(f)
         onActiveFocusChanged: if (!activeFocus && compose.suggestField === f) compose.hideSuggest()
         Keys.onPressed: event => { if (recipient && compose.suggestKey(f, event)) event.accepted = true }
@@ -147,7 +186,9 @@ Rectangle {
         width: parent.width
         height: 44
         color: FiliTheme.backgroundDeep
+        // One draft: its title. Several: a tab each, the open one lit, a cross to close it (the draft is kept), and a plus
         Text {
+            visible: compose.tabCount < 2
             anchors { left: parent.left; leftMargin: FiliTheme.margin; right: controls.left; rightMargin: FiliTheme.space2; verticalCenter: parent.verticalCenter }
             text: subject.text.trim() !== "" ? subject.text : Facteur.tr("New message")
             elide: Text.ElideRight
@@ -156,14 +197,52 @@ Rectangle {
             font.weight: FiliTheme.weightAccent
             color: FiliTheme.text
         }
-        MouseArea { anchors.fill: parent; onDoubleClicked: compose.minimized = !compose.minimized }
+        MouseArea { anchors.fill: parent; onClicked: if (compose.minimized) compose.minimizeToggled(); onDoubleClicked: if (!compose.minimized) compose.minimizeToggled() }
+        Row {
+            id: tabRow
+            visible: compose.tabCount > 1
+            anchors { left: parent.left; leftMargin: FiliTheme.space3; right: controls.left; rightMargin: FiliTheme.space2; verticalCenter: parent.verticalCenter }
+            spacing: FiliTheme.space1
+            readonly property real tabWidth: Math.max(80, Math.min(170, (width - plus.width - FiliTheme.space1) / Math.max(1, compose.tabCount) - FiliTheme.space1))
+            Repeater {
+                model: compose.tabs
+                Rectangle {
+                    required property string key
+                    required property string title
+                    readonly property bool on: key === compose.draftKey
+                    width: tabRow.tabWidth
+                    height: 30
+                    radius: FiliTheme.radiusControl
+                    color: on && !compose.minimized ? FiliTheme.surfaceActive : tabArea.containsMouse ? FiliTheme.surfaceHover : "transparent"
+                    MouseArea { id: tabArea; anchors.fill: parent; hoverEnabled: true; onClicked: compose.tabChosen(key) }
+                    Text {
+                        anchors { left: parent.left; leftMargin: FiliTheme.space3; right: closeTab.left; rightMargin: FiliTheme.space1; verticalCenter: parent.verticalCenter }
+                        text: title !== "" ? title : Facteur.tr("New message")
+                        elide: Text.ElideRight
+                        font.family: FiliTheme.font
+                        font.pixelSize: FiliTheme.sizeList
+                        font.weight: on ? FiliTheme.weightAccent : Font.Normal
+                        color: on ? FiliTheme.text : FiliTheme.textSecondary
+                    }
+                    IconButton {
+                        id: closeTab
+                        name: "x"
+                        width: 22; height: 22
+                        anchors { right: parent.right; rightMargin: 2; verticalCenter: parent.verticalCenter }
+                        tip: Facteur.tr("Close (the draft is kept)")
+                        onClicked: compose.tabClosed(key)
+                    }
+                }
+            }
+            IconButton { id: plus; name: "plus"; tip: Facteur.tr("New message"); onClicked: compose.newRequested() }
+        }
         Row {
             id: controls
             anchors { right: parent.right; rightMargin: FiliTheme.space2; verticalCenter: parent.verticalCenter }
             spacing: 2
-            IconButton { name: compose.minimized ? "maximize" : "minus"; tip: compose.minimized ? Facteur.tr("Restore") : Facteur.tr("Minimise"); onClicked: compose.minimized = !compose.minimized }
-            IconButton { name: compose.expanded ? "minimize-2" : "maximize"; tip: compose.expanded ? Facteur.tr("Reduce") : Facteur.tr("Expand"); onClicked: { compose.expanded = !compose.expanded; compose.minimized = false } }
-            IconButton { name: "x"; tip: Facteur.tr("Discard"); onClicked: if (!compose.busy) compose.cancelled() }
+            IconButton { name: compose.minimized ? "chevron-up" : "minus"; tip: compose.minimized ? Facteur.tr("Restore") : Facteur.tr("Minimise"); onClicked: compose.minimizeToggled() }
+            IconButton { visible: !compose.minimized; name: compose.expanded ? "minimize-2" : "maximize"; tip: compose.expanded ? Facteur.tr("Reduce") : Facteur.tr("Expand"); onClicked: compose.expanded = !compose.expanded }
+            IconButton { name: "x"; tip: Facteur.tr("Close (the draft is kept)"); onClicked: if (!compose.busy) compose.cancelled() }
         }
     }
 
@@ -236,13 +315,24 @@ Rectangle {
     }
 
     // Body
-    ScrollView {
+    Flickable {
         id: bodyScroll
         visible: !compose.minimized
         anchors { left: parent.left; right: parent.right; top: form.bottom; bottom: chips.visible ? chips.top : footer.top; leftMargin: FiliTheme.margin; rightMargin: FiliTheme.margin; topMargin: FiliTheme.space2; bottomMargin: FiliTheme.space2 }
         clip: true
+        contentWidth: width
+        contentHeight: Math.max(height, body.implicitHeight)
+        boundsBehavior: Flickable.StopAtBounds
+        KineticScroll {}
+        // The caret stays in view while typing
+        function ensureVisible(r) {
+            if (r.y < contentY) contentY = r.y;
+            else if (r.y + r.height > contentY + height) contentY = r.y + r.height - height;
+        }
         TextArea {
             id: body
+            width: bodyScroll.width - 14
+            height: bodyScroll.height
             enabled: !compose.busy
             wrapMode: TextEdit.Wrap
             font.family: FiliTheme.font
@@ -252,9 +342,16 @@ Rectangle {
             selectedTextColor: FiliTheme.text
             background: null
             padding: 0
+            onCursorRectangleChanged: bodyScroll.ensureVisible(cursorRectangle)
+            onTextChanged: compose.changed()
             KeyNavigation.priority: KeyNavigation.BeforeItem
             KeyNavigation.tab: to
         }
+    }
+    FiliScrollBar {
+        flick: bodyScroll
+        visible: needed && !compose.minimized
+        anchors { top: bodyScroll.top; bottom: bodyScroll.bottom; right: bodyScroll.right }
     }
 
     FileDialog {
@@ -263,7 +360,7 @@ Rectangle {
         fileMode: FileDialog.OpenFiles
         onAccepted: compose.addFiles(selectedFiles)
     }
-    Shortcut { sequence: "Ctrl+Shift+U"; enabled: compose.visible && !compose.minimized; onActivated: picker.open() }
+    Shortcut { sequence: "Ctrl+Shift+U"; enabled: compose.current && !compose.minimized; onActivated: picker.open() }
 
     // Attached files, one chip each (click removes it)
     Flow {
@@ -311,7 +408,7 @@ Rectangle {
         Row {
             anchors { left: parent.left; leftMargin: FiliTheme.space3; verticalCenter: parent.verticalCenter }
             spacing: 2
-            IconButton { name: "trash"; tip: Facteur.tr("Discard"); onClicked: if (!compose.busy) compose.cancelled() }
+            IconButton { name: "trash"; tip: Facteur.tr("Discard"); onClicked: if (!compose.busy) compose.discarded() }
             IconButton { name: "paperclip"; tip: Facteur.tr("Attach files"); onClicked: if (!compose.busy) picker.open() }
         }
         Text {
@@ -319,7 +416,7 @@ Rectangle {
             width: Math.max(0, parent.width - 2 * 80 - sendButton.width - FiliTheme.space4)
             horizontalAlignment: Text.AlignRight
             elide: Text.ElideLeft
-            text: compose.error !== "" ? compose.error : compose.files.length > 0 ? Facteur.tr("%1 attached").replace("%1", compose.files.length) : ""
+            text: compose.error !== "" ? compose.error : (compose.files.length > 0 ? Facteur.tr("%1 attached").replace("%1", compose.files.length) + "  ·  " : "") + (compose.savedAt !== "" ? Facteur.tr("Draft saved") : "")
             font.family: FiliTheme.font
             font.pixelSize: FiliTheme.sizeList
             color: compose.error !== "" ? FiliTheme.danger : FiliTheme.textSecondary

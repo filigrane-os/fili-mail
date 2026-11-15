@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.1.0
+
+- Several messages can be written at once: one frame with a tab per draft in its header, never wider than the window; reducing it leaves the tab bar flush with the footer.
+- Drafts are saved as they are typed (on this computer, `~/.local/state/fili-mail/drafts`), come back after a restart and are listed first in the Drafts mailbox. The close button keeps the draft, the trash button throws it away.
+- Loading is visible: a cached list shows at once when the account or mailbox changes, otherwise placeholder rows and a moving bar; the open message stays on screen (dimmed, with a bar) until the next one has arrived.
+- "Unread only" has its own icon (a funnel) and keeps fetching pages while few rows pass the filter.
+- The unread counts of the sidebar and of the header follow reading, archiving and trashing at once; the confusing "n/N" position in the list bar is gone.
+- The Labels / Folders heading stays folded when the account changes, and folded sections are kept between runs.
+- The body of a message being written scrolls like the other views (kinetic scrolling, Facteur scroll bar).
+- The Add account page wraps its tabs and scrolls on a small window.
+
 ## 1.0.1
 
 - The bar's unread total is exact for Gmail: the daemon reads the INBOX label counter instead of the list estimate.

@@ -56,9 +56,20 @@ Rectangle {
         setup.submitted(spec);
     }
 
+    // The form fits the window: it wraps to the width and scrolls when the window is short
+    Flickable {
+        id: scroller
+        anchors.fill: parent
+        contentWidth: width
+        contentHeight: form.height + 2 * FiliTheme.margin
+        boundsBehavior: Flickable.StopAtBounds
+        clip: true
+        KineticScroll {}
     Column {
-        anchors.centerIn: parent
-        width: Math.min(parent.width - 2 * FiliTheme.margin, 380)
+        id: form
+        x: (scroller.width - width) / 2
+        y: Math.max(FiliTheme.margin, (scroller.height - height) / 2)
+        width: Math.min(scroller.width - 2 * FiliTheme.margin, 420)
         spacing: FiliTheme.space3
 
         Text {
@@ -68,7 +79,8 @@ Rectangle {
             font.weight: FiliTheme.weightAccent
             color: FiliTheme.text
         }
-        Row {
+        Flow {
+            width: parent.width
             spacing: FiliTheme.space1
             Repeater {
                 model: [
@@ -206,6 +218,8 @@ Rectangle {
             TextButton { visible: setup.cancellable; label: Facteur.tr("Cancel"); onClicked: setup.cancelled() }
         }
     }
+    }
+    FiliScrollBar { flick: scroller; anchors { top: scroller.top; bottom: scroller.bottom; right: scroller.right } }
     Component.onCompleted: email.forceActiveFocus()
     Keys.onEscapePressed: if (cancellable) cancelled()
 }
