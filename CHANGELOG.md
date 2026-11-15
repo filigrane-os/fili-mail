@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.0
+
+- Right click on a message in the list: reply, reply all, forward, mark read/unread, star, archive, spam, trash. On a ticked message it acts on every ticked message.
+- Category tabs can be turned off: a button in the list bar and "Show Category Tabs" in the Mailbox menu (remembered, Gmail accounts). The first page of each tab is kept on disk and shown at once.
+- IMAP lists are faster: the arrival dates of a folder are kept in memory and reused while its UIDVALIDITY, UIDNEXT and message count are unchanged, so a list no longer reads every date again (1.3 s down to 0.3 s on a 17 000 message Proton Bridge inbox).
+
 ## 1.1.0
 
 - Several messages can be written at once: one frame with a tab per draft in its header, never wider than the window; reducing it leaves the tab bar flush with the footer.

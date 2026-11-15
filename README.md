@@ -30,6 +30,17 @@ sudo make install PREFIX=/usr
 `make test` runs the engine tests (no Qt needed to link them). 24 of them compare with the JavaScript
 implementation of Omamail and need `node`; they fail without it.
 
+## Resources
+
+CPU and memory of each release, measured on a running desktop (Gmail and IMAP accounts, idle, a few minutes after
+launch). Kept from release to release to spot a version that gets heavier.
+
+| Version | Window RAM (RSS) | Window CPU | Daemon RAM (RSS) | Daemon CPU |
+|---------|------------------|------------|------------------|------------|
+| 1.2.0   | 214 MB           | 0.7 %      | 30 MB            | 0.1 %      |
+
+Earlier versions were not measured.
+
 ## Google sign-in
 
 Google needs an OAuth client. Create a desktop client in the Google Cloud console and paste its JSON
