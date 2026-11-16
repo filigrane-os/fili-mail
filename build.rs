@@ -21,6 +21,8 @@ fn main() {
                 "qml/AccountSetup.qml",
                 "qml/Sidebar.qml",
                 "qml/LabelDialog.qml",
+                "qml/TabStrip.qml",
+                "qml/FolderTabDialog.qml",
                 "qml/PopupMenu.qml",
                 "qml/AccountDialog.qml",
                 "qml/MessageList.qml",

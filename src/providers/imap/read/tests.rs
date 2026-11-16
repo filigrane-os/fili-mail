@@ -283,7 +283,7 @@ async fn native_metadata_fetch_and_mime_parse_stay_in_backend() {
         let mut w: Wire = BufReader::new(Box::new(stream));
         greeting(&mut w).await;
         select(&mut w).await;
-        assert_eq!(line(&mut w).await.unwrap(),b"O1 UID FETCH 7,8 (UID FLAGS INTERNALDATE RFC822.SIZE BODY.PEEK[HEADER.FIELDS (FROM TO CC SUBJECT DATE MESSAGE-ID REPLY-TO LIST-UNSUBSCRIBE)])\r\n");
+        assert_eq!(line(&mut w).await.unwrap(),b"O1 UID FETCH 7,8 (UID FLAGS INTERNALDATE RFC822.SIZE BODY.PEEK[HEADER.FIELDS (FROM TO CC SUBJECT DATE MESSAGE-ID REPLY-TO LIST-UNSUBSCRIBE CONTENT-TYPE)])\r\n");
         for uid in [8, 7] {
             let raw = format!("From: Test <test@example.org>\r\nSubject: Message {uid}\r\n\r\n");
             write(&mut w,format!("* {uid} FETCH (UID {uid} FLAGS (\\Flagged) RFC822.SIZE 88 BODY[HEADER.FIELDS (FROM SUBJECT)] {{{}}}\r\n{raw})\r\n",raw.len()).as_bytes()).await.unwrap();

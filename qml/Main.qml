@@ -47,17 +47,46 @@ ApplicationWindow {
     property var accounts: []
     property string account: ""
     property string mailbox: "inbox"
-    // Reader beside the list when the window fills the screen (full screen, maximized column),
-    // under it when the window takes only part of the screen. The toggle flips it until the window
-    // changes size class.
-    readonly property bool wide: win.screen ? win.width >= win.screen.width * 0.8 : true
-    property string previewOverride: ""
-    onWideChanged: previewOverride = ""
-    readonly property string preview: previewOverride !== "" ? previewOverride : (wide ? "right" : "below")
-    function togglePreview() { previewOverride = preview === "below" ? "right" : "below"; }
+    // Where the reader sits: "side" (beside the list), "bottom" (under it) or "auto": beside as soon as the window is wide
+    // enough for a message to read well next to the list (list 340 + reader 520, the sidebar included), under it below that.
+    readonly property int sideMinWidth: FiliTheme.sidebarWidth + FiliTheme.borderWidth + 340 + FiliTheme.borderWidth + 520
+    property string previewMode: ["auto", "side", "bottom"].indexOf(Facteur.uiGet("preview_mode")) >= 0 ? Facteur.uiGet("preview_mode") : "auto"
+    function setPreviewMode(mode) { previewMode = mode; Facteur.uiSet("preview_mode", mode); }
+    function togglePreview() { setPreviewMode(previewMode === "auto" ? "side" : previewMode === "side" ? "bottom" : "auto"); }
+    readonly property string preview: previewMode === "side" ? "right" : previewMode === "bottom" ? "below" : (win.width >= sideMinWidth ? "right" : "below")
     // A label (Gmail) is a mailbox named "label:NAME": it lists everything carrying it except spam and trash
     property var labels: []
-    function listBox() { return mailbox.startsWith("label:") ? "archive" : mailbox; } // "folder:NAME" (IMAP) goes through as is
+    // "All" / "Unread" of the Inbox group: the inboxes of every account in one list (mailbox "all" / "allunread").
+    // A row id is then "<account>\u001f<id>" (ids of two IMAP accounts can be the same).
+    readonly property bool unified: mailbox === "all" || mailbox === "allunread"
+    readonly property string sep: "\u001f"
+    function splitId(id) {
+        const i = id.indexOf(sep);
+        return i < 0 ? { acct: account, id: id } : { acct: id.slice(0, i), id: id.slice(i + 1) };
+    }
+    readonly property var selectedRef: splitId(selectedId)
+    property int unifiedPending: 0
+    // What an account lists for the current mailbox and tab: {box, query}, or null when the account has nothing for that tab
+    // (a category its folders are not mapped to). "folder:NAME" (IMAP) goes through as is.
+    function listSpec(acct) {
+        let box = mailbox === "all" ? "inbox" : mailbox === "allunread" ? "unread" : mailbox.startsWith("label:") ? "archive" : mailbox;
+        let q = query;
+        if (mailbox.startsWith("label:")) {
+            q = ("label:\"" + mailbox.slice(6) + "\" " + query).trim();
+        } else if (categoriesOn()) {
+            if (providerOf(acct) === "gmail") {
+                box = "inbox";
+                q = ("category:" + category + (mailbox === "allunread" ? " is:unread" : "") + " " + query).trim();
+            } else if (category !== "primary") {
+                const folder = (catMaps[acct] || {})[category];
+                if (!folder) return null;
+                box = "folder:" + folder;
+            }
+        }
+        return { box: box, query: q };
+    }
+    function listBox() { const sp = listSpec(account); return sp ? sp.box : "inbox"; }
+    function listQuery() { const sp = listSpec(account); return sp ? sp.query : query; }
     // Gmail sorts the inbox in categories (tabs above the list)
     property string category: "primary"
     readonly property var categories: [
@@ -67,28 +96,165 @@ ApplicationWindow {
         { key: "updates", label: Facteur.tr("Updates"), icon: "bell" },
         { key: "forums", label: Facteur.tr("Forums"), icon: "chat" }
     ]
+    function providerOf(acct) { const a = accounts.find(x => x.id === acct); return a ? a.provider : ""; }
+    // Category tabs are the same for every account: Gmail has them natively, any other account maps a tab to one of its
+    // folders (Account settings > Category tabs, `catmap:<account>` in the UI state); Primary is always the inbox.
+    property var catMaps: ({})
+    property var accountFolders: ({})
+    function readCatMaps() {
+        const m = {};
+        for (const a of accounts) {
+            try { m[a.id] = JSON.parse(Facteur.uiGet("catmap:" + a.id) || "{}"); } catch (e) { m[a.id] = {}; }
+        }
+        catMaps = m;
+    }
+    function saveCatMap(acct, cat, folder) {
+        const next = Object.assign({}, catMaps[acct] || {});
+        if (folder === "") delete next[cat]; else next[cat] = folder;
+        Facteur.uiSet("catmap:" + acct, JSON.stringify(next));
+        const all = Object.assign({}, catMaps);
+        all[acct] = next;
+        catMaps = all;
+    }
+    // The same five tabs for every account
+    function availableCats() { return categories.map(c => c.key); }
+    onAccountsChanged: {
+        readCatMaps();
+        for (const a of accounts) {
+            if (a.provider === "imap" || a.provider === "outlook") Facteur.loadFolders(a.id);
+            else if (a.provider === "gmail") Facteur.loadLabels(a.id);
+        }
+    }
     function isGmail() { const a = accounts.find(x => x.id === account); return !!a && a.provider === "gmail"; }
-    // Tabs above the inbox list, or the whole inbox in one list ("Show Category Tabs" in the bar menu); Gmail only:
-    // other accounts have no categories on their server, and sorting them here would be slower than the list itself
-    property bool categoryTabs: Facteur.uiGet("category_tabs") !== "0"
+    // The tab system is used or not ("Show Tabs" in the bar menu and the header): used, the band shows the default tabs and the folders pinned with "+"; not, the list alone.
+    property bool categoryTabs: Facteur.uiGet("category_tabs2") !== "0"
     function toggleCategoryTabs() {
         categoryTabs = !categoryTabs;
-        Facteur.uiSet("category_tabs", categoryTabs ? "1" : "0");
+        Facteur.uiSet("category_tabs2", categoryTabs ? "1" : "0");
     }
-    function categoriesOn() { return mailbox === "inbox" && categoryTabs && isGmail(); }
-    function listQuery() {
-        if (mailbox.startsWith("label:")) return ("label:\"" + mailbox.slice(6) + "\" " + query).trim();
-        if (categoriesOn()) return ("category:" + category + " " + query).trim();
-        return query;
+    function categoriesOn() { return (mailbox === "inbox" || unified) && categoryTabs; }
+
+    // Tabs above the list: the Gmail categories and the folders the user pinned ("+"), in the order they dragged them to.
+    // A tab key is "cat:<category>" or "box:<mailbox>"; the list is kept per account (stored: [{key, icon}], null = default).
+    property var storedTabs: null
+    function tabsKey() { return unified ? "tabs:all" : "tabs:" + account; }
+    function readTabs() {
+        let v = null;
+        try { v = JSON.parse(Facteur.uiGet(tabsKey()) || "null"); } catch (e) { v = null; }
+        storedTabs = Array.isArray(v) ? v : null;
+    }
+    function saveTabs(entries) {
+        storedTabs = entries;
+        Facteur.uiSet(tabsKey(), JSON.stringify(entries));
+    }
+    readonly property var boxNames: ({ inbox: Facteur.tr("Inbox"), unread: Facteur.tr("Unread"), starred: Facteur.tr("Starred"), sent: Facteur.tr("Sent"), drafts: Facteur.tr("Drafts"), archive: Facteur.tr("Archive"), spam: Facteur.tr("Spam"), trash: Facteur.tr("Trash") })
+    readonly property var boxIcons: ({ inbox: "inbox", unread: "mail", starred: "star", sent: "forward", drafts: "compose", archive: "archive", spam: "spam", trash: "trash" })
+    function boxIcon(box) { return boxIcons[box] || "tag"; }
+    readonly property var tabItems: {
+        const cats = categoryTabs ? categories.map(c => ({ key: "cat:" + c.key, label: c.label, icon: c.icon })) : [];
+        const out = [];
+        const seen = {};
+        for (const e of (storedTabs || cats)) {
+            if (e.key.startsWith("cat:")) {
+                const c = cats.find(c => c.key === e.key);
+                if (c && !seen[c.key]) { out.push(c); seen[c.key] = true; }
+            } else {
+                const box = e.key.slice(4);
+                // A folder the category tabs already show is not shown twice
+                if (categoryTabs && (box === "inbox" || (account !== "" && Object.values(catMaps[account] || {}).includes(box.slice(7))))) continue;
+                out.push({ key: e.key, label: boxLabel(box), icon: e.icon || boxIcon(box) });
+            }
+        }
+        return cats.filter(c => !seen[c.key]).concat(out);
+    }
+    readonly property string currentTab: categoriesOn() ? "cat:" + category : "box:" + mailbox
+    // Unread messages of a tab for one account, from what is already known (no request of its own):
+    // Gmail category counts, the inbox count, the unread count of the folders list
+    function folderUnread(acct, id) {
+        const l = (accountFolders[acct] || []).find(l => l.id === id);
+        return l ? l.unread || 0 : 0;
+    }
+    function acctTabCount(acct, key) {
+        if (key.startsWith("cat:")) {
+            const c = key.slice(4);
+            if (providerOf(acct) === "gmail") return (categoryCounts[acct] || {})[c] || 0;
+            if (c === "primary") return unreadCounts[acct] || 0;
+            const f = (catMaps[acct] || {})[c];
+            return f ? folderUnread(acct, f) : 0;
+        }
+        const box = key.slice(4);
+        if (box === "inbox") return unreadCounts[acct] || 0;
+        if (box.startsWith("folder:")) return folderUnread(acct, box.slice(7));
+        if (box.startsWith("label:")) {
+            const l = (accountFolders[acct] || []).find(l => !l.folder && l.rawName === box.slice(6));
+            return l ? l.unread || 0 : 0;
+        }
+        return 0;
+    }
+    // Counts shown after the tab names; in the Inbox views, summed over the accounts
+    readonly property var tabCounts: {
+        const out = {};
+        const accts = unified ? accounts.map(a => a.id) : [account];
+        for (const t of tabItems) {
+            let n = 0;
+            for (const a of accts) n += acctTabCount(a, t.key);
+            if (n > 0) out[t.key] = n;
+        }
+        return out;
+    }
+    function chooseTab(key) {
+        if (key.startsWith("cat:")) { if (!unified) mailbox = "inbox"; category = key.slice(4); }
+        else mailbox = key.slice(4);
+    }
+    function reorderTabs(keys) {
+        const entries = keys.map(k => { const t = tabItems.find(t => t.key === k); return k.startsWith("box:") ? { key: k, icon: t ? t.icon : boxIcon(k.slice(4)) } : { key: k }; });
+        saveTabs(entries);
+    }
+    function removeTab(key) {
+        if (key.startsWith("cat:")) return;
+        saveTabs(tabItems.filter(t => t.key !== key).map(t => t.key.startsWith("box:") ? { key: t.key, icon: t.icon } : { key: t.key }));
+    }
+    // Folders that are not tabs yet
+    function pinnableFolders() {
+        const pinned = {};
+        for (const t of tabItems) pinned[t.key] = true;
+        const out = [];
+        for (const k in boxNames) {
+            if (k === "inbox" && categoryTabs) continue;
+            if (!pinned["box:" + k]) out.push({ key: "box:" + k, label: boxNames[k], icon: boxIcon(k) });
+        }
+        for (const l of labels) {
+            const k = "box:" + (l.folder ? "folder:" + l.id : "label:" + l.rawName);
+            if (!pinned[k]) out.push({ key: k, label: l.rawName, icon: "tag" });
+        }
+        return out;
+    }
+    function addTab(key, icon) {
+        const entries = tabItems.map(t => t.key.startsWith("box:") ? { key: t.key, icon: t.icon } : { key: t.key });
+        const i = entries.findIndex(e => e.key === key);
+        if (i >= 0) entries[i].icon = icon; else entries.push({ key: key, icon: icon });
+        saveTabs(entries);
     }
     // Right click in the sidebar: an account (edit, remove) or a label (edit, delete)
     property var contextData: null
     property string contextKind: ""
     property var deletingLabel: null
+    function folderName(acct, id) {
+        const l = (accountFolders[acct] || []).find(l => l.id === id);
+        return l ? l.rawName : id;
+    }
     function openContext(kind, data, x, y) {
+        if (kind === "tab" && data.startsWith("cat:")) return; // the category tabs cannot be removed
         contextKind = kind;
         contextData = data;
-        const entries = kind === "label" && data.folder
+        if (kind === "catpick") {
+            popup.openAt(x, y, [{ id: "none", label: Facteur.tr("None") }].concat((accountFolders[accountDialog.accountId] || []).map(l => ({ id: l.id, label: l.rawName }))));
+            return;
+        }
+        const entries = kind === "tab"
+            ? (data.startsWith("cat:") ? [{ id: "hide", label: Facteur.tr("Hide Category Tabs") }]
+               : [{ id: "icon", label: Facteur.tr("Change Icon…") }, { id: "remove", label: Facteur.tr("Remove Tab"), danger: true }])
+            : kind === "label" && data.folder
             ? [{ id: "edit", label: Facteur.tr("Rename…") }, { id: "color", label: Facteur.tr("Change colour…") }, { id: "delete", label: Facteur.tr("Delete…"), danger: true }]
             : kind === "account"
             ? [{ id: "edit", label: Facteur.tr("Edit account…") }, { id: "remove", label: Facteur.tr("Remove account…"), danger: true }]
@@ -141,11 +307,20 @@ ApplicationWindow {
             } else doActMany(id, contextData.ids);
         } else if (contextKind === "page") {
             reader.pageAction(id, contextData);
+        } else if (contextKind === "catpick") {
+            saveCatMap(accountDialog.accountId, contextData, id === "none" ? "" : id);
+            accountDialog.catMap = catMaps[accountDialog.accountId] || {};
+        } else if (contextKind === "tab") {
+            const t = tabItems.find(t => t.key === contextData);
+            if (id === "icon" && t) folderTabDialog.edit(t.key, t.label, t.icon);
+            else removeTab(contextData);
         } else if (contextKind === "account") {
             if (id === "remove") { removing = contextData.id; return; }
             const d = JSON.parse(Facteur.accountDetails(contextData.id));
             if (d.error) { notice = errorText(d.error); return; }
+            accountDialog.catMap = catMaps[d.id] || {};
             accountDialog.edit(d);
+            if (d.provider === "imap" || d.provider === "outlook") Facteur.loadFolders(d.id);
         } else if (id === "color") {
             labelDialog.pickColor(contextData);
         } else if (id === "edit") {
@@ -244,7 +419,7 @@ ApplicationWindow {
             };
         } else if (kind === "replyall") {
             const s = reader.summary;
-            const self = account.replace(/^[a-z]+:/, "").toLowerCase();
+            const self = selectedRef.acct.replace(/^[a-z]+:/, "").toLowerCase();
             const mine = a => a.email.toLowerCase() === self;
             const others = (s.to || []).concat(s.cc || []).filter(a => !mine(a) && a.email !== s.from.email);
             draft = {
@@ -266,7 +441,7 @@ ApplicationWindow {
             draft.inReplyTo = s.messageId || "";
             draft.references = ((s.inReplyTo || "") + " " + (s.messageId || "")).trim();
         }
-        openDraft(account, draft, "");
+        openDraft(kind === "new" ? account : selectedRef.acct, draft, "");
     }
 
     function newKey() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6) }
@@ -386,13 +561,16 @@ ApplicationWindow {
     }
     // Previous or next message of the list
     function step(delta) {
-        const i = rowOf(selectedId) + delta;
-        if (selectedId !== "" && i >= 0 && i < messages.count)
+        // Nothing selected yet: "next" opens the first message
+        const i = selectedId === "" ? (delta > 0 ? 0 : -1) : rowOf(selectedId) + delta;
+        if (i >= 0 && i < messages.count)
             choose(messages.get(i).id);
     }
-    function boxLabel() {
-        const names = { inbox: Facteur.tr("Inbox"), unread: Facteur.tr("Unread"), starred: Facteur.tr("Starred"), sent: Facteur.tr("Sent"), drafts: Facteur.tr("Drafts"), archive: Facteur.tr("Archive"), spam: Facteur.tr("Spam"), trash: Facteur.tr("Trash") };
-        return names[mailbox] || (mailbox.startsWith("label:") ? mailbox.slice(6) : mailbox.startsWith("folder:") ? ((labels.find(l => l.id === mailbox.slice(7)) || {}).rawName || mailbox.slice(7)) : mailbox);
+    function boxLabel(box) {
+        if (box === undefined) box = mailbox;
+        if (box === "all") return Facteur.tr("All inboxes");
+        if (box === "allunread") return Facteur.tr("All unread");
+        return boxNames[box] || (box.startsWith("label:") ? box.slice(6) : box.startsWith("folder:") ? ((labels.find(l => l.id === box.slice(7)) || {}).rawName || box.slice(7)) : box);
     }
     // Unread rows of the list, kept up to date as the rows change (a binding cannot see a role change by itself)
     property int unreadTotal: 0
@@ -405,10 +583,11 @@ ApplicationWindow {
         function onModelReset() { win.updateUnreadTotal() }
     }
     // The inbox count of the sidebar follows an action at once (the server's figure comes after)
-    function bumpUnread(delta) {
-        if (delta === 0 || account === "") return;
+    function bumpUnread(delta, acct) {
+        if (acct === undefined) acct = account;
+        if (delta === 0 || acct === "") return;
         const next = Object.assign({}, unreadCounts);
-        next[account] = Math.max(0, (next[account] || 0) + delta);
+        next[acct] = Math.max(0, (next[acct] || 0) + delta);
         unreadCounts = next;
     }
     function unreadCount() {
@@ -487,18 +666,73 @@ ApplicationWindow {
     function countUnread() {
         for (const a of accounts)
             Facteur.countUnread(a.id);
-        if (isGmail() && categoryTabs)
-            for (const c of categories)
-                Facteur.countCategory(account, c.key);
+        // The tabs of the accounts on screen only (all of them in the Inbox views); Gmail counts each category, the others
+        // reload their folders list (one request, it also feeds the sidebar), and only when a tab is linked to a folder
+        if (categoryTabs)
+            for (const a of accounts) {
+                if (!unified && a.id !== account) continue;
+                if (a.provider === "gmail") for (const c of categories) Facteur.countCategory(a.id, c.key);
+                else if (Object.keys(catMaps[a.id] || {}).length > 0) Facteur.loadFolders(a.id);
+            }
     }
     Timer { interval: 60000; running: win.accounts.length > 0; repeat: true; triggeredOnStart: true; onTriggered: win.countUnread() }
-    function appendMessages(list, known) {
-        for (const m of list)
-            if ((!listBar.unreadOnly || m.unread) && !known.has(m.id))
-                messages.append({ id: m.id, from: m.from.display || m.from.email || "", subject: m.subject, time: m.time, unread: m.unread, starred: m.starred, checked: false });
+    function appendMessages(list, known, acct) {
+        for (const m of list) {
+            const id = acct ? acct + sep + m.id : m.id;
+            if ((!listBar.unreadOnly || m.unread) && !known.has(id))
+                messages.append({ id: id, acct: acct || "", date: m.date || "", attach: m.hasAttachment === true, labels: JSON.stringify(m.labelIds || []), from: m.from.display || m.from.email || "", subject: m.subject, time: m.time, unread: m.unread, starred: m.starred, checked: false });
+        }
+    }
+    // One answer of an account for the unified list: merged, newest first
+    property bool unifiedFresh: false
+    function mergeUnified(acc, json) {
+        const r = JSON.parse(json);
+        if (unifiedFresh) { messages.clear(); unifiedFresh = false; }
+        unifiedPending = Math.max(0, unifiedPending - 1);
+        if (r.error) {
+            listError = errorText(r.error);
+        } else {
+            const rows = [];
+            for (let i = 0; i < messages.count; i++) { const m = messages.get(i); rows.push({ id: m.id, acct: m.acct, date: m.date, attach: m.attach, labels: m.labels, from: m.from, subject: m.subject, time: m.time, unread: m.unread, starred: m.starred, checked: m.checked }); }
+            const known = new Set(rows.map(m => m.id));
+            for (const m of r.messages)
+                if ((!(listBar.unreadOnly || mailbox === "allunread") || m.unread) && !known.has(acc + sep + m.id))
+                    rows.push({ id: acc + sep + m.id, acct: acc, date: m.date || "", attach: m.hasAttachment === true, labels: JSON.stringify(m.labelIds || []), from: m.from.display || m.from.email || "", subject: m.subject, time: m.time, unread: m.unread, starred: m.starred, checked: false });
+            rows.sort((a, b) => a.date < b.date ? 1 : a.date > b.date ? -1 : 0);
+            messages.clear();
+            for (const m of rows) messages.append(m);
+        }
+        if (unifiedPending === 0) loading = false;
     }
     function refresh() {
         // What the mailbox showed last time, at once; the server's answer replaces it
+        if (unified) {
+            nextToken = "";
+            loadingMore = false;
+            searchPhase = "";
+            checkedCount = 0;
+            checkAnchor = -1;
+            countUnread();
+            loading = true;
+            listError = "";
+            unifiedFresh = true;
+            unifiedPending = 0;
+            for (const a of accounts) {
+                const sp = listSpec(a.id);
+                if (!sp) continue;
+                unifiedPending++;
+                Facteur.list(a.id, sp.box, sp.query, "");
+            }
+            if (unifiedPending === 0) { messages.clear(); loading = false; }
+            return;
+        }
+        if (!unified && account !== "" && categoriesOn() && listSpec(account) === null) {
+            messages.clear();
+            loading = false;
+            listError = "";
+            checkedCount = 0;
+            return;
+        }
         if (messages.count === 0 && account !== "" && query === "") {
             const kept = Facteur.cachedList(account, listBox() + (categoriesOn() ? "#" + category : ""));
             if (kept !== "") {
@@ -548,16 +782,17 @@ ApplicationWindow {
         }
         if (account === "" || ids.length === 0)
             return;
-        let delta = 0;
+        const deltas = {};
         for (const id of ids) {
             const i = rowOf(id);
             if (i < 0) continue;
+            const a = splitId(id).acct;
             const wasUnread = messages.get(i).unread;
-            if (operation === "read" && wasUnread) delta--;
-            else if (operation === "unread" && !wasUnread) delta++;
-            else if ((operation === "archive" || operation === "trash" || operation === "spam") && wasUnread) delta--;
+            if (operation === "read" && wasUnread) deltas[a] = (deltas[a] || 0) - 1;
+            else if (operation === "unread" && !wasUnread) deltas[a] = (deltas[a] || 0) + 1;
+            else if ((operation === "archive" || operation === "trash" || operation === "spam") && wasUnread) deltas[a] = (deltas[a] || 0) - 1;
         }
-        bumpUnread(delta);
+        for (const a in deltas) bumpUnread(deltas[a], a);
         if (operation === "archive" || operation === "trash" || operation === "spam") {
             // The message just after the first one that leaves takes its place
             let first = messages.count;
@@ -589,7 +824,9 @@ ApplicationWindow {
         }
         notice = "";
         recount();
-        Facteur.act(account, operation, JSON.stringify(ids));
+        const groups = {};
+        for (const id of ids) { const r = splitId(id); (groups[r.acct] = groups[r.acct] || []).push(r.id); }
+        for (const a in groups) Facteur.act(a, operation, JSON.stringify(groups[a]));
     }
 
     function choose(id, quiet) {
@@ -605,7 +842,7 @@ ApplicationWindow {
         // The message shown stays until this one arrives (`onOpened`): no blank page in between
         reader.error = "";
         reader.loadingNext = true;
-        Facteur.openMessage(account, id);
+        Facteur.openMessage(splitId(id).acct, splitId(id).id);
     }
 
     Connections {
@@ -616,14 +853,20 @@ ApplicationWindow {
             win.unreadCounts = next;
         }
         function onCategoryCounted(acc, cat, count) {
-            if (acc !== win.account || count < 0) return;
+            if (count < 0) return;
             const next = Object.assign({}, win.categoryCounts);
-            next[cat] = count;
+            next[acc] = Object.assign({}, next[acc] || {});
+            next[acc][cat] = count;
             win.categoryCounts = next;
         }
         function onListed(acc, box, rawQry, json) {
             const quick = rawQry.startsWith("scope:headers ");
             const qry = quick ? rawQry.slice(14) : rawQry;
+            if (win.unified) {
+                const sp = win.listSpec(acc);
+                if (sp && box === sp.box && qry === sp.query) win.mergeUnified(acc, json);
+                return;
+            }
             if (acc !== win.account || box !== win.listBox() || qry !== win.listQuery())
                 return;
             const r = JSON.parse(json);
@@ -688,7 +931,7 @@ ApplicationWindow {
                 else win.step(name === "next-message" ? 1 : -1);
             }
             else if (name === "refresh") win.refresh();
-            else if (name === "load-pictures") { if (reader.remoteImages > 0 && !reader.loadingImages) { reader.loadingImages = true; Facteur.loadImages(win.account, win.selectedId) } }
+            else if (name === "load-pictures") { if (reader.remoteImages > 0 && !reader.loadingImages) { reader.loadingImages = true; Facteur.loadImages(win.selectedRef.acct, win.selectedRef.id) } }
             else if (name === "copy") { if (!win.composing && !win.adding) reader.copySelection() }
             else if (name === "select-all") { if (!win.composing && !win.adding) reader.selectAllText() }
             else if (boxes[name]) { win.adding = false; win.mailbox = boxes[name] }
@@ -708,7 +951,7 @@ ApplicationWindow {
             win.notice = "";
         }
         function onOpened(id, json) {
-            if (id !== win.selectedId)
+            if (id !== win.selectedRef.id)
                 return;
             const r = JSON.parse(json);
             reader.loadingNext = false;
@@ -742,6 +985,9 @@ ApplicationWindow {
             }
         }
         function onLabelsLoaded(acc, json) {
+            const kept = Object.assign({}, win.accountFolders);
+            kept[acc] = JSON.parse(json);
+            win.accountFolders = kept;
             if (acc !== win.account) return;
             // IMAP labels come without colour: the one chosen here, else one taken from the name (stable)
             win.labels = JSON.parse(json).map(l => l.folder ? Object.assign({}, l, { color: Facteur.uiGet("color:" + acc + ":" + l.id) || win.nameColor(l.rawName) }) : l);
@@ -775,7 +1021,7 @@ ApplicationWindow {
             win.loadAccounts();
         }
         function onActed(acc, operation, ids, json) {
-            if (acc !== win.account)
+            if (acc !== win.account && !win.unified)
                 return;
             const r = JSON.parse(json);
             if (r.error) {
@@ -783,7 +1029,7 @@ ApplicationWindow {
                 win.refresh();
             } else {
                 Facteur.countUnread(acc);
-                if (win.categoriesOn()) Facteur.countCategory(acc, win.category);
+                if (win.categoriesOn() && win.providerOf(acc) === "gmail") Facteur.countCategory(acc, win.category);
             }
         }
         function onAccountRemoved(json) {
@@ -823,8 +1069,8 @@ ApplicationWindow {
         refresh();
     }
     onSelectedIdChanged: if (selectedId === "") reader.loadingNext = false
-    onAccountChanged: { categoryCounts = ({}); category = "primary"; messages.clear(); selectedId = ""; reader.summary = null; if (mailbox.startsWith("label:") || mailbox.startsWith("folder:")) mailbox = "inbox"; loadLabels(); visit(); refresh() }
-    onMailboxChanged: { messages.clear(); selectedId = ""; reader.summary = null; visit(); refresh() }
+    onAccountChanged: { readTabs(); category = "primary"; messages.clear(); selectedId = ""; reader.summary = null; if (mailbox.startsWith("label:") || mailbox.startsWith("folder:") || unified) mailbox = "inbox"; loadLabels(); visit(); refresh() }
+    onMailboxChanged: { readTabs(); messages.clear(); selectedId = ""; reader.summary = null; visit(); refresh() }
     onCategoryTabsChanged: { messages.clear(); selectedId = ""; reader.summary = null; refresh() }
     onCategoryChanged: { if (categoriesOn()) { messages.clear(); selectedId = ""; reader.summary = null; refresh() } }
     onQueryChanged: { messages.clear(); selectedId = ""; reader.summary = null; visit(); refresh() }
@@ -901,8 +1147,13 @@ ApplicationWindow {
             x: FiliTheme.margin + FiliTheme.space1 + 1
             anchors.verticalCenter: parent.verticalCenter
             spacing: FiliTheme.space1
-            IconButton { name: "chevron-left"; tip: Facteur.tr("Go back"); enabledState: win.hindex > 0; onClicked: win.go(-1) }
-            IconButton { name: "chevron-right"; tip: Facteur.tr("Go forward"); enabledState: win.hindex < win.history.length - 1; onClicked: win.go(1) }
+            readonly property int at: win.selectedId === "" ? -1 : win.rowOf(win.selectedId)
+            IconButton { name: "chevron-left"; tip: Facteur.tr("Previous message"); enabledState: parent.at > 0; onClicked: win.step(-1) }
+            IconButton { name: "chevron-right"; tip: Facteur.tr("Next message"); enabledState: parent.at < messages.count - 1 && messages.count > 0; onClicked: win.step(1) }
+            Rectangle { width: 1; height: 18; anchors.verticalCenter: parent.verticalCenter; color: FiliTheme.border }
+            IconButton { name: "compose"; tip: Facteur.tr("New message"); onClicked: win.startCompose("new") }
+            IconButton { name: "mail-unread"; toggled: listBar.unreadOnly; tip: Facteur.tr("Unread only"); onClicked: listBar.unreadOnly = !listBar.unreadOnly }
+            IconButton { name: "refresh"; tip: Facteur.tr("Refresh"); onClicked: win.refresh() }
         }
         Column {
             anchors { left: nav.right; leftMargin: FiliTheme.space5; right: tools.left; rightMargin: FiliTheme.space3; verticalCenter: parent.verticalCenter }
@@ -917,7 +1168,7 @@ ApplicationWindow {
             }
             Text {
                 width: parent.width
-                text: win.loading ? (win.query !== "" ? Facteur.tr("Searching…") : Facteur.tr("Loading…")) : win.listError !== "" ? "" : Facteur.tr("%1 messages, %2 unread").replace("%1", messages.count).replace("%2", win.unreadTotal)
+                text: win.checkedCount > 0 ? Facteur.tr("%1 selected").replace("%1", win.checkedCount) : win.loading ? (win.query !== "" ? Facteur.tr("Searching…") : Facteur.tr("Loading…")) : win.listError !== "" ? "" : Facteur.tr("%1 messages, %2 unread").replace("%1", messages.count).replace("%2", win.unreadTotal)
                 elide: Text.ElideRight
                 font.family: FiliTheme.font
                 font.pixelSize: FiliTheme.sizeList
@@ -928,9 +1179,60 @@ ApplicationWindow {
             id: tools
             anchors { right: search.left; rightMargin: FiliTheme.space3; verticalCenter: parent.verticalCenter }
             spacing: FiliTheme.space1
-            IconButton { name: win.preview === "below" ? "layout-below" : "layout-right"; tip: win.preview === "below" ? Facteur.tr("Preview on the right") : Facteur.tr("Preview below"); onClicked: win.togglePreview() }
-            IconButton { name: "refresh"; tip: Facteur.tr("Refresh"); onClicked: win.refresh() }
-            IconButton { name: "compose"; tip: Facteur.tr("New message"); onClicked: win.startCompose("new") }
+            readonly property bool on: win.selectedId !== "" || win.checkedCount > 0
+            readonly property bool unreadNow: win.checkedCount > 0 ? win.checkedAnyUnread : reader.unread
+            readonly property bool starredNow: win.checkedCount > 0 ? win.checkedAllStarred : reader.starred
+            IconButton { visible: win.checkedCount > 0; name: parent.unreadNow ? "mail-open" : "mail"; tip: parent.unreadNow ? Facteur.tr("Mark as read") : Facteur.tr("Mark as unread"); enabledState: parent.on; onClicked: win.actOnSelection(parent.unreadNow ? "read" : "unread") }
+            IconButton { visible: win.checkedCount > 0; name: "archive"; tip: Facteur.tr("Archive message"); enabledState: parent.on; onClicked: win.actOnSelection("archive") }
+            IconButton { visible: win.checkedCount > 0; name: "trash"; tip: Facteur.tr("Move to trash"); enabledState: parent.on; onClicked: win.actOnSelection("trash") }
+            IconButton { visible: win.checkedCount > 0; name: "spam"; tip: Facteur.tr("Mark as spam"); enabledState: parent.on; onClicked: win.actOnSelection("spam") }
+            IconButton { visible: win.checkedCount > 0; name: "star"; filled: parent.starredNow; tip: parent.starredNow ? Facteur.tr("Remove star") : Facteur.tr("Star message"); enabledState: parent.on; onClicked: win.actOnSelection(parent.starredNow ? "unstar" : "star") }
+            Rectangle { visible: win.checkedCount > 0; width: 1; height: 18; anchors.verticalCenter: parent.verticalCenter; color: FiliTheme.border }
+            IconButton { name: "tabs"; toggled: win.categoryTabs; tip: win.categoryTabs ? Facteur.tr("Hide tabs") : Facteur.tr("Show tabs"); onClicked: win.toggleCategoryTabs() }
+            Rectangle { // where the reader goes: auto, side, bottom
+                id: previewSwitch
+                anchors.verticalCenter: parent.verticalCenter
+                width: modes.width + 2 * FiliTheme.space1
+                height: 24
+                radius: FiliTheme.radiusControl
+                color: FiliTheme.background
+                border.width: FiliTheme.borderWidth
+                border.color: FiliTheme.border
+                Row {
+                    id: modes
+                    x: FiliTheme.space1
+                    anchors.verticalCenter: parent.verticalCenter
+                    Repeater {
+                        model: [
+                            { key: "auto", icon: "layout-auto", tip: Facteur.tr("Preview: automatic, by window width") },
+                            { key: "side", icon: "layout-right", tip: Facteur.tr("Preview on the right") },
+                            { key: "bottom", icon: "layout-below", tip: Facteur.tr("Preview below") }
+                        ]
+                        Rectangle {
+                            id: cell
+                            required property var modelData
+                            readonly property bool on: win.previewMode === modelData.key
+                            width: modelData.icon ? 26 : autoText.implicitWidth + 2 * FiliTheme.space3
+                            height: 20
+                            radius: FiliTheme.radiusControl
+                            color: on ? FiliTheme.surfaceActive : cellArea.containsMouse ? FiliTheme.surfaceHover : "transparent"
+                            Icon { visible: !!cell.modelData.icon; anchors.centerIn: parent; name: cell.modelData.icon || "layout-right"; size: 14; color: cell.on ? FiliTheme.accentColor : FiliTheme.text }
+                            Text {
+                                id: autoText
+                                visible: !cell.modelData.icon
+                                anchors.centerIn: parent
+                                text: cell.modelData.label || ""
+                                font.family: FiliTheme.font
+                                font.pixelSize: FiliTheme.sizeSmall
+                                font.weight: cell.on ? FiliTheme.weightAccent : Font.Normal
+                                color: cell.on ? FiliTheme.accentColor : FiliTheme.text
+                            }
+                            MouseArea { id: cellArea; anchors.fill: parent; hoverEnabled: true; onClicked: win.setPreviewMode(cell.modelData.key) }
+                            ToolTip { visible: cellArea.containsMouse; delay: 600; text: cell.modelData.tip }
+                        }
+                    }
+                }
+            }
         }
         // Window buttons at the far right: close, and the panel of window actions (niri)
         Rectangle {
@@ -1042,6 +1344,7 @@ ApplicationWindow {
             mailbox: win.mailbox
             onAccountChosen: id => win.account = id
             onMailboxChosen: key => win.mailbox = key
+            onUnifiedChosen: key => win.mailbox = key
             onBoxOfAccountChosen: (id, key) => { win.account = id; win.mailbox = key }
             labels: win.labels
             onAddLabelRequested: { labelDialog.error = ""; labelDialog.imap = win.isImap(); labelDialog.bridge = win.bridge; labelDialog.open() }
@@ -1059,21 +1362,16 @@ ApplicationWindow {
                 id: listBar
                 width: parent.width
                 onUnreadOnlyChanged: { messages.clear(); win.selectedId = ""; win.refresh() }
-                selectedId: win.selectedId
-                checkedCount: win.checkedCount
-                onAct: operation => win.actOnSelection(operation)
-                tabs: win.categoriesOn() ? win.categories : []
-                tabsAvailable: win.mailbox === "inbox" && win.isGmail()
-                tabsOn: win.categoryTabs
-                onTabsToggled: win.toggleCategoryTabs()
-                tabCounts: win.categoryCounts
-                tab: win.category
-                onTabChosen: key => win.category = key
-                onStep: delta => win.step(delta)
-                selectedUnread: win.checkedCount > 0 ? win.checkedAnyUnread : reader.unread
-                selectedStarred: win.checkedCount > 0 ? win.checkedAllStarred : reader.starred
-                canPrev: win.selectedId !== "" && win.rowOf(win.selectedId) > 0
-                canNext: win.selectedId !== "" && win.rowOf(win.selectedId) < messages.count - 1
+                tabs: win.tabItems
+                shown: win.categoryTabs
+                tabsAddable: !win.unified
+                tabCounts: win.tabCounts
+                tab: win.currentTab
+                onTabChosen: key => win.chooseTab(key)
+                onTabsReordered: keys => win.reorderTabs(keys)
+                onTabAddRequested: folderTabDialog.open(win.pinnableFolders())
+                onTabCloseRequested: key => win.removeTab(key)
+                onTabContext: (key, x, y) => win.openContext("tab", key, x, y)
             }
             Rectangle { width: parent.width; height: FiliTheme.borderWidth; color: FiliTheme.border }
             Item {
@@ -1086,15 +1384,20 @@ ApplicationWindow {
                     width: panes.below ? panes.width : Math.max(250, Math.min(340, win.width * 0.34))
                     height: panes.below ? Math.max(140, Math.min(panes.height * 0.4, 340)) : panes.height
                     model: messages
+                    showAccount: win.unified
+                    accountInfo: { const m = {}; for (const a of win.accounts) m[a.id] = { name: a.label !== "" ? a.label : a.email, icon: /@(proton\.me|protonmail\.com|pm\.me)$/i.test(a.email || "") ? "shield" : a.provider === "gmail" ? "mail" : "server" }; return m; }
+                    labelInfo: { const m = {}; for (const a in win.accountFolders) { m[a] = {}; for (const l of win.accountFolders[a]) m[a][l.id] = { name: l.rawName, color: l.color || win.nameColor(l.rawName) }; } return m; }
+                    fallbackAccount: win.account
                     selectedId: win.selectedId
                     onAct: operation => win.actOnSelection(operation)
+                    onRowAct: (operation, id) => win.doAct(operation, id)
                     onCheck: (index, mode) => win.check(index, mode)
                     onCheckAll: win.checkAll()
                     onClearChecks: win.clearChecks()
                     checkedCount: win.checkedCount
                     onStep: delta => win.step(delta)
                     loading: win.loading && win.listError === ""
-                    emptyText: win.listError !== "" ? win.listError : Facteur.tr("No message")
+                    emptyText: win.listError !== "" ? win.listError : win.categoriesOn() && win.listSpec(win.account) === null && !win.unified ? Facteur.tr("No folder is linked to this tab. Right-click the account, Edit account, Category tabs.") : Facteur.tr("No message")
                     onContextRequested: (index, x, y) => win.openMessageMenu(index, x, y)
                     onChosen: id => id.startsWith("draft:") ? win.openLocalDraft(id) : win.choose(id)
                     onNearEnd: win.loadMore()
@@ -1118,11 +1421,11 @@ ApplicationWindow {
                     onReplyAll: win.startCompose("replyall")
                     onUnsubscribe: url => Qt.openUrlExternally(url)
                     onLeave: win.focusPane(1)
-                    onOpenAttachment: index => Facteur.openAttachment(win.account, win.selectedId, reader.attachments[index].attachmentId, reader.attachments[index].filename)
-                    onSaveAllAttachments: Facteur.saveAllAttachments(win.account, win.selectedId, JSON.stringify(reader.attachments.filter(a => !!a.attachmentId).map(a => ({ attachmentId: a.attachmentId, filename: a.filename }))))
-                    onSaveAttachment: index => Facteur.saveAttachment(win.account, win.selectedId, reader.attachments[index].attachmentId, reader.attachments[index].filename)
+                    onOpenAttachment: index => Facteur.openAttachment(win.selectedRef.acct, win.selectedRef.id, reader.attachments[index].attachmentId, reader.attachments[index].filename)
+                    onSaveAllAttachments: Facteur.saveAllAttachments(win.selectedRef.acct, win.selectedRef.id, JSON.stringify(reader.attachments.filter(a => !!a.attachmentId).map(a => ({ attachmentId: a.attachmentId, filename: a.filename }))))
+                    onSaveAttachment: index => Facteur.saveAttachment(win.selectedRef.acct, win.selectedRef.id, reader.attachments[index].attachmentId, reader.attachments[index].filename)
                     onPageMenu: (x, y, link, image) => win.openPageMenu(x, y, link, image)
-                    onLoadImages: { reader.loadingImages = true; Facteur.loadImages(win.account, win.selectedId) }
+                    onLoadImages: { reader.loadingImages = true; Facteur.loadImages(win.selectedRef.acct, win.selectedRef.id) }
                     x: panes.below ? 0 : messageList.width + FiliTheme.borderWidth
                     y: panes.below ? messageList.height + FiliTheme.borderWidth : 0
                     width: panes.below ? panes.width : panes.width - x
@@ -1261,6 +1564,11 @@ ApplicationWindow {
             }
         }
     }
+    FolderTabDialog {
+        id: folderTabDialog
+        onCancelled: visible = false
+        onAccepted: (key, icon) => { win.addTab(key, icon); visible = false }
+    }
     LabelDialog {
         id: labelDialog
         onCancelled: visible = false
@@ -1309,6 +1617,8 @@ ApplicationWindow {
     }
     AccountDialog {
         id: accountDialog
+        folderNames: { const m = {}; for (const l of (win.accountFolders[accountId] || [])) m[l.id] = l.rawName; return m; }
+        onPickRequested: (cat, x, y) => win.openContext("catpick", cat, x, y)
         onCancelled: visible = false
         onSaved: (id, patch) => { busy = true; error = ""; Facteur.updateAccount(id, JSON.stringify(patch)) }
     }

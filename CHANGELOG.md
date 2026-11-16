@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.3.0
+
+- Your own folders as tabs: a "+" after the tabs opens a dialog (folder and icon). Tabs can always be dragged to reorder; middle click or the right-click menu removes a folder tab.
+- The same five tabs (Primary, Promotions, Social, Updates, Forums) on every account. Gmail uses its own categories; on other accounts each tab is linked to a folder in Edit account (Category tabs). One button in the header uses the tab system or not. Unread counts show on the tabs (Gmail: exact label counters, other accounts: the folder counters).
+- Inbox group at the top of the sidebar: "All" and "Unread" list the inboxes of every account together, newest first, with the account of each message.
+- The list shows the labels of a message (coloured dot and name, Gmail) and a paperclip when it has an attachment. The row actions float over the message under the pointer, the list action row is gone.
+- Header: previous/next message, new message, unread only (new icon), refresh on the left; the actions on ticked messages only show while something is ticked; a switch Auto / side / bottom places the preview (auto: beside the list from 1061 px of window width).
+- Edit account has a new layout.
+- The Gmail unread count of the sidebar is exact (it showed an estimate, 201 for 1 unread message).
+
 ## 1.2.0
 
 - Right click on a message in the list: reply, reply all, forward, mark read/unread, star, archive, spam, trash. On a ticked message it acts on every ticked message.

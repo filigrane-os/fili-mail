@@ -772,11 +772,20 @@ impl qobject::Facteur {
         let qt = self.qt_thread();
         let (runtime, session) = engine();
         runtime.spawn(async move {
-            // One message is enough: the answer carries the number of unread ones
-            let params = json!({"account": account, "mailbox": "unread", "query": "", "limit": 1});
-            let count = match session.dispatch("mail.list", &params).await {
-                Ok(v) => v["estimate"].as_u64().map_or(-1, |n| n.min(i32::MAX as u64) as i32),
-                Err(_) => -1,
+            // Gmail (plain address as id) keeps an exact unread count on the INBOX label: one light request. Its list
+            // estimate is only a rough figure (201 for 1 unread message). Elsewhere one message is enough: the answer
+            // carries the number of unread ones.
+            let count = if !account.contains(':') {
+                match session.dispatch("gmail.labelCounts", &json!({"accountId": account, "id": "INBOX"})).await {
+                    Ok(v) => v["unread"].as_u64().map_or(-1, |n| n.min(i32::MAX as u64) as i32),
+                    Err(_) => -1,
+                }
+            } else {
+                let params = json!({"account": account, "mailbox": "unread", "query": "", "limit": 1});
+                match session.dispatch("mail.list", &params).await {
+                    Ok(v) => v["estimate"].as_u64().map_or(-1, |n| n.min(i32::MAX as u64) as i32),
+                    Err(_) => -1,
+                }
             };
             let _ = qt.queue(move |f| f.unread_counted(&QString::from(&account), count));
         });

@@ -15,12 +15,24 @@ Rectangle {
     property string sectionTitle: Facteur.tr("Labels")
     signal accountChosen(string id)
     signal mailboxChosen(string key)
+    // "All" and "Unread" of the Inbox group: the inboxes of every account together (mailbox "all" / "allunread")
+    signal unifiedChosen(string key)
     // A box of an account that is not the current one
     signal boxOfAccountChosen(string id, string key)
     signal addAccount()
     signal removeRequested(string id)
 
     color: FiliTheme.backgroundDeep
+
+    readonly property var unifiedBoxes: [
+        { key: "all", label: Facteur.tr("All") },
+        { key: "allunread", label: Facteur.tr("Unread") }
+    ]
+    property int totalUnread: {
+        let n = 0;
+        for (const k in unreadCounts) n += unreadCounts[k];
+        return n;
+    }
 
     readonly property var boxes: [
         { key: "inbox", label: Facteur.tr("Inbox") },
@@ -38,7 +50,7 @@ Rectangle {
     property var folded: {
         try { return JSON.parse(Facteur.uiGet("folded") || "{}") } catch (e) { return ({}) }
     }
-    function foldKey(key) { return key.startsWith("labels:") ? "labels" : key; }
+    function foldKey(key) { return key.startsWith("labels:") ? "labels" : key === "u:inbox" ? "inbox" : key; }
     function isFolded(key) { return folded[foldKey(key)] === true; }
     function toggle(key) {
         const next = Object.assign({}, folded);
@@ -61,7 +73,8 @@ Rectangle {
     property point cursorPos: Qt.point(60, 60)
     activeFocusOnTab: true
     readonly property var rows: {
-        const out = [];
+        const out = [{ key: "u:inbox", kind: "group" }];
+        if (!isFolded("u:inbox")) for (const u of unifiedBoxes) out.push({ key: "u:" + u.key, kind: "unified", box: u.key });
         for (const a of accounts) {
             out.push({ key: "a:" + a.id, kind: "account", account: a });
             if (isFolded("account:" + a.id)) continue;
@@ -78,11 +91,16 @@ Rectangle {
     }
     function rowIndex() { return rows.findIndex(r => r.key === cursor); }
     function currentKey() {
+        if (mailbox === "all" || mailbox === "allunread") return "u:" + mailbox;
         const r = rows.find(r => (r.kind === "box" || r.kind === "label") && r.account.id === account && r.box === mailbox);
         return r ? r.key : rows.length > 0 ? rows[0].key : "";
     }
     function activate(r) {
-        if (r.kind === "account") {
+        if (r.kind === "group") {
+            toggle("u:inbox");
+        } else if (r.kind === "unified") {
+            unifiedChosen(r.box);
+        } else if (r.kind === "account") {
             accountChosen(r.account.id);
             if (isFolded("account:" + r.account.id)) toggle("account:" + r.account.id);
         } else if (r.kind === "box") {
@@ -115,13 +133,15 @@ Rectangle {
             cursor = rows[rows.length - 1].key;
         } else if (r && (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space)) {
             activate(r);
-        } else if (r && event.key === Qt.Key_Right && (r.kind === "account" || r.kind === "section")) {
-            const k = (r.kind === "account" ? "account:" : "labels:") + r.account.id;
+        } else if (r && event.key === Qt.Key_Right && (r.kind === "account" || r.kind === "section" || r.kind === "group")) {
+            const k = r.kind === "group" ? "u:inbox" : (r.kind === "account" ? "account:" : "labels:") + r.account.id;
             if (isFolded(k)) toggle(k);
         } else if (r && event.key === Qt.Key_Left) {
-            if (r.kind === "account" || r.kind === "section") {
-                const k = (r.kind === "account" ? "account:" : "labels:") + r.account.id;
+            if (r.kind === "account" || r.kind === "section" || r.kind === "group") {
+                const k = r.kind === "group" ? "u:inbox" : (r.kind === "account" ? "account:" : "labels:") + r.account.id;
                 if (!isFolded(k)) toggle(k);
+            } else if (r.kind === "unified") {
+                cursor = "u:inbox";
             } else {
                 // From a box or a label back to the heading above it
                 for (let j = i - 1; j >= 0; j--)
@@ -149,6 +169,72 @@ Rectangle {
         Column {
             id: column
             width: parent.width
+            // Inbox: the inboxes of every account together, above the accounts
+            Rectangle {
+                id: groupHead
+                readonly property bool open: !side.isFolded("u:inbox")
+                readonly property bool atCursor: side.activeFocus && Facteur.keyNav && side.cursor === "u:inbox"
+                onAtCursorChanged: if (atCursor) side.reveal(groupHead)
+                Rectangle { visible: groupHead.atCursor; anchors { fill: parent; margins: 1 } color: "transparent"; border.width: FiliTheme.borderWidth; border.color: FiliTheme.accentColor; radius: FiliTheme.radiusControl }
+                width: column.width
+                height: FiliTheme.sideRowHeight + FiliTheme.space2
+                color: groupArea.containsMouse ? FiliTheme.surfaceHover : "transparent"
+                Text {
+                    id: groupArrow
+                    x: FiliTheme.margin / 2
+                    anchors { bottom: parent.bottom; bottomMargin: (FiliTheme.sideRowHeight - height) / 2 }
+                    text: groupHead.open ? "▾" : "▸"
+                    font.pixelSize: FiliTheme.sizeSmall
+                    color: FiliTheme.muted
+                }
+                Icon {
+                    id: groupIcon
+                    anchors { left: groupArrow.right; leftMargin: FiliTheme.space2; bottom: parent.bottom; bottomMargin: (FiliTheme.sideRowHeight - height) / 2 }
+                    name: "inbox"
+                    size: 14
+                    color: FiliTheme.accentColor
+                }
+                Text {
+                    anchors { left: groupIcon.right; leftMargin: FiliTheme.space2; bottom: parent.bottom; bottomMargin: (FiliTheme.sideRowHeight - height) / 2 }
+                    text: Facteur.tr("Inbox")
+                    font.family: FiliTheme.font
+                    font.pixelSize: FiliTheme.sizeSmall
+                    font.weight: FiliTheme.weightAccent
+                    color: FiliTheme.text
+                }
+                MouseArea { id: groupArea; anchors.fill: parent; hoverEnabled: true; onClicked: side.toggle("u:inbox") }
+            }
+            Repeater {
+                model: groupHead.open ? side.unifiedBoxes : []
+                delegate: Rectangle {
+                    id: uRow
+                    readonly property bool atCursor: side.activeFocus && Facteur.keyNav && side.cursor === "u:" + modelData.key
+                    onAtCursorChanged: if (atCursor) side.reveal(uRow)
+                    Rectangle { visible: uRow.atCursor; anchors { fill: parent; margins: 1 } color: "transparent"; border.width: FiliTheme.borderWidth; border.color: FiliTheme.accentColor; radius: FiliTheme.radiusControl }
+                    width: column.width
+                    height: FiliTheme.sideRowHeight
+                    readonly property bool selected: side.mailbox === modelData.key
+                    color: selected ? FiliTheme.surfaceHover : uArea.containsMouse ? FiliTheme.alpha(FiliTheme.surfaceHover, 0.5) : "transparent"
+                    Text {
+                        anchors { left: parent.left; right: parent.right; leftMargin: FiliTheme.margin / 2 + FiliTheme.space2; verticalCenter: parent.verticalCenter }
+                        text: modelData.label
+                        elide: Text.ElideRight
+                        font.family: FiliTheme.font
+                        font.pixelSize: FiliTheme.size
+                        font.weight: selected ? FiliTheme.weightAccent : Font.Normal
+                        color: FiliTheme.text
+                    }
+                    Text {
+                        visible: modelData.key === "allunread" && side.totalUnread > 0
+                        anchors { right: parent.right; rightMargin: FiliTheme.space3; verticalCenter: parent.verticalCenter }
+                        text: "" + side.totalUnread
+                        font.family: FiliTheme.font
+                        font.pixelSize: FiliTheme.sizeSmall
+                        color: FiliTheme.muted
+                    }
+                    MouseArea { id: uArea; anchors.fill: parent; hoverEnabled: true; onClicked: side.unifiedChosen(modelData.key) }
+                }
+            }
             Repeater {
                 model: side.accounts
                 delegate: Column {

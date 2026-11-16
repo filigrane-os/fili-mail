@@ -478,7 +478,7 @@ impl Session {
                     if full { "full" } else { "metadata" }.into(),
                 ));
                 if !full {
-                    for header in ["From", "To", "Subject", "Date", "List-Unsubscribe"] {
+                    for header in ["From", "To", "Subject", "Date", "List-Unsubscribe", "Content-Type"] {
                         query.push(("metadataHeaders".into(), header.into()));
                     }
                 }

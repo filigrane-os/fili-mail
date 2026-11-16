@@ -801,7 +801,7 @@ async fn messages(p: &Value) -> Result<Value> {
         let section = if full {
             ""
         } else {
-            "HEADER.FIELDS (FROM TO CC SUBJECT DATE MESSAGE-ID REPLY-TO LIST-UNSUBSCRIBE)"
+            "HEADER.FIELDS (FROM TO CC SUBJECT DATE MESSAGE-ID REPLY-TO LIST-UNSUBSCRIBE CONTENT-TYPE)"
         };
         let data = command(
             &mut w,

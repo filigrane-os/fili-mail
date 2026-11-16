@@ -9,12 +9,18 @@ Rectangle {
     property string error: ""
     property string accountId: ""
     property bool imap: false
+    // Category tabs of an account without categories: {category: folder id}; the folder is picked in a menu (Main)
+    property var catMap: ({})
+    property bool mapped: false
+    property var folderNames: ({})
+    signal pickRequested(string category, real x, real y)
     signal saved(string id, var patch)
     signal cancelled()
 
     function edit(details) {
         accountId = details.id;
         imap = details.provider === "imap";
+        mapped = details.provider === "imap" || details.provider === "outlook";
         email.text = details.email || "";
         label.text = details.label || "";
         const s = details.imap || {};
@@ -50,9 +56,36 @@ Rectangle {
     Keys.onEscapePressed: dialog.cancelled()
     Shortcut { sequences: ["Ctrl+Return", "Ctrl+Enter"]; enabled: dialog.visible; onActivated: dialog.submit() }
 
+    // One form row: a label on the left, the control on the right
+    component FormRow: Item {
+        id: fr
+        property string title
+        default property alias content: slot.data
+        width: parent ? parent.width : 0
+        height: 28
+        Text {
+            width: 120
+            anchors.verticalCenter: parent.verticalCenter
+            text: fr.title
+            elide: Text.ElideRight
+            font.family: FiliTheme.font
+            font.pixelSize: FiliTheme.sizeList
+            color: FiliTheme.textSecondary
+        }
+        Item { id: slot; x: 128; width: parent.width - 128; height: parent.height }
+    }
+    component SectionTitle: Text {
+        width: parent ? parent.width : 0
+        topPadding: FiliTheme.space2
+        font.family: FiliTheme.font
+        font.pixelSize: FiliTheme.sizeSmall
+        font.weight: FiliTheme.weightAccent
+        color: FiliTheme.muted
+    }
+
     Rectangle {
         anchors.centerIn: parent
-        width: 380
+        width: 460
         height: card.height + 2 * FiliTheme.margin
         radius: FiliTheme.radiusWindow
         color: FiliTheme.surface
@@ -72,26 +105,72 @@ Rectangle {
                 font.weight: FiliTheme.weightAccent
                 color: FiliTheme.text
             }
-            Field { id: email; width: parent.width; readOnly: true; enabled: false; placeholderText: Facteur.tr("Address") }
-            Field { id: label; width: parent.width; placeholderText: Facteur.tr("Name shown in the sidebar"); enabled: !dialog.busy; onAccepted: dialog.submit() }
+            SectionTitle { text: Facteur.tr("Account") }
+            FormRow { title: Facteur.tr("Address"); Field { id: email; anchors.fill: parent; readOnly: true; enabled: false } }
+            FormRow { title: Facteur.tr("Name"); Field { id: label; anchors.fill: parent; placeholderText: Facteur.tr("Name shown in the sidebar"); enabled: !dialog.busy; onAccepted: dialog.submit() } }
             Column {
                 visible: dialog.imap
                 width: parent.width
                 spacing: FiliTheme.space2
-                Row {
-                    width: parent.width
-                    spacing: FiliTheme.space2
-                    Field { id: imapHost; width: parent.width - 80 - FiliTheme.space2; placeholderText: Facteur.tr("IMAP server"); enabled: !dialog.busy }
-                    Field { id: imapPort; width: 80; placeholderText: Facteur.tr("Port"); enabled: !dialog.busy }
+                SectionTitle { text: Facteur.tr("Server") }
+                FormRow {
+                    title: Facteur.tr("Incoming (IMAP)")
+                    Field { id: imapHost; anchors { left: parent.left; right: imapPort.left; rightMargin: FiliTheme.space2 } placeholderText: Facteur.tr("IMAP server"); enabled: !dialog.busy }
+                    Field { id: imapPort; anchors.right: parent.right; width: 72; placeholderText: Facteur.tr("Port"); enabled: !dialog.busy }
                 }
-                Row {
-                    width: parent.width
-                    spacing: FiliTheme.space2
-                    Field { id: smtpHost; width: parent.width - 80 - FiliTheme.space2; placeholderText: Facteur.tr("SMTP server"); enabled: !dialog.busy }
-                    Field { id: smtpPort; width: 80; placeholderText: Facteur.tr("Port"); enabled: !dialog.busy }
+                FormRow {
+                    title: Facteur.tr("Outgoing (SMTP)")
+                    Field { id: smtpHost; anchors { left: parent.left; right: smtpPort.left; rightMargin: FiliTheme.space2 } placeholderText: Facteur.tr("SMTP server"); enabled: !dialog.busy }
+                    Field { id: smtpPort; anchors.right: parent.right; width: 72; placeholderText: Facteur.tr("Port"); enabled: !dialog.busy }
                 }
-                Field { id: username; width: parent.width; placeholderText: Facteur.tr("User name"); enabled: !dialog.busy }
-                Field { id: password; width: parent.width; secret: true; placeholderText: Facteur.tr("New password (empty: keep the current one)"); enabled: !dialog.busy; onAccepted: dialog.submit() }
+                FormRow { title: Facteur.tr("User name"); Field { id: username; anchors.fill: parent; enabled: !dialog.busy } }
+                FormRow { title: Facteur.tr("Password"); Field { id: password; anchors.fill: parent; secret: true; placeholderText: Facteur.tr("Empty: keep the current one"); enabled: !dialog.busy; onAccepted: dialog.submit() } }
+            }
+            Column {
+                visible: dialog.mapped
+                width: parent.width
+                spacing: FiliTheme.space2
+                SectionTitle { text: Facteur.tr("Category tabs") }
+                Text {
+                    width: parent.width
+                    text: Facteur.tr("Every account has the same tabs. Choose the folder of this account each tab shows; Primary is the inbox.")
+                    wrapMode: Text.WordWrap
+                    font.family: FiliTheme.font
+                    font.pixelSize: FiliTheme.sizeList
+                    color: FiliTheme.muted
+                }
+                Repeater {
+                    model: [["promotions", Facteur.tr("Promotions"), "tag"], ["social", Facteur.tr("Social"), "users"], ["updates", Facteur.tr("Updates"), "bell"], ["forums", Facteur.tr("Forums"), "chat"]]
+                    FormRow {
+                        id: catRow
+                        required property var modelData
+                        title: modelData[1]
+                        Rectangle {
+                            id: pick
+                            anchors.fill: parent
+                            radius: FiliTheme.radiusControl
+                            color: pickArea.containsMouse ? FiliTheme.surfaceHover : FiliTheme.surface
+                            border.width: FiliTheme.borderWidth
+                            border.color: FiliTheme.border
+                            readonly property string folder: dialog.catMap[catRow.modelData[0]] || ""
+                            Text {
+                                anchors { left: parent.left; leftMargin: FiliTheme.space2; right: chev.left; rightMargin: FiliTheme.space2; verticalCenter: parent.verticalCenter }
+                                text: pick.folder !== "" ? (dialog.folderNames[pick.folder] || pick.folder) : Facteur.tr("None")
+                                elide: Text.ElideRight
+                                font.family: FiliTheme.font
+                                font.pixelSize: FiliTheme.size
+                                color: pick.folder !== "" ? FiliTheme.text : FiliTheme.muted
+                            }
+                            Icon { id: chev; anchors { right: parent.right; rightMargin: FiliTheme.space2; verticalCenter: parent.verticalCenter } name: "chevron-down"; size: 14; color: FiliTheme.textSecondary }
+                            MouseArea {
+                                id: pickArea
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                onClicked: { const p = pick.mapToItem(null, 0, pick.height); dialog.pickRequested(catRow.modelData[0], p.x, p.y); }
+                            }
+                        }
+                    }
+                }
             }
             Text {
                 visible: dialog.error !== ""

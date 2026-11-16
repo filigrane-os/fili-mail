@@ -17,7 +17,15 @@ Rectangle {
     // Previous or next message of the list (-1, +1)
     signal step(int delta)
     // Ticking: toggle one row (mode 0) or a range (mode 1), all, none
+    // Inbox views mix accounts: each row then shows the account it comes from ({account id: {name, color}})
+    property bool showAccount: false
+    property var accountInfo: ({})
+    // {account id: {label id: {name, color}}}; rows of a single account have no account of their own: fallbackAccount
+    property var labelInfo: ({})
+    property string fallbackAccount: ""
     signal check(int index, int mode)
+    // Action of the floating menu of a row (operation, message id)
+    signal rowAct(string operation, string id)
     signal checkAll()
     signal reply()
     signal replyAll()
@@ -79,10 +87,21 @@ Rectangle {
         delegate: Rectangle {
             id: row
             width: view.width
-            height: 52
+            // Labels of the message (the ones the user made) and, in the Inbox views, a line for its account
+            readonly property var chips: {
+                let ids = [];
+                try { ids = JSON.parse(model.labels || "[]"); } catch (e) { ids = []; }
+                const known = list.labelInfo[model.acct || list.fallbackAccount] || ({});
+                return ids.filter(i => known[i]).slice(0, 3).map(i => known[i]);
+            }
+            // The account of the row: its own, else the one its id carries ("<account>\u001f<id>")
+            readonly property string acct: model.acct !== "" ? model.acct : model.id.indexOf("\u001f") > 0 ? model.id.slice(0, model.id.indexOf("\u001f")) : ""
+            readonly property bool thirdLine: list.showAccount || chips.length > 0
+            height: thirdLine ? 70 : 52
             readonly property bool selected: model.id === list.selectedId
-            readonly property bool showBox: model.checked || list.checkedCount > 0 || hover.containsMouse
-            color: model.checked ? FiliTheme.surfaceActive : selected ? FiliTheme.surfaceHover : hover.containsMouse ? FiliTheme.alpha(FiliTheme.surfaceHover, 0.5) : "transparent"
+            readonly property bool showBox: model.checked || list.checkedCount > 0 || rowHover.hovered
+            HoverHandler { id: rowHover }
+            color: model.checked ? FiliTheme.surfaceActive : selected ? FiliTheme.surfaceHover : rowHover.hovered ? FiliTheme.alpha(FiliTheme.surfaceHover, 0.5) : "transparent"
             Rectangle { // unread dot: the state is also in the bold sender, colour is never the only signal
                 visible: model.unread && !row.showBox
                 x: FiliTheme.space2 + 4; y: 23
@@ -129,12 +148,60 @@ Rectangle {
             }
             Text {
                 x: from.x; y: 27
-                width: row.width - x - FiliTheme.space3
+                width: row.width - x - FiliTheme.space3 - (model.attach ? 18 : 0)
                 text: model.subject
                 elide: Text.ElideRight
                 font.family: FiliTheme.font
                 font.pixelSize: FiliTheme.sizeList
                 color: model.unread ? FiliTheme.text : FiliTheme.textSecondary
+            }
+            Icon { // attachment
+                visible: model.attach === true
+                anchors { right: parent.right; rightMargin: FiliTheme.space3 }
+                y: 28
+                name: "paperclip"
+                size: 13
+                color: FiliTheme.textSecondary
+            }
+            Row { // account (plain text, not a label), then the labels
+                visible: row.thirdLine
+                x: from.x; y: 49
+                width: row.width - x - FiliTheme.space3
+                height: 16
+                spacing: FiliTheme.space3
+                Row {
+                    visible: list.showAccount
+                    spacing: FiliTheme.space1
+                    anchors.verticalCenter: parent.verticalCenter
+                    Icon { anchors.verticalCenter: parent.verticalCenter; name: (list.accountInfo[row.acct] || ({ icon: "mail" })).icon; size: 11; color: FiliTheme.muted }
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: Math.min(implicitWidth, 130)
+                        text: (list.accountInfo[row.acct] || ({ name: row.acct })).name
+                        elide: Text.ElideRight
+                        font.family: FiliTheme.font
+                        font.pixelSize: FiliTheme.sizeSmall
+                        color: FiliTheme.muted
+                    }
+                }
+                Repeater {
+                    model: row.chips
+                    Row { // same look as the sidebar: colour dot, then the name
+                        required property var modelData
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: FiliTheme.space1
+                        Rectangle { anchors.verticalCenter: parent.verticalCenter; width: 8; height: 8; radius: 4; color: modelData.color }
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: Math.min(implicitWidth, 110)
+                            text: modelData.name
+                            elide: Text.ElideRight
+                            font.family: FiliTheme.font
+                            font.pixelSize: FiliTheme.sizeSmall
+                            color: FiliTheme.textSecondary
+                        }
+                    }
+                }
             }
             Rectangle { anchors { left: parent.left; right: parent.right; bottom: parent.bottom } height: FiliTheme.borderWidth; color: FiliTheme.border; opacity: 0.5 }
             MouseArea { id: hover; anchors.fill: parent; hoverEnabled: true; acceptedButtons: Qt.LeftButton | Qt.RightButton; onClicked: mouse => {
@@ -143,6 +210,27 @@ Rectangle {
                 else if (mouse.modifiers & Qt.ControlModifier) list.check(index, 0);
                 else { view.currentIndex = index; list.chosen(model.id) }
             } }
+            // Floating actions on the message under the pointer (over its date)
+            Rectangle {
+                visible: rowHover.hovered && !model.id.startsWith("draft:")
+                anchors { right: parent.right; rightMargin: FiliTheme.space2; verticalCenter: parent.verticalCenter }
+                width: actions.width + 2 * FiliTheme.space1
+                height: 30
+                radius: 8
+                color: FiliTheme.surface
+                border.width: FiliTheme.borderWidth
+                border.color: FiliTheme.border
+                Row {
+                    id: actions
+                    x: FiliTheme.space1
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 2
+                    IconButton { name: model.unread ? "mail-open" : "mail"; tip: model.unread ? Facteur.tr("Mark as read") : Facteur.tr("Mark as unread"); onClicked: list.rowAct(model.unread ? "read" : "unread", model.id) }
+                    IconButton { name: "archive"; tip: Facteur.tr("Archive message"); onClicked: list.rowAct("archive", model.id) }
+                    IconButton { name: "trash"; tip: Facteur.tr("Move to trash"); onClicked: list.rowAct("trash", model.id) }
+                    IconButton { name: "star"; filled: model.starred; tip: model.starred ? Facteur.tr("Remove star") : Facteur.tr("Star message"); onClicked: list.rowAct(model.starred ? "unstar" : "star", model.id) }
+                }
+            }
         }
         Keys.onPressed: event => {
             Facteur.keyNav = true;

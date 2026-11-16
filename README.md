@@ -37,6 +37,7 @@ launch). Kept from release to release to spot a version that gets heavier.
 
 | Version | Window RAM (RSS) | Window CPU | Daemon RAM (RSS) | Daemon CPU |
 |---------|------------------|------------|------------------|------------|
+| 1.3.0   | 157 MB           | 1.2 %      | 41 MB            | 0.2 %      |
 | 1.2.0   | 214 MB           | 0.7 %      | 30 MB            | 0.1 %      |
 
 Earlier versions were not measured.
