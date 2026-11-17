@@ -1114,6 +1114,8 @@ ApplicationWindow {
 
     Component.onCompleted: {
         loadAccounts();
+        // The window opens on Inbox > All: the inboxes of every account together
+        if (accounts.length > 0) mailbox = "all";
         restoreDrafts();
         visit();
         refresh();
