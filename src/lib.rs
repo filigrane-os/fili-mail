@@ -12,6 +12,7 @@ pub mod compose;
 pub mod contacts;
 pub mod credentials;
 pub mod daemon;
+pub mod folder_unread;
 pub mod mail;
 pub mod message;
 pub mod outbox;

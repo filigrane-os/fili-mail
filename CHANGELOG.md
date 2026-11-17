@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- IMAP accounts: the unread counts of the folder tabs and of the sidebar folders and labels were always missing (the folder list carried a fixed 0); they now come from the server (STATUS UNSEEN) and refresh every minute.
+
 ## 1.3.0
 
 - Your own folders as tabs: a "+" after the tabs opens a dialog (folder and icon). Tabs can always be dragged to reorder; middle click or the right-click menu removes a folder tab.

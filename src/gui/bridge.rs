@@ -249,10 +249,11 @@ use fili_mail::{
         save_google_client,
     },
     backend::{Session, runtime},
+    folder_unread,
 };
 use qobject::*;
 use serde_json::{Value, json};
-use std::{env, path::PathBuf, sync::OnceLock};
+use std::{collections::HashMap, env, path::PathBuf, sync::{Mutex, OnceLock}};
 
 #[derive(Default)]
 pub struct FacteurRust {
@@ -263,6 +264,12 @@ pub struct FacteurRust {
 }
 
 // One engine for the window: the same Session the daemon and the CLI use, on its own runtime
+/// Unread count of each folder as last answered by the server, per account
+fn folder_counts() -> &'static Mutex<HashMap<String, HashMap<String, u64>>> {
+    static COUNTS: OnceLock<Mutex<HashMap<String, HashMap<String, u64>>>> = OnceLock::new();
+    COUNTS.get_or_init(Default::default)
+}
+
 fn engine() -> &'static (tokio::runtime::Runtime, Session) {
     static ENGINE: OnceLock<(tokio::runtime::Runtime, Session)> = OnceLock::new();
     ENGINE.get_or_init(|| (runtime().expect("tokio runtime"), Session::default()))
@@ -492,6 +499,22 @@ impl qobject::Facteur {
                 })
                 .collect();
             folders.sort_by_key(|l| (l["group"].as_str().unwrap_or("").to_owned(), l["rawName"].as_str().unwrap_or("").to_lowercase()));
+            // The folders list carries no counts: the last ones known show at once, the server's figures follow
+            let known = folder_counts().lock().map(|m| m.get(&account).cloned().unwrap_or_default()).unwrap_or_default();
+            folder_unread::apply(&mut folders, &known);
+            let first = Value::Array(folders.clone()).to_string();
+            let _ = qt.queue({
+                let account = account.clone();
+                move |f| f.labels_loaded(&QString::from(&account), &QString::from(&first))
+            });
+            let counts = folder_unread::fetch(&session, &account, &folders).await;
+            if counts.is_empty() {
+                return;
+            }
+            folder_unread::apply(&mut folders, &counts);
+            if let Ok(mut m) = folder_counts().lock() {
+                m.entry(account.clone()).or_default().extend(counts);
+            }
             let out = Value::Array(folders).to_string();
             let _ = qt.queue(move |f| f.labels_loaded(&QString::from(&account), &QString::from(&out)));
         });
