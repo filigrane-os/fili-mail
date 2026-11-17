@@ -35,6 +35,7 @@ Item {
             }
         }
     }
+    onCurrentChanged: view.showCurrent()
     onItemsChanged: sync()
     Component.onCompleted: sync()
     function order() {
@@ -52,6 +53,30 @@ Item {
         height: strip.height
         width: Math.min(contentWidth, strip.width - (strip.addable ? plus.width + FiliTheme.space3 : 0))
         model: model
+        // The row does not flick (a drag moves a tab): when the tabs are wider than the space, the wheel scrolls it and
+        // the current tab is brought into view
+        readonly property bool overflows: contentWidth > width
+        function clampX(x) { return Math.max(0, Math.min(x, contentWidth - width)); }
+        function showCurrent() {
+            if (!overflows) { contentX = 0; return; }
+            for (let i = 0; i < model.count; i++) {
+                if (model.get(i).key !== strip.current) continue;
+                const item = itemAtIndex(i);
+                if (!item) { positionViewAtIndex(i, ListView.Contain); return; }
+                if (item.x < contentX) contentX = clampX(item.x);
+                else if (item.x + item.width > contentX + width) contentX = clampX(item.x + item.width - width);
+                return;
+            }
+        }
+        onContentWidthChanged: showCurrent()
+        onWidthChanged: showCurrent()
+        WheelHandler {
+            acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+            onWheel: event => {
+                const d = event.angleDelta.x !== 0 ? event.angleDelta.x : event.angleDelta.y;
+                view.contentX = view.clampX(view.contentX - d);
+            }
+        }
         delegate: Item {
             id: slot
             required property int index

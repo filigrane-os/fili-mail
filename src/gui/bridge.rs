@@ -263,13 +263,19 @@ pub struct FacteurRust {
     key_nav: bool,
 }
 
-// One engine for the window: the same Session the daemon and the CLI use, on its own runtime
 /// Unread count of each folder as last answered by the server, per account
 fn folder_counts() -> &'static Mutex<HashMap<String, HashMap<String, u64>>> {
     static COUNTS: OnceLock<Mutex<HashMap<String, HashMap<String, u64>>>> = OnceLock::new();
     COUNTS.get_or_init(Default::default)
 }
 
+/// The latest folders load of each account: a slower, older load must not overwrite a newer one
+fn folder_loads() -> &'static Mutex<HashMap<String, u64>> {
+    static LOADS: OnceLock<Mutex<HashMap<String, u64>>> = OnceLock::new();
+    LOADS.get_or_init(Default::default)
+}
+
+// One engine for the window: the same Session the daemon and the CLI use, on its own runtime
 fn engine() -> &'static (tokio::runtime::Runtime, Session) {
     static ENGINE: OnceLock<(tokio::runtime::Runtime, Session)> = OnceLock::new();
     ENGINE.get_or_init(|| (runtime().expect("tokio runtime"), Session::default()))
@@ -481,7 +487,13 @@ impl qobject::Facteur {
         let qt = self.qt_thread();
         let (runtime, session) = engine();
         runtime.spawn(async move {
-            let answer = session.dispatch("imap.folders", &json!({"accountId": account})).await.unwrap_or_default();
+            let load = folder_loads().lock().map(|mut m| { let n = m.entry(account.clone()).or_insert(0); *n += 1; *n }).unwrap_or(0);
+            let current = move |account: &str| folder_loads().lock().map(|m| m.get(account) == Some(&load)).unwrap_or(true);
+            // A failed answer keeps what is on screen: an empty list would erase the tabs and the labels
+            let Ok(answer) = session.dispatch("imap.folders", &json!({"accountId": account})).await else { return };
+            if !answer["labels"].is_array() {
+                return;
+            }
             let mut folders: Vec<Value> = answer["labels"]
                 .as_array()
                 .cloned()
@@ -503,17 +515,21 @@ impl qobject::Facteur {
             let known = folder_counts().lock().map(|m| m.get(&account).cloned().unwrap_or_default()).unwrap_or_default();
             folder_unread::apply(&mut folders, &known);
             let first = Value::Array(folders.clone()).to_string();
+            if !current(&account) {
+                return;
+            }
             let _ = qt.queue({
                 let account = account.clone();
                 move |f| f.labels_loaded(&QString::from(&account), &QString::from(&first))
             });
             let counts = folder_unread::fetch(&session, &account, &folders).await;
-            if counts.is_empty() {
+            if counts.is_empty() || !current(&account) {
                 return;
             }
-            folder_unread::apply(&mut folders, &counts);
+            let kept = folder_unread::remembered(&folders, &known, &counts);
+            folder_unread::apply(&mut folders, &kept);
             if let Ok(mut m) = folder_counts().lock() {
-                m.entry(account.clone()).or_default().extend(counts);
+                m.insert(account.clone(), kept);
             }
             let out = Value::Array(folders).to_string();
             let _ = qt.queue(move |f| f.labels_loaded(&QString::from(&account), &QString::from(&out)));

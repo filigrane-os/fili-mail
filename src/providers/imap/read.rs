@@ -933,11 +933,21 @@ pub(super) async fn call(method: &str, p: &Value) -> Result<Value> {
         "imap.count" => {
             let id = string(p, "labelId")?;
             let folder = resolve(&boxes, id)?;
-            let data = command(
+            let data = match command(
                 &mut w,
                 &format!("STATUS {} (MESSAGES UNSEEN)", quote(&folder)?),
             )
-            .await?;
+            .await
+            {
+                Ok(data) => data,
+                // A tagged NO/BAD (a folder that cannot be selected) leaves the conversation in step: the
+                // connection stays good, so it goes back to the pool instead of being dropped.
+                Err("imap_command_failed") => {
+                    release(w, key).await;
+                    return Err("imap_command_failed");
+                }
+                Err(e) => return Err(e),
+            };
             let (total, unread) = status(&data)?;
             json!({"id":id,"unread":unread,"total":total,"threadsUnread":unread})
         }

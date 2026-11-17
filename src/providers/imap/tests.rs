@@ -329,6 +329,38 @@ async fn sequential_requests_reuse_authenticated_connection() {
     call("imap.request", &p).await.unwrap();
     server.await.unwrap();
 }
+// A folder that cannot be selected answers STATUS with a tagged NO: the conversation is still in step, so the next call
+// reuses the connection instead of logging in again (the folder tabs ask one STATUS per folder every minute).
+#[tokio::test]
+async fn a_refused_status_keeps_the_connection_for_the_next_count() {
+    let (listener, port) = server().await;
+    let server = tokio::spawn(async move {
+        let (socket, _) = listener.accept().await.unwrap();
+        let mut w: Wire = BufReader::new(Box::new(socket));
+        write(&mut w, b"* OK ready\r\n").await.unwrap();
+        assert!(line(&mut w).await.unwrap().starts_with(b"O1 LOGIN"));
+        write(&mut w, b"O1 OK login\r\n").await.unwrap();
+        capabilities(&mut w, false).await;
+        assert_eq!(line(&mut w).await.unwrap(), b"O1 CAPABILITY\r\n");
+        write(&mut w, b"* CAPABILITY IMAP4rev1\r\nO1 OK capability\r\n").await.unwrap();
+        assert_eq!(line(&mut w).await.unwrap(), b"O1 LIST \"\" \"*\"\r\n");
+        write(&mut w, b"* LIST (\\HasNoChildren) \"/\" \"Locked\"\r\n* LIST (\\HasNoChildren) \"/\" \"Open\"\r\nO1 OK list\r\n").await.unwrap();
+        assert_eq!(line(&mut w).await.unwrap(), b"O1 STATUS \"Locked\" (MESSAGES UNSEEN)\r\n");
+        write(&mut w, b"O1 NO [NONEXISTENT] cannot select\r\n").await.unwrap();
+        // The second count arrives on the same socket
+        assert_eq!(line(&mut w).await.unwrap(), b"O1 STATUS \"Open\" (MESSAGES UNSEEN)\r\n");
+        write(&mut w, b"* STATUS \"Open\" (MESSAGES 12 UNSEEN 5)\r\nO1 OK status\r\n").await.unwrap();
+        assert!(tokio::time::timeout(Duration::from_millis(30), listener.accept()).await.is_err());
+    });
+    let mut p = params(port);
+    p["labelId"] = json!("Locked");
+    assert_eq!(call("imap.count", &p).await, Err("imap_command_failed"));
+    p["labelId"] = json!("Open");
+    let counted = call("imap.count", &p).await.unwrap();
+    assert_eq!(counted["unread"], 5);
+    assert_eq!(counted["total"], 12);
+    server.await.unwrap();
+}
 #[tokio::test]
 async fn smtp_native_submission_dot_stuffs_and_never_retries() {
     let (listener, port) = server().await;

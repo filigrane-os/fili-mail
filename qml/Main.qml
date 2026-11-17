@@ -252,8 +252,7 @@ ApplicationWindow {
             return;
         }
         const entries = kind === "tab"
-            ? (data.startsWith("cat:") ? [{ id: "hide", label: Facteur.tr("Hide Category Tabs") }]
-               : [{ id: "icon", label: Facteur.tr("Change Icon…") }, { id: "remove", label: Facteur.tr("Remove Tab"), danger: true }])
+            ? [{ id: "icon", label: Facteur.tr("Change Icon…") }, { id: "remove", label: Facteur.tr("Remove Tab"), danger: true }]
             : kind === "label" && data.folder
             ? [{ id: "edit", label: Facteur.tr("Rename…") }, { id: "color", label: Facteur.tr("Change colour…") }, { id: "delete", label: Facteur.tr("Delete…"), danger: true }]
             : kind === "account"
@@ -310,6 +309,8 @@ ApplicationWindow {
         } else if (contextKind === "catpick") {
             saveCatMap(accountDialog.accountId, contextData, id === "none" ? "" : id);
             accountDialog.catMap = catMaps[accountDialog.accountId] || {};
+            // The list on screen and the tab counts follow the new link
+            if (categoriesOn() && (unified || accountDialog.accountId === account)) { refresh(); }
         } else if (contextKind === "tab") {
             const t = tabItems.find(t => t.key === contextData);
             if (id === "icon" && t) folderTabDialog.edit(t.key, t.label, t.icon);
@@ -493,7 +494,7 @@ ApplicationWindow {
             if (messages.get(i).id.startsWith("draft:")) messages.remove(i);
         if (mailbox !== "drafts" || query !== "" || account === "") return;
         const mine = localDrafts().filter(d => d.account === account).sort((a, b) => b.savedAt - a.savedAt);
-        mine.forEach((d, i) => messages.insert(i, { id: "draft:" + d.key, from: Facteur.tr("Draft"), subject: d.subject || Facteur.tr("(no subject)"), time: d.to || "", unread: false, starred: false, checked: false }));
+        mine.forEach((d, i) => messages.insert(i, { id: "draft:" + d.key, acct: "", date: "", attach: false, labels: "[]", from: Facteur.tr("Draft"), subject: d.subject || Facteur.tr("(no subject)"), time: d.to || "", unread: false, starred: false, checked: false }));
     }
     function openLocalDraft(id) {
         const key = id.slice(6);
@@ -575,12 +576,15 @@ ApplicationWindow {
     // Unread rows of the list, kept up to date as the rows change (a binding cannot see a role change by itself)
     property int unreadTotal: 0
     function updateUnreadTotal() { unreadTotal = unreadCount() }
+    // Counts the changes of the rows: bindings that read rows by position depend on it
+    property int listRev: 0
     Connections {
         target: messages
         function onDataChanged() { win.updateUnreadTotal() }
-        function onRowsInserted() { win.updateUnreadTotal() }
-        function onRowsRemoved() { win.updateUnreadTotal() }
-        function onModelReset() { win.updateUnreadTotal() }
+        function onRowsInserted() { win.updateUnreadTotal(); win.listRev++ }
+        function onRowsRemoved() { win.updateUnreadTotal(); win.listRev++ }
+        function onRowsMoved() { win.listRev++ }
+        function onModelReset() { win.updateUnreadTotal(); win.listRev++ }
     }
     // The inbox count of the sidebar follows an action at once (the server's figure comes after)
     function bumpUnread(delta, acct) {
@@ -666,14 +670,14 @@ ApplicationWindow {
     function countUnread() {
         for (const a of accounts)
             Facteur.countUnread(a.id);
-        // The tabs of the accounts on screen only (all of them in the Inbox views); Gmail counts each category, the others
-        // reload their folders list (one request, it also feeds the sidebar), and only when a tab is linked to a folder
-        if (categoryTabs)
-            for (const a of accounts) {
-                if (!unified && a.id !== account) continue;
-                if (a.provider === "gmail") for (const c of categories) Facteur.countCategory(a.id, c.key);
-                else if (Object.keys(catMaps[a.id] || {}).length > 0) Facteur.loadFolders(a.id);
-            }
+        // The accounts on screen only (all of them in the Inbox views). Gmail counts each category (tabs on). The others
+        // reload their folders list: it carries the unread count of each folder (one STATUS per folder, one after the
+        // other), for the sidebar and the folder tabs
+        for (const a of accounts) {
+            if (!unified && a.id !== account) continue;
+            if (a.provider === "gmail") { if (categoryTabs) for (const c of categories) Facteur.countCategory(a.id, c.key); }
+            else if (a.provider === "imap" || a.provider === "outlook") Facteur.loadFolders(a.id);
+        }
     }
     Timer { interval: 60000; running: win.accounts.length > 0; repeat: true; triggeredOnStart: true; onTriggered: win.countUnread() }
     function appendMessages(list, known, acct) {
@@ -683,26 +687,54 @@ ApplicationWindow {
                 messages.append({ id: id, acct: acct || "", date: m.date || "", attach: m.hasAttachment === true, labels: JSON.stringify(m.labelIds || []), from: m.from.display || m.from.email || "", subject: m.subject, time: m.time, unread: m.unread, starred: m.starred, checked: false });
         }
     }
-    // One answer of an account for the unified list: merged, newest first
+    // One answer of an account for the unified list: its rows go in at their place, newest first, without rebuilding
+    // the list (no flicker); the accounts that answered are counted once even when a late answer of an earlier refresh
+    // arrives; a failed account shows its error only when nothing else could be listed.
     property bool unifiedFresh: false
+    property var unifiedAnswered: ({})
+    property string unifiedError: ""
+    // The same message reaches two accounts when one forwards to the other: it is listed once, from the account that is
+    // not Gmail (the mailbox it was sent to). Same sender, subject and date.
+    function unifiedKey(m) { return m.from + "\u001e" + m.subject + "\u001e" + m.date; }
     function mergeUnified(acc, json) {
         const r = JSON.parse(json);
         if (unifiedFresh) { messages.clear(); unifiedFresh = false; }
-        unifiedPending = Math.max(0, unifiedPending - 1);
-        if (r.error) {
-            listError = errorText(r.error);
-        } else {
-            const rows = [];
-            for (let i = 0; i < messages.count; i++) { const m = messages.get(i); rows.push({ id: m.id, acct: m.acct, date: m.date, attach: m.attach, labels: m.labels, from: m.from, subject: m.subject, time: m.time, unread: m.unread, starred: m.starred, checked: m.checked }); }
-            const known = new Set(rows.map(m => m.id));
-            for (const m of r.messages)
-                if ((!(listBar.unreadOnly || mailbox === "allunread") || m.unread) && !known.has(acc + sep + m.id))
-                    rows.push({ id: acc + sep + m.id, acct: acc, date: m.date || "", attach: m.hasAttachment === true, labels: JSON.stringify(m.labelIds || []), from: m.from.display || m.from.email || "", subject: m.subject, time: m.time, unread: m.unread, starred: m.starred, checked: false });
-            rows.sort((a, b) => a.date < b.date ? 1 : a.date > b.date ? -1 : 0);
-            messages.clear();
-            for (const m of rows) messages.append(m);
+        if (!unifiedAnswered[acc]) {
+            unifiedAnswered[acc] = true;
+            unifiedPending = Math.max(0, unifiedPending - 1);
         }
-        if (unifiedPending === 0) loading = false;
+        if (r.error) {
+            unifiedError = errorText(r.error);
+        } else {
+            const index = {};
+            const known = new Set();
+            for (let i = 0; i < messages.count; i++) { const m = messages.get(i); index[unifiedKey(m)] = i; known.add(m.id); }
+            for (const m of r.messages) {
+                const id = acc + sep + m.id;
+                if ((listBar.unreadOnly || mailbox === "allunread") && !m.unread) continue;
+                if (known.has(id)) continue;
+                const row = { id: id, acct: acc, date: m.date || "", attach: m.hasAttachment === true, labels: JSON.stringify(m.labelIds || []), from: m.from.display || m.from.email || "", subject: m.subject, time: m.time, unread: m.unread, starred: m.starred, checked: false };
+                const twin = index[unifiedKey(row)];
+                if (twin !== undefined) {
+                    if (providerOf(messages.get(twin).acct) !== "gmail" || providerOf(acc) === "gmail") continue;
+                    messages.remove(twin);
+                    for (const k in index) if (index[k] > twin) index[k]--;
+                    delete index[unifiedKey(row)];
+                }
+                let at = 0;
+                while (at < messages.count && messages.get(at).date >= row.date) at++;
+                messages.insert(at, row);
+                for (const k in index) if (index[k] >= at) index[k]++;
+                index[unifiedKey(row)] = at;
+            }
+        }
+        if (unifiedPending === 0) {
+            loading = false;
+            if (unifiedError !== "") {
+                if (messages.count === 0) listError = unifiedError; else notice = unifiedError;
+                unifiedError = "";
+            }
+        }
     }
     function refresh() {
         // What the mailbox showed last time, at once; the server's answer replaces it
@@ -716,6 +748,8 @@ ApplicationWindow {
             loading = true;
             listError = "";
             unifiedFresh = true;
+            unifiedAnswered = ({});
+            unifiedError = "";
             unifiedPending = 0;
             for (const a of accounts) {
                 const sp = listSpec(a.id);
@@ -734,7 +768,8 @@ ApplicationWindow {
             return;
         }
         if (messages.count === 0 && account !== "" && query === "") {
-            const kept = Facteur.cachedList(account, listBox() + (categoriesOn() ? "#" + category : ""));
+            // The engine keeps a page under the mailbox alone, or "mailbox#category" for a Gmail category (a `category:` query)
+            const kept = Facteur.cachedList(account, listBox() + (categoriesOn() && isGmail() ? "#" + category : ""));
             if (kept !== "") {
                 try { appendMessages(JSON.parse(kept).messages || [], new Set()) } catch (e) {}
             }
@@ -1018,6 +1053,8 @@ ApplicationWindow {
             accountDialog.busy = false;
             if (r.error) { accountDialog.error = win.errorText(r.error); return; }
             accountDialog.visible = false;
+            // What the interface kept for that account must not come back if the same address is added again
+            if (gone !== "") { Facteur.uiSet("catmap:" + gone, ""); Facteur.uiSet("tabs:" + gone, ""); }
             win.loadAccounts();
         }
         function onActed(acc, operation, ids, json) {
@@ -1034,6 +1071,7 @@ ApplicationWindow {
         }
         function onAccountRemoved(json) {
             const r = JSON.parse(json);
+            const gone = win.removing;
             win.removing = "";
             if (r.error) {
                 win.notice = win.errorText(r.error);
@@ -1147,7 +1185,7 @@ ApplicationWindow {
             x: FiliTheme.margin + FiliTheme.space1 + 1
             anchors.verticalCenter: parent.verticalCenter
             spacing: FiliTheme.space1
-            readonly property int at: win.selectedId === "" ? -1 : win.rowOf(win.selectedId)
+            readonly property int at: { const n = messages.count + win.listRev; return win.selectedId === "" ? -1 : win.rowOf(win.selectedId); }
             IconButton { name: "chevron-left"; tip: Facteur.tr("Previous message"); enabledState: parent.at > 0; onClicked: win.step(-1) }
             IconButton { name: "chevron-right"; tip: Facteur.tr("Next message"); enabledState: parent.at < messages.count - 1 && messages.count > 0; onClicked: win.step(1) }
             Rectangle { width: 1; height: 18; anchors.verticalCenter: parent.verticalCenter; color: FiliTheme.border }
@@ -1386,7 +1424,7 @@ ApplicationWindow {
                     model: messages
                     showAccount: win.unified
                     accountInfo: { const m = {}; for (const a of win.accounts) m[a.id] = { name: a.label !== "" ? a.label : a.email, icon: /@(proton\.me|protonmail\.com|pm\.me)$/i.test(a.email || "") ? "shield" : a.provider === "gmail" ? "mail" : "server" }; return m; }
-                    labelInfo: { const m = {}; for (const a in win.accountFolders) { m[a] = {}; for (const l of win.accountFolders[a]) m[a][l.id] = { name: l.rawName, color: l.color || win.nameColor(l.rawName) }; } return m; }
+                    labelInfo: { const m = {}; for (const a in win.accountFolders) { m[a] = {}; for (const l of win.accountFolders[a]) m[a][l.id] = { name: l.rawName, color: l.color || Facteur.uiGet("color:" + a + ":" + l.id) || win.nameColor(l.rawName) }; } return m; }
                     fallbackAccount: win.account
                     selectedId: win.selectedId
                     onAct: operation => win.actOnSelection(operation)

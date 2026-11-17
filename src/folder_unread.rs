@@ -6,8 +6,9 @@ use futures_util::{StreamExt, stream};
 use serde_json::{Value, json};
 use std::collections::HashMap;
 
-/// Folders asked at the same time: the account's connection answers one command at a time, this only keeps it busy.
-const PARALLEL: usize = 4;
+/// Folders asked at the same time. The pool keeps one idle connection per account: a second request in flight would
+/// log in on a new connection (a TLS handshake and a session some servers cap), so the folders go one after the other.
+const PARALLEL: usize = 1;
 
 /// The unread count of one `imap.count` answer; `None` when the answer carries no number.
 pub fn unread_of(answer: &Value) -> Option<u64> {
@@ -23,6 +24,16 @@ pub fn apply(folders: &mut [Value], counts: &HashMap<String, u64>) {
             folder["unread"] = json!(n);
         }
     }
+}
+
+/// What to remember for the next load: the counts of the folders that still exist, the fresh answer over the old one.
+/// A folder deleted or renamed since drops out, so its number cannot come back.
+pub fn remembered(folders: &[Value], old: &HashMap<String, u64>, fresh: &HashMap<String, u64>) -> HashMap<String, u64> {
+    folders
+        .iter()
+        .filter_map(|f| f["id"].as_str())
+        .filter_map(|id| fresh.get(id).or_else(|| old.get(id)).map(|n| (id.to_owned(), *n)))
+        .collect()
 }
 
 /// Asks the server for the unread count of every folder of the account.
@@ -78,6 +89,16 @@ mod tests {
         let mut folders = vec![folder("Folders/Newsletters", 5)];
         apply(&mut folders, &HashMap::new());
         assert_eq!(folders[0]["unread"], 5);
+    }
+
+    #[test]
+    fn remembered_counts_follow_the_folders_that_still_exist() {
+        let folders = vec![folder("A", 0), folder("B", 0)];
+        let old = HashMap::from([("A".to_owned(), 3), ("B".to_owned(), 4), ("Gone".to_owned(), 9)]);
+        let fresh = HashMap::from([("A".to_owned(), 1)]);
+        let kept = remembered(&folders, &old, &fresh);
+        // A: the fresh answer; B: no answer, the old count stays; Gone: the folder no longer exists
+        assert_eq!(kept, HashMap::from([("A".to_owned(), 1), ("B".to_owned(), 4)]));
     }
 
     #[test]

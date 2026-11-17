@@ -2,7 +2,9 @@
 
 ## Unreleased
 
-- IMAP accounts: the unread counts of the folder tabs and of the sidebar folders and labels were always missing (the folder list carried a fixed 0); they now come from the server (STATUS UNSEEN) and refresh every minute.
+- IMAP accounts: the unread counts of the folder tabs and of the sidebar folders and labels were always missing (the folder list carried a fixed 0); they now come from the server (STATUS UNSEEN, one folder after the other) and refresh every minute for the account on screen.
+- A failed folder list no longer erases the tabs and the labels; the last list is shown at once again on IMAP accounts (the cache key did not match); the tab row scrolls with the wheel when the tabs do not fit; linking a folder to a tab refreshes the list at once.
+- The Inbox views (All, Unread) fill in without flicker, list a message that reaches two accounts once, and show an account's error only when nothing else could be listed.
 
 ## 1.3.0
 
