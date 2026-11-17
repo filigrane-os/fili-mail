@@ -676,7 +676,8 @@ ApplicationWindow {
         for (const a of accounts) {
             if (!unified && a.id !== account) continue;
             if (a.provider === "gmail") { if (categoryTabs) for (const c of categories) Facteur.countCategory(a.id, c.key); }
-            else if (a.provider === "imap" || a.provider === "outlook") Facteur.loadFolders(a.id);
+            // The current account feeds the sidebar; another one (Inbox views) only when a tab is linked to a folder
+            else if ((a.provider === "imap" || a.provider === "outlook") && (a.id === account || Object.keys(catMaps[a.id] || {}).length > 0)) Facteur.loadFolders(a.id);
         }
     }
     Timer { interval: 60000; running: win.accounts.length > 0; repeat: true; triggeredOnStart: true; onTriggered: win.countUnread() }
@@ -716,7 +717,9 @@ ApplicationWindow {
                 const row = { id: id, acct: acc, date: m.date || "", attach: m.hasAttachment === true, labels: JSON.stringify(m.labelIds || []), from: m.from.display || m.from.email || "", subject: m.subject, time: m.time, unread: m.unread, starred: m.starred, checked: false };
                 const twin = index[unifiedKey(row)];
                 if (twin !== undefined) {
-                    if (providerOf(messages.get(twin).acct) !== "gmail" || providerOf(acc) === "gmail") continue;
+                    const other = messages.get(twin).acct;
+                    // Two messages of one account that look alike are two messages; only a copy in another account is a twin
+                    if (other === acc || providerOf(other) !== "gmail" || providerOf(acc) === "gmail") continue;
                     messages.remove(twin);
                     for (const k in index) if (index[k] > twin) index[k]--;
                     delete index[unifiedKey(row)];
@@ -1021,11 +1024,12 @@ ApplicationWindow {
         }
         function onLabelsLoaded(acc, json) {
             const kept = Object.assign({}, win.accountFolders);
-            kept[acc] = JSON.parse(json);
+            // The colour the user chose for a folder is read once here, not by each binding that shows it
+            kept[acc] = JSON.parse(json).map(l => l.folder ? Object.assign({}, l, { color: Facteur.uiGet("color:" + acc + ":" + l.id) }) : l);
             win.accountFolders = kept;
             if (acc !== win.account) return;
             // IMAP labels come without colour: the one chosen here, else one taken from the name (stable)
-            win.labels = JSON.parse(json).map(l => l.folder ? Object.assign({}, l, { color: Facteur.uiGet("color:" + acc + ":" + l.id) || win.nameColor(l.rawName) }) : l);
+            win.labels = kept[acc].map(l => l.folder ? Object.assign({}, l, { color: l.color || win.nameColor(l.rawName) }) : l);
         }
         function onLabelCreated(acc, json) {
             labelDialog.busy = false;
@@ -1053,8 +1057,6 @@ ApplicationWindow {
             accountDialog.busy = false;
             if (r.error) { accountDialog.error = win.errorText(r.error); return; }
             accountDialog.visible = false;
-            // What the interface kept for that account must not come back if the same address is added again
-            if (gone !== "") { Facteur.uiSet("catmap:" + gone, ""); Facteur.uiSet("tabs:" + gone, ""); }
             win.loadAccounts();
         }
         function onActed(acc, operation, ids, json) {
@@ -1077,6 +1079,8 @@ ApplicationWindow {
                 win.notice = win.errorText(r.error);
                 return;
             }
+            // What the interface kept for that account must not come back if the same address is added again
+            if (gone !== "") { Facteur.uiSet("catmap:" + gone, ""); Facteur.uiSet("tabs:" + gone, ""); }
             win.loadAccounts();
             messages.clear();
             win.selectedId = "";
@@ -1424,7 +1428,7 @@ ApplicationWindow {
                     model: messages
                     showAccount: win.unified
                     accountInfo: { const m = {}; for (const a of win.accounts) m[a.id] = { name: a.label !== "" ? a.label : a.email, icon: /@(proton\.me|protonmail\.com|pm\.me)$/i.test(a.email || "") ? "shield" : a.provider === "gmail" ? "mail" : "server" }; return m; }
-                    labelInfo: { const m = {}; for (const a in win.accountFolders) { m[a] = {}; for (const l of win.accountFolders[a]) m[a][l.id] = { name: l.rawName, color: l.color || Facteur.uiGet("color:" + a + ":" + l.id) || win.nameColor(l.rawName) }; } return m; }
+                    labelInfo: { const m = {}; for (const a in win.accountFolders) { m[a] = {}; for (const l of win.accountFolders[a]) m[a][l.id] = { name: l.rawName, color: l.color || win.nameColor(l.rawName) }; } return m; }
                     fallbackAccount: win.account
                     selectedId: win.selectedId
                     onAct: operation => win.actOnSelection(operation)

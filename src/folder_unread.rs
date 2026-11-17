@@ -2,13 +2,8 @@
 //!
 //! `imap.folders` lists the folders without any count; `imap.count` asks the server (`STATUS … UNSEEN`) for one folder.
 use crate::backend::Session;
-use futures_util::{StreamExt, stream};
 use serde_json::{Value, json};
 use std::collections::HashMap;
-
-/// Folders asked at the same time. The pool keeps one idle connection per account: a second request in flight would
-/// log in on a new connection (a TLS handshake and a session some servers cap), so the folders go one after the other.
-const PARALLEL: usize = 1;
 
 /// The unread count of one `imap.count` answer; `None` when the answer carries no number.
 pub fn unread_of(answer: &Value) -> Option<u64> {
@@ -36,22 +31,25 @@ pub fn remembered(folders: &[Value], old: &HashMap<String, u64>, fresh: &HashMap
         .collect()
 }
 
-/// Asks the server for the unread count of every folder of the account.
+/// Asks the server for the unread count of every folder of the account, one after the other: the pool keeps one idle
+/// connection per account, so a second request in flight would log in again (a TLS handshake, and a session some
+/// servers cap).
 pub async fn fetch(session: &Session, account: &str, folders: &[Value]) -> HashMap<String, u64> {
-    let ids: Vec<String> = folders.iter().filter_map(|f| f["id"].as_str().map(str::to_owned)).collect();
-    stream::iter(ids)
-        .map(|id| async move {
-            let params = json!({"accountId": account, "labelId": id});
-            let n = match session.dispatch("imap.count", &params).await {
-                Ok(answer) => unread_of(&answer),
-                Err(_) => None,
-            };
-            (id, n)
-        })
-        .buffer_unordered(PARALLEL)
-        .filter_map(|(id, n)| async move { n.map(|n| (id, n)) })
-        .collect()
-        .await
+    let mut counts = HashMap::new();
+    for id in folders.iter().filter_map(|f| f["id"].as_str()) {
+        let params = json!({"accountId": account, "labelId": id});
+        if let Ok(answer) = session.dispatch("imap.count", &params).await {
+            if let Some(n) = unread_of(&answer) {
+                counts.insert(id.to_owned(), n);
+            }
+        }
+    }
+    counts
+}
+
+/// Whether the folders are the ones the counts were made for (a folder created, renamed or deleted since changes it).
+pub fn same_folders(folders: &[Value], counts: &HashMap<String, u64>) -> bool {
+    folders.len() == counts.len() && folders.iter().all(|f| f["id"].as_str().is_some_and(|id| counts.contains_key(id)))
 }
 
 #[cfg(test)]
@@ -99,6 +97,17 @@ mod tests {
         let kept = remembered(&folders, &old, &fresh);
         // A: the fresh answer; B: no answer, the old count stays; Gone: the folder no longer exists
         assert_eq!(kept, HashMap::from([("A".to_owned(), 1), ("B".to_owned(), 4)]));
+    }
+
+    #[test]
+    fn the_cached_counts_match_only_an_unchanged_folder_set() {
+        let folders = vec![folder("A", 0), folder("B", 0)];
+        let both = HashMap::from([("A".to_owned(), 1), ("B".to_owned(), 0)]);
+        assert!(same_folders(&folders, &both));
+        assert!(!same_folders(&folders, &HashMap::new()));
+        assert!(!same_folders(&folders, &HashMap::from([("A".to_owned(), 1)])));
+        // B renamed to C: same size, different set
+        assert!(!same_folders(&[folder("A", 0), folder("C", 0)], &both));
     }
 
     #[test]

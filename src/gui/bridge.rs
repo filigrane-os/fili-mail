@@ -269,10 +269,10 @@ fn folder_counts() -> &'static Mutex<HashMap<String, HashMap<String, u64>>> {
     COUNTS.get_or_init(Default::default)
 }
 
-/// The latest folders load of each account: a slower, older load must not overwrite a newer one
-fn folder_loads() -> &'static Mutex<HashMap<String, u64>> {
-    static LOADS: OnceLock<Mutex<HashMap<String, u64>>> = OnceLock::new();
-    LOADS.get_or_init(Default::default)
+/// Accounts whose folder counts are being asked right now: a new load while one runs only shows the folders
+fn counting() -> &'static Mutex<std::collections::HashSet<String>> {
+    static COUNTING: OnceLock<Mutex<std::collections::HashSet<String>>> = OnceLock::new();
+    COUNTING.get_or_init(Default::default)
 }
 
 // One engine for the window: the same Session the daemon and the CLI use, on its own runtime
@@ -487,8 +487,6 @@ impl qobject::Facteur {
         let qt = self.qt_thread();
         let (runtime, session) = engine();
         runtime.spawn(async move {
-            let load = folder_loads().lock().map(|mut m| { let n = m.entry(account.clone()).or_insert(0); *n += 1; *n }).unwrap_or(0);
-            let current = move |account: &str| folder_loads().lock().map(|m| m.get(account) == Some(&load)).unwrap_or(true);
             // A failed answer keeps what is on screen: an empty list would erase the tabs and the labels
             let Ok(answer) = session.dispatch("imap.folders", &json!({"accountId": account})).await else { return };
             if !answer["labels"].is_array() {
@@ -514,16 +512,23 @@ impl qobject::Facteur {
             // The folders list carries no counts: the last ones known show at once, the server's figures follow
             let known = folder_counts().lock().map(|m| m.get(&account).cloned().unwrap_or_default()).unwrap_or_default();
             folder_unread::apply(&mut folders, &known);
-            let first = Value::Array(folders.clone()).to_string();
-            if !current(&account) {
+            // The list shows at once with the last counts, unless it is what is on screen already (same folders)
+            if !folder_unread::same_folders(&folders, &known) {
+                let first = Value::Array(folders.clone()).to_string();
+                let _ = qt.queue({
+                    let account = account.clone();
+                    move |f| f.labels_loaded(&QString::from(&account), &QString::from(&first))
+                });
+            }
+            // One pass of counts per account at a time (a slow server must not pile passes up on its connection)
+            if !counting().lock().map(|mut c| c.insert(account.clone())).unwrap_or(false) {
                 return;
             }
-            let _ = qt.queue({
-                let account = account.clone();
-                move |f| f.labels_loaded(&QString::from(&account), &QString::from(&first))
-            });
             let counts = folder_unread::fetch(&session, &account, &folders).await;
-            if counts.is_empty() || !current(&account) {
+            if let Ok(mut c) = counting().lock() {
+                c.remove(&account);
+            }
+            if counts.is_empty() {
                 return;
             }
             let kept = folder_unread::remembered(&folders, &known, &counts);
