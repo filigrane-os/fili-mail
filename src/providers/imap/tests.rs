@@ -361,6 +361,35 @@ async fn a_refused_status_keeps_the_connection_for_the_next_count() {
     assert_eq!(counted["total"], 12);
     server.await.unwrap();
 }
+// The same holds for a list: a folder that cannot be selected (tagged NO on SELECT) does not cost a new login
+#[tokio::test]
+async fn a_refused_select_keeps_the_connection_for_the_next_call() {
+    let (listener, port) = server().await;
+    let server = tokio::spawn(async move {
+        let (socket, _) = listener.accept().await.unwrap();
+        let mut w: Wire = BufReader::new(Box::new(socket));
+        write(&mut w, b"* OK ready\r\n").await.unwrap();
+        assert!(line(&mut w).await.unwrap().starts_with(b"O1 LOGIN"));
+        write(&mut w, b"O1 OK login\r\n").await.unwrap();
+        capabilities(&mut w, false).await;
+        assert_eq!(line(&mut w).await.unwrap(), b"O1 CAPABILITY\r\n");
+        write(&mut w, b"* CAPABILITY IMAP4rev1\r\nO1 OK capability\r\n").await.unwrap();
+        assert_eq!(line(&mut w).await.unwrap(), b"O1 LIST \"\" \"*\"\r\n");
+        write(&mut w, b"* LIST (\\Noselect) \"/\" \"Locked\"\r\n* LIST (\\HasNoChildren) \"/\" \"Open\"\r\nO1 OK list\r\n").await.unwrap();
+        assert_eq!(line(&mut w).await.unwrap(), b"O1 SELECT \"Locked\"\r\n");
+        write(&mut w, b"O1 NO cannot select\r\n").await.unwrap();
+        assert_eq!(line(&mut w).await.unwrap(), b"O1 STATUS \"Open\" (MESSAGES UNSEEN)\r\n");
+        write(&mut w, b"* STATUS \"Open\" (MESSAGES 3 UNSEEN 1)\r\nO1 OK status\r\n").await.unwrap();
+        assert!(tokio::time::timeout(Duration::from_millis(30), listener.accept()).await.is_err());
+    });
+    let mut p = params(port);
+    p["query"] = json!("folder:Locked");
+    assert_eq!(call("imap.list", &p).await, Err("imap_command_failed"));
+    let mut p = params(port);
+    p["labelId"] = json!("Open");
+    assert_eq!(call("imap.count", &p).await.unwrap()["unread"], 1);
+    server.await.unwrap();
+}
 #[tokio::test]
 async fn smtp_native_submission_dot_stuffs_and_never_retries() {
     let (listener, port) = server().await;

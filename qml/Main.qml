@@ -661,7 +661,7 @@ ApplicationWindow {
         if (nextToken === "" || loading || loadingMore || account === "" || listError !== "")
             return;
         loadingMore = true;
-        Facteur.list(account, listBox(), listQuery(), nextToken);
+        Facteur.list(account, listBox(), listQuery(), nextToken, listGen);
     }
     // Unread messages of each account's inbox ({accountId: count}), shown in the sidebar
     property var unreadCounts: ({})
@@ -707,6 +707,9 @@ ApplicationWindow {
         if (r.error) {
             unifiedError = errorText(r.error);
         } else {
+            // Rows of the one-account list that was on screen a moment ago (no account on them) are not part of this list
+            for (let i = messages.count - 1; i >= 0; i--)
+                if (messages.get(i).acct === "" && !messages.get(i).id.startsWith("draft:")) messages.remove(i);
             const index = {};
             const known = new Set();
             for (let i = 0; i < messages.count; i++) { const m = messages.get(i); index[unifiedKey(m)] = i; known.add(m.id); }
@@ -739,7 +742,10 @@ ApplicationWindow {
             }
         }
     }
+    // Counts the refreshes: an answer carries the number of the refresh that asked for it
+    property int listGen: 0
     function refresh() {
+        listGen++;
         // What the mailbox showed last time, at once; the server's answer replaces it
         if (unified) {
             nextToken = "";
@@ -758,7 +764,7 @@ ApplicationWindow {
                 const sp = listSpec(a.id);
                 if (!sp) continue;
                 unifiedPending++;
-                Facteur.list(a.id, sp.box, sp.query, "");
+                Facteur.list(a.id, sp.box, sp.query, "", listGen);
             }
             if (unifiedPending === 0) { messages.clear(); loading = false; }
             return;
@@ -792,10 +798,10 @@ ApplicationWindow {
         // IMAP: a quick pass in the mailbox shown (subject, sender, recipients), then the whole account and the content
         if (query !== "" && isImap()) {
             searchPhase = "quick";
-            Facteur.list(account, listBox(), "scope:headers " + listQuery(), "");
+            Facteur.list(account, listBox(), "scope:headers " + listQuery(), "", listGen);
         } else {
             searchPhase = "";
-            Facteur.list(account, listBox(), listQuery(), "");
+            Facteur.list(account, listBox(), listQuery(), "", listGen);
         }
     }
 
@@ -897,7 +903,9 @@ ApplicationWindow {
             next[acc][cat] = count;
             win.categoryCounts = next;
         }
-        function onListed(acc, box, rawQry, json) {
+        function onListed(acc, box, rawQry, json, generation) {
+            // The answer of a list asked before the last refresh (another mailbox, tab or filter) is not for this list
+            if (generation !== win.listGen) return;
             const quick = rawQry.startsWith("scope:headers ");
             const qry = quick ? rawQry.slice(14) : rawQry;
             if (win.unified) {
@@ -945,12 +953,12 @@ ApplicationWindow {
             if (quick) {
                 // Now the full search: content, whole account; its results come after these
                 win.searchPhase = "full";
-                Facteur.list(acc, box, qry, "");
+                Facteur.list(acc, box, qry, "", win.listGen);
             }
         }
         // Menu of the fili-bar (fili-mail ctl action NAME)
         function onCommand(name) {
-            const boxes = { "inbox": "inbox", "unread-box": "unread", "starred": "starred", "sent": "sent", "drafts": "drafts", "archive-box": "archive", "spam-box": "spam", "trash-box": "trash" };
+            const boxes = { "inbox": "inbox", "all-inboxes": "all", "all-unread": "allunread", "unread-box": "unread", "starred": "starred", "sent": "sent", "drafts": "drafts", "archive-box": "archive", "spam-box": "spam", "trash-box": "trash" };
             const onMessage = !win.adding && !win.composing && win.selectedId !== "";
             if (name === "about") aboutCard.show();
             else if (name === "shortcuts") shortcutsCard.show();

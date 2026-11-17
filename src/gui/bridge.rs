@@ -150,9 +150,10 @@ pub mod qobject {
             ids: &QString,
             result: &QString,
         );
-        // Messages of a mailbox of an account, narrowed by a search text (may be empty); answered by `listed` (JSON: {messages, estimate} or {error})
+        // Messages of a mailbox of an account, narrowed by a search text (may be empty); answered by `listed` (JSON: {messages, estimate} or {error}).
+        // `generation` comes back as it was given: the window counts its refreshes and drops the answers of an earlier one
         #[qinvokable]
-        fn list(self: Pin<&mut Facteur>, account: &QString, mailbox: &QString, query: &QString, token: &QString);
+        fn list(self: Pin<&mut Facteur>, account: &QString, mailbox: &QString, query: &QString, token: &QString, generation: i32);
         #[qsignal]
         fn listed(
             self: Pin<&mut Facteur>,
@@ -160,6 +161,7 @@ pub mod qobject {
             mailbox: &QString,
             query: &QString,
             result: &QString,
+            generation: i32,
         );
         // The last first page of a mailbox as `listed` gave it ("" when there is none), to fill the list at once
         // while the server answers
@@ -854,7 +856,7 @@ impl qobject::Facteur {
         });
     }
 
-    pub fn list(self: Pin<&mut Self>, account: &QString, mailbox: &QString, query: &QString, token: &QString) {
+    pub fn list(self: Pin<&mut Self>, account: &QString, mailbox: &QString, query: &QString, token: &QString, generation: i32) {
         let (account, mailbox, query, token) = (account.to_string(), mailbox.to_string(), query.to_string(), token.to_string());
         let qt = self.qt_thread();
         let (runtime, session) = engine();
@@ -891,6 +893,7 @@ impl qobject::Facteur {
                     &QString::from(&mailbox),
                     &QString::from(&query),
                     &QString::from(&out),
+                    generation,
                 )
             });
         });

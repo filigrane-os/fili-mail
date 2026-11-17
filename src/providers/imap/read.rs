@@ -927,31 +927,35 @@ pub(super) async fn call(method: &str, p: &Value) -> Result<Value> {
     }
     let (mut w, key) = acquire(p).await?;
     let boxes = mailboxes(&mut w, p).await?;
-    let result = match method {
-        "imap.folders" => folders_value(&boxes),
-        "imap.list" | "imap.listContinue" => list(&mut w, p, &boxes).await?,
-        "imap.count" => {
-            let id = string(p, "labelId")?;
-            let folder = resolve(&boxes, id)?;
-            let data = match command(
-                &mut w,
-                &format!("STATUS {} (MESSAGES UNSEEN)", quote(&folder)?),
-            )
-            .await
-            {
-                Ok(data) => data,
-                // A tagged NO/BAD (a folder that cannot be selected) leaves the conversation in step: the
-                // connection stays good, so it goes back to the pool instead of being dropped.
-                Err("imap_command_failed") => {
-                    release(w, key).await;
-                    return Err("imap_command_failed");
-                }
-                Err(e) => return Err(e),
-            };
-            let (total, unread) = status(&data)?;
-            json!({"id":id,"unread":unread,"total":total,"threadsUnread":unread})
+    let outcome: Result<Value> = async {
+        Ok(match method {
+            "imap.folders" => folders_value(&boxes),
+            "imap.list" | "imap.listContinue" => list(&mut w, p, &boxes).await?,
+            "imap.count" => {
+                let id = string(p, "labelId")?;
+                let folder = resolve(&boxes, id)?;
+                let data = command(
+                    &mut w,
+                    &format!("STATUS {} (MESSAGES UNSEEN)", quote(&folder)?),
+                )
+                .await?;
+                let (total, unread) = status(&data)?;
+                json!({"id":id,"unread":unread,"total":total,"threadsUnread":unread})
+            }
+            _ => return Err("method_not_found"),
+        })
+    }
+    .await;
+    let result = match outcome {
+        Ok(result) => result,
+        // A tagged NO/BAD (a folder that cannot be selected or counted) ends the reply read to its last line: the
+        // conversation is still in step, so the connection goes back to the pool instead of being dropped and
+        // logged in again by the next call. Any other error (timeout, closed socket, parse) leaves it unknown.
+        Err("imap_command_failed") => {
+            release(w, key).await;
+            return Err("imap_command_failed");
         }
-        _ => return Err("method_not_found"),
+        Err(e) => return Err(e),
     };
     if result["warning"]
         .as_str()
