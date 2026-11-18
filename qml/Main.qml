@@ -990,6 +990,7 @@ ApplicationWindow {
             else if (name === "window-actions") { if (win.mainView) windowPanel.visible ? windowPanel.close() : windowPanel.open() }
             else if (name === "toggle-header") win.showHeader = !win.showHeader;
             else if (name === "toggle-footer") win.showFooter = !win.showFooter;
+            else if (name === "debug") debug.open = !debug.open;
             else if (name === "toggle-window-buttons") win.toggleWindowButtons();
             else if (name === "toggle-category-tabs") win.toggleCategoryTabs();
             else if (name === "add-account") { win.addError = ""; win.adding = true }
@@ -1167,6 +1168,7 @@ ApplicationWindow {
     Shortcut { sequences: ["Ctrl+5"]; enabled: win.categoriesOn(); onActivated: win.category = win.categories[4].key }
     Shortcut { sequences: ["Ctrl+U"]; enabled: !win.adding && win.account !== ""; onActivated: listBar.unreadOnly = !listBar.unreadOnly }
     Shortcut { sequences: ["Ctrl+Shift+P"]; enabled: !win.adding; onActivated: win.togglePreview() }
+    Shortcut { sequences: ["Ctrl+Alt+L"]; onActivated: debug.open = !debug.open }
     Shortcut { sequences: ["Ctrl+Shift+L"]; enabled: !win.adding && win.account !== ""; onActivated: { labelDialog.error = ""; labelDialog.imap = win.isImap(); labelDialog.bridge = win.bridge; labelDialog.open() } }
     Shortcut { sequences: ["F1", "Ctrl+/"]; onActivated: shortcutsCard.show() }
     // The confirmation bars answer to Enter and Esc
@@ -1410,7 +1412,7 @@ ApplicationWindow {
     }
 
     Row {
-        anchors { top: toolbar.visible ? toolbarLine.bottom : parent.top; bottom: footer.visible ? footer.top : parent.bottom; left: parent.left; right: parent.right }
+        anchors { top: toolbar.visible ? toolbarLine.bottom : parent.top; bottom: debug.top; left: parent.left; right: parent.right }
         visible: !win.adding && win.accounts.length > 0
         Sidebar {
             id: sidebar
@@ -1534,6 +1536,11 @@ ApplicationWindow {
             TextButton { label: Facteur.tr("Remove"); primary: true; onClicked: Facteur.removeAccount(win.removing) }
             TextButton { label: Facteur.tr("Cancel"); onClicked: win.removing = "" }
         }
+    }
+    // Debug panel (View > Debug Logs, Ctrl+Alt+L: Ctrl+Shift+L is the labels here): the log of the window process, above the footer
+    DebugPanel {
+        id: debug
+        anchors { bottom: footer.visible ? footer.top : parent.bottom; left: parent.left; right: parent.right }
     }
     // Footer: where we are, how much is loaded, what is selected, what went wrong
     Rectangle {

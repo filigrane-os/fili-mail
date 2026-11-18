@@ -79,6 +79,33 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "uiSet"]
         fn ui_set(self: &Facteur, key: &QString, value: &QString);
+        // Debug panel (src/logs.rs): the log entries after number `since` as JSON {"seq": last number, "entries": [[level,
+        // text], ...]} (level 0 debug, 1 info, 2 warning, 3 error), the file of the log, a way to empty the panel, a path
+        // opened with xdg-open, text copied, "Ask Rob" (records an incident and asks Rob to look at it: its id, "" on
+        // failure), and the state of the panel
+        #[qinvokable]
+        fn logs(self: &Facteur, since: i32) -> QString;
+        #[qinvokable]
+        #[cxx_name = "logFile"]
+        fn log_file(self: &Facteur) -> QString;
+        #[qinvokable]
+        #[cxx_name = "clearLogs"]
+        fn clear_logs(self: &Facteur);
+        #[qinvokable]
+        #[cxx_name = "openPath"]
+        fn open_path(self: &Facteur, path: &QString);
+        #[qinvokable]
+        #[cxx_name = "copyText"]
+        fn copy_text(self: &Facteur, text: &QString);
+        #[qinvokable]
+        #[cxx_name = "reportProblem"]
+        fn report_problem(self: &Facteur, text: &QString) -> QString;
+        #[qinvokable]
+        #[cxx_name = "uiState"]
+        fn ui_state(self: &Facteur, key: &QString) -> QString;
+        #[qinvokable]
+        #[cxx_name = "setUiState"]
+        fn set_ui_state(self: &Facteur, key: &QString, value: &QString);
         // Translation of a text written in English
         #[qinvokable]
         fn tr(self: &Facteur, text: &QString) -> QString;
@@ -474,6 +501,56 @@ impl qobject::Facteur {
         let text = std::fs::read_to_string(ui_file()).unwrap_or_default();
         let value = text.lines().find_map(|l| l.strip_prefix(&format!("{key}="))).unwrap_or("");
         QString::from(value)
+    }
+
+    pub fn logs(&self, since: i32) -> QString {
+        let (seq, entries) = fili_mail::logs::since(since.max(0) as u64);
+        QString::from(&serde_json::json!({ "seq": seq, "entries": entries }).to_string())
+    }
+
+    pub fn log_file(&self) -> QString {
+        QString::from(&fili_mail::logs::path().display().to_string())
+    }
+
+    pub fn clear_logs(&self) {
+        fili_mail::logs::clear();
+    }
+
+    pub fn open_path(&self, path: &QString) {
+        let _ = std::process::Command::new("xdg-open")
+            .arg(path.to_string())
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn();
+    }
+
+    // Wayland clipboard through wl-copy (which stays in the background as long as the text is the selection)
+    pub fn copy_text(&self, text: &QString) {
+        let child = std::process::Command::new("wl-copy")
+            .arg("--")
+            .arg(text.to_string())
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn();
+        if let Ok(mut child) = child {
+            std::thread::spawn(move || child.wait());
+        }
+    }
+
+    pub fn report_problem(&self, text: &QString) -> QString {
+        let said = text.to_string();
+        let message = if said.trim().is_empty() { "Problem reported from the Debug panel".to_string() } else { said };
+        QString::from(&fili_mail::logs::incident("manual", &message, true).unwrap_or_default())
+    }
+
+    pub fn ui_state(&self, key: &QString) -> QString {
+        self.ui_get(key)
+    }
+
+    pub fn set_ui_state(&self, key: &QString, value: &QString) {
+        self.ui_set(key, value)
     }
 
     pub fn ui_set(&self, key: &QString, value: &QString) {

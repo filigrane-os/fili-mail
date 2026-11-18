@@ -13,6 +13,9 @@ pub mod contacts;
 pub mod credentials;
 pub mod daemon;
 pub mod folder_unread;
+// The log, the Debug panel's source and the incidents (libc: Unix only, like the daemon)
+#[cfg(unix)]
+pub mod logs;
 pub mod mail;
 pub mod message;
 pub mod outbox;

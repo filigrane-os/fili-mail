@@ -54,6 +54,30 @@ pub fn is_flag(arg: &str) -> bool {
     matches!(arg, "--header" | "--no-header" | "--footer" | "--no-footer")
 }
 
+/// Incidents (src/logs.rs): a crash or a QML error is recorded and reported to the user, unless `[debug] incidents = "off"`
+/// in fili-mail.toml.
+pub fn incidents_on() -> bool {
+    let text = std::fs::read_to_string(config_dir().join("fili-mail.toml")).unwrap_or_default();
+    incidents_setting(&text)
+}
+
+fn incidents_setting(text: &str) -> bool {
+    let mut in_debug = false;
+    for line in text.lines() {
+        let line = line.split('#').next().unwrap_or("").trim();
+        if let Some(name) = line.strip_prefix('[').and_then(|r| r.strip_suffix(']')) {
+            in_debug = name.trim() == "debug";
+        } else if in_debug {
+            if let Some((k, v)) = line.split_once('=') {
+                if k.trim() == "incidents" {
+                    return v.trim().trim_matches('"').trim() != "off";
+                }
+            }
+        }
+    }
+    true
+}
+
 /// The folder of the settings files (fili-mail.toml, theme.toml).
 pub fn config_dir() -> PathBuf {
     let base = std::env::var_os("XDG_CONFIG_HOME")
@@ -72,6 +96,14 @@ pub fn shown_now(key: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn incidents_are_on_unless_the_debug_section_turns_them_off() {
+        assert!(super::incidents_setting(""));
+        assert!(super::incidents_setting("incidents = \"off\"\n[window]\nfooter = false"));
+        assert!(!super::incidents_setting("[debug]\nincidents = \"off\" # quiet\n"));
+        assert!(super::incidents_setting("[debug]\nincidents = \"on\""));
+    }
+
     use super::*;
 
     #[test]

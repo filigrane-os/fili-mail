@@ -122,7 +122,6 @@
  "Expand": "Agrandir",
  "%1 attached": "%1 joint(s)",
  "Label": "Libellé",
- "Folder": "Dossier",
  "New folder": "Nouveau dossier",
  "Rename…": "Renommer…",
  "Delete…": "Supprimer…",
@@ -230,7 +229,6 @@
  "Sidebar, list, reader": "Barre latérale, liste, lecteur",
  "Search (Enter starts it, Esc clears)": "Recherche (Entrée la lance, Échap l'efface)",
  "Back / forward": "Précédent / suivant",
- "Category tabs": "Onglets de catégories",
  "Hide category tabs": "Masquer les onglets de catégories",
  "Show category tabs": "Afficher les onglets de catégories",
  "Unread messages only": "Messages non lus seulement",
@@ -263,5 +261,15 @@
  "Copy Image": "Copier l'image",
  "Copy": "Copier",
  "Select All": "Tout sélectionner",
- "Copy, select all": "Copier, tout sélectionner"
+ "Copy, select all": "Copier, tout sélectionner",
+ "Debug Logs": "Journal de débogage",
+ "Debug logs": "Journal de débogage",
+ "Warnings": "Avertissements",
+ "Errors": "Erreurs",
+ "entries": "entrées",
+ "Ask Rob": "Demander à Rob",
+ "Clear": "Effacer",
+ "Open file": "Ouvrir le fichier",
+ "Rob was asked to look at it": "Rob a été prévenu",
+ "Could not record the problem": "Impossible d'enregistrer le problème"
 }

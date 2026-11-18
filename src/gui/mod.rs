@@ -26,6 +26,9 @@ pub fn run() -> i32 {
         // SAFETY: nothing else runs yet (single thread, before Qt starts)
         unsafe { std::env::set_var("QT_QPA_PLATFORMTHEME", "xdgdesktopportal") };
     }
+    // The log of the window process (the daemon has its own): before Qt starts, so that its messages are caught from the start
+    fili_mail::logs::init("fili-mail", "filigrane-os/fili-mail", option_env!("FILI_MAIL_GIT").unwrap_or(env!("CARGO_PKG_VERSION")), fili_mail::window_parts::incidents_on());
+    fili_mail::logs::capture_qt();
     let mut app = QGuiApplication::new();
     // Wayland app-id (niri rules, fili-mail.desktop)
     QGuiApplication::set_desktop_file_name(&QString::from("fili-mail"));

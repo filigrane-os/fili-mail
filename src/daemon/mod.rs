@@ -42,8 +42,11 @@ pub fn run() -> i32 {
         eprintln!("fili-mail: the daemon is already running");
         return 0;
     };
+    // Its own log file (the window has another); after the lock, so that a second daemon leaves the first one's log alone.
+    // No account address ever goes in it: the log is read in the Debug panel and may leave in an incident.
+    crate::logs::init("fili-mail-daemon", "filigrane-os/fili-mail", env!("CARGO_PKG_VERSION"), crate::window_parts::incidents_on());
     let Ok(runtime) = crate::backend::runtime() else {
-        eprintln!("fili-mail: cannot start the runtime");
+        log::error!("cannot start the runtime");
         return 1;
     };
     runtime.block_on(serve());
@@ -98,7 +101,10 @@ async fn sync_watches(
             Ok(_) => {
                 watched.insert(id.clone(), email.clone());
             }
-            Err(error) => eprintln!("fili-mail: cannot watch {id}: {error}"),
+            Err(error) => {
+                log::warn!("cannot watch a {} account", provider_of(&id));
+                log::debug!("cannot watch {id}: {error}");
+            }
         }
     }
     let gone: Vec<String> = watched
@@ -177,7 +183,7 @@ async fn serve() {
                 state::write(&watched, &counts, recent.make_contiguous());
                 let changed = detector.changed(&account, snapshot);
                 if debug() {
-                    eprintln!("fili-mail: update {account} unread={} changed={changed}", snapshot["estimate"]);
+                    log::info!("update {} unread={} changed={changed}", provider_of(&account), snapshot["estimate"]);
                 }
                 if !changed {
                     continue;
@@ -188,7 +194,7 @@ async fn serve() {
                         let listed = unread.len();
                         let fresh = detector.observe(&account, unread);
                         if debug() {
-                            eprintln!("fili-mail: listed {listed} unread, {} new", fresh.len());
+                            log::info!("listed {listed} unread, {} new", fresh.len());
                         }
                         notify::announce(&email, &fresh).await;
                         for message in &fresh {
@@ -200,7 +206,8 @@ async fn serve() {
                         state::write(&watched, &counts, recent.make_contiguous());
                     }
                     Err(error) => {
-                        eprintln!("fili-mail: cannot list {account}: {error}");
+                        log::warn!("cannot list the unread of a {} account", provider_of(&account));
+                        log::debug!("cannot list {account}: {error}");
                         detector.retry(&account);
                     }
                 }

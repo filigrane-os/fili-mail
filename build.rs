@@ -40,6 +40,7 @@ fn main() {
                 "qml/Field.qml",
                 "qml/IconButton.qml",
                 "qml/TextButton.qml",
+                "qml/DebugPanel.qml",
                 "qml/FocusRing.qml",
             ])
             .qml_file(QmlFile::from("qml/FiliTheme.qml").singleton(true))

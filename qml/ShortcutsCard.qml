@@ -19,7 +19,8 @@ Rectangle {
             ["Ctrl+U", Facteur.tr("Unread messages only")],
             ["Ctrl+Shift+P", Facteur.tr("Preview beside or under the list")],
             ["F5  Ctrl+R", Facteur.tr("Refresh")],
-            ["Ctrl+Shift+W", Facteur.tr("Window actions")]
+            ["Ctrl+Shift+W", Facteur.tr("Window actions")],
+            ["Ctrl+Alt+L", Facteur.tr("Debug logs")]
         ] },
         { title: Facteur.tr("List"), rows: [
             ["↑ ↓  J K", Facteur.tr("Move")],
