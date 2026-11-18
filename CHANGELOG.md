@@ -1,7 +1,10 @@
 # Changelog
 
-## Unreleased
+## 1.4.0
 
+- The message is written as rich text by default (bold, italic, underline, alignment; Ctrl+B, Ctrl+I, Ctrl+U) and goes out as text + HTML alternatives. A Text / HTML switch in the footer (Ctrl+Shift+H) goes back to plain text; the mode is kept with the draft.
+- A reply opens empty. The message answered is kept apart: a "…" button shows it as its original page below what you typed, and it is added to the message when sending (HTML and text).
+- `mailto:` links open Facteur: `fili-mail mailto:...` writes a new message with the recipients, subject and text of the link, in the open window when there is one. The desktop entry claims the scheme, so the desktop can make Facteur its default mail client.
 - IMAP accounts: the unread counts of the folder tabs and of the sidebar folders and labels were always missing (the folder list carried a fixed 0); they now come from the server (STATUS UNSEEN, one folder after the other) and refresh every minute for the account on screen.
 - A failed folder list no longer erases the tabs and the labels; the last list is shown at once again on IMAP accounts (the cache key did not match); the tab row scrolls with the wheel when the tabs do not fit; linking a folder to a tab refreshes the list at once.
 - The Inbox views (All, Unread) fill in without flicker, list a message that reaches two accounts once, and show an account's error only when nothing else could be listed.
