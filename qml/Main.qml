@@ -379,6 +379,8 @@ ApplicationWindow {
     property string selectedId: ""
     property string listError: ""
     property bool loading: false
+    // Something is being waited for that the rows on screen do not show: an empty list, or a search
+    readonly property bool busy: loading && (messages.count === 0 || query !== "")
     // Account the user is asked to confirm the removal of
     property string removing: ""
     // A short word under the list when an action failed
@@ -704,26 +706,58 @@ ApplicationWindow {
         }
     }
     Timer { interval: 60000; running: win.accounts.length > 0; repeat: true; triggeredOnStart: true; onTriggered: win.countUnread() }
+    function rowOf2(m, acct) {
+        return { id: acct ? acct + sep + m.id : m.id, acct: acct || "", date: m.date || "", attach: m.hasAttachment === true, labels: JSON.stringify(m.labelIds || []), from: m.from.display || m.from.email || "", subject: m.subject, time: m.time, unread: m.unread, starred: m.starred, checked: false };
+    }
     function appendMessages(list, known, acct) {
         for (const m of list) {
-            const id = acct ? acct + sep + m.id : m.id;
-            if ((!listBar.unreadOnly || m.unread) && !known.has(id))
-                messages.append({ id: id, acct: acct || "", date: m.date || "", attach: m.hasAttachment === true, labels: JSON.stringify(m.labelIds || []), from: m.from.display || m.from.email || "", subject: m.subject, time: m.time, unread: m.unread, starred: m.starred, checked: false });
+            const row = rowOf2(m, acct);
+            if ((!listBar.unreadOnly || m.unread) && !known.has(row.id))
+                messages.append(row);
         }
+    }
+    // A row already on screen takes the fields that changed (read, star, labels...), the others stay as they are
+    function updateRow(i, row) {
+        const cur = messages.get(i);
+        for (const k of ["date", "attach", "labels", "from", "email", "subject", "time", "unread", "starred"])
+            if (cur[k] !== row[k]) messages.setProperty(i, k, row[k]);
+    }
+    // A fresh first page replaces the rows on screen (the page kept from last time) in place: the messages still there stay
+    // (selection, scroll, ticks), changed ones are updated, new ones come in at their place, gone ones leave. No flicker.
+    function reconcile(list) {
+        for (let i = messages.count - 1; i >= 0; i--)
+            if (messages.get(i).id.startsWith("draft:")) messages.remove(i);
+        const fresh = [];
+        for (const m of list)
+            if (!listBar.unreadOnly || m.unread) fresh.push(rowOf2(m, ""));
+        const want = new Set(fresh.map(r => r.id));
+        for (let i = messages.count - 1; i >= 0; i--)
+            if (!want.has(messages.get(i).id)) messages.remove(i);
+        for (let k = 0; k < fresh.length; k++) {
+            let at = -1;
+            for (let j = k; j < messages.count; j++)
+                if (messages.get(j).id === fresh[k].id) { at = j; break }
+            if (at < 0) messages.insert(k, fresh[k]);
+            else {
+                if (at > k) messages.move(at, k, 1);
+                updateRow(k, fresh[k]);
+            }
+        }
+        // Pages loaded further down are not part of a fresh first page
+        while (messages.count > fresh.length) messages.remove(messages.count - 1);
     }
     // One answer of an account for the unified list: its rows go in at their place, newest first, without rebuilding
     // the list (no flicker); the accounts that answered are counted once even when a late answer of an earlier refresh
     // arrives; a failed account shows its error only when nothing else could be listed.
-    property bool unifiedFresh: false
     property var unifiedAnswered: ({})
     property string unifiedError: ""
     // The same message reaches two accounts when one forwards to the other: it is listed once, from the account that is
     // not Gmail (the mailbox it was sent to). Same sender, subject and date.
     function unifiedKey(m) { return m.from + "\u001e" + m.subject + "\u001e" + m.date; }
-    function mergeUnified(acc, json) {
+    // cached: the page kept from last time (shown at once; it is not an answer, nothing is counted)
+    function mergeUnified(acc, json, cached) {
         const r = JSON.parse(json);
-        if (unifiedFresh) { messages.clear(); unifiedFresh = false; }
-        if (!unifiedAnswered[acc]) {
+        if (!cached && !unifiedAnswered[acc]) {
             unifiedAnswered[acc] = true;
             unifiedPending = Math.max(0, unifiedPending - 1);
         }
@@ -733,13 +767,19 @@ ApplicationWindow {
             // Rows of the one-account list that was on screen a moment ago (no account on them) are not part of this list
             for (let i = messages.count - 1; i >= 0; i--)
                 if (messages.get(i).acct === "" && !messages.get(i).id.startsWith("draft:")) messages.remove(i);
+            // The account's messages that are no longer in its page leave
+            if (!cached) {
+                const here = new Set(r.messages.map(m => acc + sep + m.id));
+                for (let i = messages.count - 1; i >= 0; i--)
+                    if (messages.get(i).acct === acc && !here.has(messages.get(i).id)) messages.remove(i);
+            }
             const index = {};
             const known = new Set();
             for (let i = 0; i < messages.count; i++) { const m = messages.get(i); index[unifiedKey(m)] = i; known.add(m.id); }
             for (const m of r.messages) {
                 const id = acc + sep + m.id;
                 if ((listBar.unreadOnly || mailbox === "allunread") && !m.unread) continue;
-                if (known.has(id)) continue;
+                if (known.has(id)) { const i = rowOf(id); if (i >= 0) updateRow(i, rowOf2(m, acc)); continue }
                 const row = { id: id, acct: acc, date: m.date || "", attach: m.hasAttachment === true, labels: JSON.stringify(m.labelIds || []), from: m.from.display || m.from.email || "", subject: m.subject, time: m.time, unread: m.unread, starred: m.starred, checked: false };
                 const twin = index[unifiedKey(row)];
                 if (twin !== undefined) {
@@ -757,7 +797,7 @@ ApplicationWindow {
                 index[unifiedKey(row)] = at;
             }
         }
-        if (unifiedPending === 0) {
+        if (!cached && unifiedPending === 0) {
             loading = false;
             if (unifiedError !== "") {
                 if (messages.count === 0) listError = unifiedError; else notice = unifiedError;
@@ -779,10 +819,17 @@ ApplicationWindow {
             countUnread();
             loading = true;
             listError = "";
-            unifiedFresh = true;
             unifiedAnswered = ({});
             unifiedError = "";
             unifiedPending = 0;
+            // Nothing on screen yet: the pages kept from last time first (whole mailboxes at once), the answers follow
+            if (messages.count === 0) {
+                for (const a of accounts) {
+                    const sp = listSpec(a.id);
+                    const kept = sp && sp.query === "" ? Facteur.cachedList(a.id, sp.box) : "";
+                    if (kept !== "") { try { mergeUnified(a.id, kept, true) } catch (e) {} }
+                }
+            }
             for (const a of accounts) {
                 const sp = listSpec(a.id);
                 if (!sp) continue;
@@ -954,18 +1001,25 @@ ApplicationWindow {
                 return;
             }
             win.loading = false;
-            if (!more && !merge)
-                messages.clear();
+            // A plain refresh with rows on screen (the page kept from last time) updates them in place and fails quietly
+            const keep = !more && !merge && !quick && qry === "" && messages.count > 0;
             if (r.error) {
+                if (keep) { win.notice = win.errorText(r.error); return }
+                if (!more && !merge) messages.clear();
                 win.listError = win.errorText(r.error);
                 return;
             }
             if (!quick)
                 win.nextToken = r.nextPageToken || "";
-            const known = new Set();
-            if (more || merge)
-                for (let i = 0; i < messages.count; i++) known.add(messages.get(i).id);
-            win.appendMessages(r.messages, known);
+            if (keep) {
+                win.reconcile(r.messages);
+            } else {
+                if (!more && !merge) messages.clear();
+                const known = new Set();
+                if (more || merge)
+                    for (let i = 0; i < messages.count; i++) known.add(messages.get(i).id);
+                win.appendMessages(r.messages, known);
+            }
             win.showLocalDrafts();
             // "Unread only" filters the pages as they come: while few rows pass and more pages exist, fetch some more
             // (a few pages at most, so a mailbox without unread mail does not read everything)
@@ -1248,7 +1302,7 @@ ApplicationWindow {
             }
             Text {
                 width: parent.width
-                text: win.checkedCount > 0 ? Facteur.tr("%1 selected").replace("%1", win.checkedCount) : win.loading ? (win.query !== "" ? Facteur.tr("Searching…") : Facteur.tr("Loading…")) : win.listError !== "" ? "" : Facteur.tr("%1 messages, %2 unread").replace("%1", messages.count).replace("%2", win.unreadTotal)
+                text: win.checkedCount > 0 ? Facteur.tr("%1 selected").replace("%1", win.checkedCount) : win.busy ? (win.query !== "" ? Facteur.tr("Searching…") : Facteur.tr("Loading…")) : win.listError !== "" ? "" : Facteur.tr("%1 messages, %2 unread").replace("%1", messages.count).replace("%2", win.unreadTotal)
                 elide: Text.ElideRight
                 font.family: FiliTheme.font
                 font.pixelSize: FiliTheme.sizeList
@@ -1476,7 +1530,7 @@ ApplicationWindow {
                     onClearChecks: win.clearChecks()
                     checkedCount: win.checkedCount
                     onStep: delta => win.step(delta)
-                    loading: win.loading && win.listError === ""
+                    loading: win.busy && win.listError === ""
                     emptyText: win.listError !== "" ? win.listError : win.categoriesOn() && win.listSpec(win.account) === null && !win.unified ? Facteur.tr("No folder is linked to this tab. Right-click the account, Edit account, Category tabs.") : Facteur.tr("No message")
                     onContextRequested: (index, x, y) => win.openMessageMenu(index, x, y)
                     onChosen: id => id.startsWith("draft:") ? win.openLocalDraft(id) : win.choose(id)
@@ -1566,7 +1620,7 @@ ApplicationWindow {
             text: {
                 if (win.notice !== "") return win.notice;
                 const parts = [];
-                if (win.loading) parts.push(win.query !== "" ? Facteur.tr("Searching…") : Facteur.tr("Loading…"));
+                if (win.busy) parts.push(win.query !== "" ? Facteur.tr("Searching…") : Facteur.tr("Loading…"));
                 else if (win.listError === "") {
                     if (win.searchPhase === "full") parts.push(Facteur.tr("Searching the content…"));
                     parts.push(Facteur.tr("%1 messages, %2 unread").replace("%1", messages.count).replace("%2", win.unreadTotal));

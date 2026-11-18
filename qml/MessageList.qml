@@ -7,7 +7,7 @@ Rectangle {
     property alias model: view.model
     property string selectedId: ""
     property string emptyText: ""
-    // A list is being fetched: placeholder rows while empty, a thin moving bar over the rows already shown
+    // Nothing to show yet and the list is being fetched (or a search runs): a thin moving bar; a refresh behind rows is silent
     property bool loading: false
     signal chosen(string id)
     // Right click on a row: its index and the pointer position in the window
@@ -289,30 +289,13 @@ Rectangle {
         flick: view
         anchors { top: view.top; bottom: view.bottom; right: view.right }
     }
-    // Nothing to show yet and the server is answering: grey placeholder rows in the shape of the real ones
-    Column {
-        id: placeholders
-        visible: list.loading && view.count === 0
-        anchors { left: parent.left; right: parent.right; top: head.bottom }
-        Repeater {
-            model: Math.max(3, Math.ceil(view.height / 52))
-            Item {
-                width: placeholders.width
-                height: 52
-                required property int index
-                readonly property real fade: 1 - Math.min(0.7, index * 0.08)
-                Rectangle { x: FiliTheme.space2 + 28; y: 11; width: (parent.width - x - FiliTheme.space4) * (0.45 + (index * 37 % 30) / 100); height: 10; radius: 5; color: FiliTheme.alpha(FiliTheme.text, 0.12 * parent.fade) }
-                Rectangle { x: FiliTheme.space2 + 28; y: 31; width: (parent.width - x - FiliTheme.space4) * (0.6 + (index * 53 % 35) / 100); height: 8; radius: 4; color: FiliTheme.alpha(FiliTheme.text, 0.08 * parent.fade) }
-            }
-        }
-    }
     LoadingBar {
         active: list.loading
         anchors { left: parent.left; right: parent.right; top: head.bottom }
     }
     Text {
         anchors.centerIn: parent
-        visible: view.count === 0 && list.emptyText !== "" && !placeholders.visible
+        visible: view.count === 0 && list.emptyText !== "" && !list.loading
         text: list.emptyText
         font.family: FiliTheme.font
         font.pixelSize: FiliTheme.size

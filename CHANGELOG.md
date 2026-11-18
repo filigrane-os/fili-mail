@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.4.1
+
+- Opening an account (or "All") shows its cached list at once and updates it in place when the server answers: no placeholder rows, no "Loading..." or moving bar while rows are on screen, the selection and the scroll stay. The bar and the empty text only show when there is nothing to display yet or a search runs.
+- The unified Inbox views also start from the cache of each account.
+
 ## 1.4.0
 
 - The message is written as rich text by default (bold, italic, underline, alignment; Ctrl+B, Ctrl+I, Ctrl+U) and goes out as text + HTML alternatives. A Text / HTML switch in the footer (Ctrl+Shift+H) goes back to plain text; the mode is kept with the draft.
