@@ -12,7 +12,9 @@ Program name: `fili-mail`. Display name (alias): **Facteur** (`facteur` also wor
 - List with infinite scroll, tick boxes and batch actions (read, star, archive, spam, trash), category tabs
   (Gmail), labels and folders in the sidebar (create, rename, recolour, delete), search.
 - Reader with HTML mail (remote pictures on request), attachments saved to Downloads.
-- Writing in a card at the bottom right: reply, reply all, forward, Cc/Bcc, attachments, threading headers.
+- Writing in a card at the bottom right: rich text by default (bold, italic, underline, alignment) with a switch to
+  plain text, sent as text + HTML; reply (the message answered behind a "…" button), reply all, forward, Cc/Bcc,
+  attachments, threading headers. `mailto:` links open a new message.
 - Preview beside the list or under it (following the window size), window buttons and the niri window panel like Casier.
 - Daemon (`fili-mail daemon`): IMAP IDLE where available, notifications over D-Bus, unread counter for the bar.
 - Menu exposed to the fili-bar (`fili-mail ctl action NAME`), settings in `~/.config/filigrane/fili-mail.toml`.
@@ -37,10 +39,12 @@ launch). Kept from release to release to spot a version that gets heavier.
 
 | Version | Window RAM (RSS) | Window CPU | Daemon RAM (RSS) | Daemon CPU |
 |---------|------------------|------------|------------------|------------|
+| 1.4.0   | 176 MB           | 0.3 %      | 47 MB            | 0.2 %      |
 | 1.3.0   | 157 MB           | 1.2 %      | 41 MB            | 0.2 %      |
 | 1.2.0   | 214 MB           | 0.7 %      | 30 MB            | 0.1 %      |
 
-Earlier versions were not measured.
+Earlier versions were not measured. 1.4.0: window CPU is the average since launch (1 h 19 min, idle at the time
+of measuring); the daemon figures come from a daemon started before the update (same engine, 4 days of uptime).
 
 ## Google sign-in
 
