@@ -236,6 +236,10 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "aboutLogo"]
         fn about_logo(self: &Facteur) -> QString;
+        // The mailto: link the window was started with (once; empty: none)
+        #[qinvokable]
+        #[cxx_name = "takeMailto"]
+        fn take_mailto(self: &Facteur) -> QString;
     }
 
     impl cxx_qt::Initialize for Facteur {}
@@ -1006,6 +1010,13 @@ impl qobject::Facteur {
         QString::from(&rows.to_string())
     }
 
+    pub fn take_mailto(&self) -> QString {
+        let url = env::var("FILI_MAILTO").unwrap_or_default();
+        // SAFETY: only the interface thread calls this, once, and nothing else reads the variable
+        unsafe { env::remove_var("FILI_MAILTO") };
+        QString::from(&url)
+    }
+
     pub fn about_logo(&self) -> QString {
         let home = env::var("HOME").unwrap_or_default();
         let shade = if self.light { "blanc" } else { "ardoise" };
@@ -1104,6 +1115,7 @@ async fn send_message(session: &Session, account: &str, fields: &str) -> Result<
         "bcc": address_list(&text("bcc")),
         "subject": text("subject"),
         "body": text("body"),
+        "html": text("html"),
         "attachments": attachments_with_size(&fields["attachments"]),
         "inReplyTo": text("inReplyTo"),
         "references": text("references"),

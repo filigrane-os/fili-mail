@@ -13,6 +13,7 @@ fn request() -> SendRequest {
         bcc: vec![],
         subject: "Plan".into(),
         body: "Line one\nLine two\n".into(),
+        html: String::new(),
         attachments: vec![],
         execute: false,
         send_id: None,

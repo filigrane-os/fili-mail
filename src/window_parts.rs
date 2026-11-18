@@ -44,6 +44,11 @@ pub fn shown(key: &str, global: &str, user: &str, args: &[String]) -> bool {
     flag.or_else(|| setting(user, key)).or_else(|| setting(global, key)).unwrap_or(true)
 }
 
+/// A `mailto:` link given on the command line (the desktop's mail handler): it opens a new message.
+pub fn is_mailto(arg: &str) -> bool {
+    arg.get(..7).is_some_and(|p| p.eq_ignore_ascii_case("mailto:")) && arg.len() <= 4000 && !arg.chars().any(char::is_control)
+}
+
 /// The window flags of the command line (`fili-mail --no-header`): they open the window like no argument does.
 pub fn is_flag(arg: &str) -> bool {
     matches!(arg, "--header" | "--no-header" | "--footer" | "--no-footer")
@@ -101,5 +106,12 @@ mod tests {
     fn window_flags_are_recognised() {
         assert!(is_flag("--no-footer") && is_flag("--header"));
         assert!(!is_flag("--version") && !is_flag("ctl"));
+    }
+
+    #[test]
+    fn mailto_links_are_recognised() {
+        assert!(is_mailto("mailto:a@example.org?subject=Hi") && is_mailto("MAILTO:a@example.org"));
+        assert!(!is_mailto("https://example.org") && !is_mailto("mailto") && !is_mailto("mailto:a
+b") && !is_mailto("é"));
     }
 }

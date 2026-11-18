@@ -137,3 +137,20 @@ fn markup_in_the_plain_alternative_is_read_from_the_html_part() {
     assert_eq!(body["source"], "plain");
     assert_eq!(body["text"], only);
 }
+
+// A message written as HTML goes out as text + HTML alternatives, the text one being the body field.
+#[test]
+fn html_body_goes_out_as_text_and_html_alternatives() {
+    let raw = super::compose::build(&serde_json::json!({
+        "to": "one@example.org", "subject": "Hi", "body": "Hello bold",
+        "bodyHtml": "<p>Hello <b>bold</b></p>",
+    }))
+    .unwrap();
+    let bytes = URL_SAFE_NO_PAD.decode(raw["raw"].as_str().unwrap()).unwrap();
+    let parsed = mailparse::parse_mail(&bytes).unwrap();
+    assert_eq!(parsed.ctype.mimetype, "multipart/alternative");
+    assert_eq!(parsed.subparts[0].ctype.mimetype, "text/plain");
+    assert_eq!(parsed.subparts[0].get_body().unwrap().trim(), "Hello bold");
+    assert_eq!(parsed.subparts[1].ctype.mimetype, "text/html");
+    assert_eq!(parsed.subparts[1].get_body().unwrap(), "<p>Hello <b>bold</b></p>");
+}

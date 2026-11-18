@@ -716,7 +716,7 @@ mod tests {
                     let request = crate::mail::SendRequest {
                         account: crate::mail::Account { id: format!("{}:me@example.org", provider.id()), provider },
                         from: from.into(), to: vec!["recipient@example.org".into()], cc: vec![], bcc: vec![],
-                        subject: "Synthetic preview".into(), body: "Line one\nLine two\n".into(),
+                        subject: "Synthetic preview".into(), body: "Line one\nLine two\n".into(), html: String::new(),
                         attachments: vec![], execute: false, send_id: None, in_reply_to: String::new(), references: String::new(),
                     };
                     let prepared = crate::mail::send::prepare(&request, &rows).unwrap();
@@ -747,7 +747,7 @@ mod tests {
                 let request = crate::mail::SendRequest {
                     account: crate::mail::Account { id: format!("{}:me@example.org", provider.id()), provider },
                     from: "alias@example.org".into(), to: vec!["recipient@example.org".into()], cc: vec![], bcc: vec![],
-                    subject: "Synthetic preview".into(), body: "Body".into(), attachments: vec![], execute: false, send_id: None, in_reply_to: String::new(), references: String::new(),
+                    subject: "Synthetic preview".into(), body: "Body".into(), html: String::new(), attachments: vec![], execute: false, send_id: None, in_reply_to: String::new(), references: String::new(),
                 };
                 assert!(crate::mail::send::prepare(&request, &rows).is_err(), "{name:?}");
             }

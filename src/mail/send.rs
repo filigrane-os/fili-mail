@@ -169,7 +169,7 @@ fn attachment(input: &super::AttachmentInput, total: &mut usize) -> Result<Value
 pub(crate) fn prepare(request: &SendRequest, aliases: &Value) -> Result<Prepared> {
     header(&request.from)?;
     header(&request.subject)?;
-    if request.body.len() > MAX_BODY || request.body.contains('\0') {
+    if request.body.len() > MAX_BODY || request.body.contains('\0') || request.html.len() > MAX_BODY || request.html.contains('\0') {
         return Err("mail_send_invalid_body");
     }
     if request.attachments.len() > MAX_ATTACHMENTS {
@@ -237,7 +237,7 @@ pub(crate) fn prepare(request: &SendRequest, aliases: &Value) -> Result<Prepared
         .collect::<Result<Vec<_>>>()?;
     Ok(Prepared {
         account: request.account.clone(),
-        fields: json!({"from":email,"fromName":name,"to":to.join(", "),"cc":cc.join(", "),"bcc":bcc.join(", "),"subject":request.subject,"body":request.body,"attachments":attachments,"inReplyTo":request.in_reply_to,"references":request.references}),
+        fields: json!({"from":email,"fromName":name,"to":to.join(", "),"cc":cc.join(", "),"bcc":bcc.join(", "),"subject":request.subject,"body":request.body,"bodyHtml":request.html,"attachments":attachments,"inReplyTo":request.in_reply_to,"references":request.references}),
         preview: json!({"dryRun":true,"executed":false,"accountId":request.account.id,"from":display(email,name),"to":to,"cc":cc,"bcc":bcc,"subject":request.subject,"body":request.body,"attachments":attachments.iter().map(|file|json!({"name":file["filename"],"size":file["size"]})).collect::<Vec<_>>()}),
     })
 }

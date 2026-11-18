@@ -399,8 +399,13 @@ ApplicationWindow {
 
     ListModel { id: messages }
 
-    function quoted(text) {
-        return text.split("\n").map(l => l === "" ? ">" : "> " + l).join("\n");
+    // The message answered, kept apart from the reply (the card hides it behind a "…" button and adds it when sending)
+    function quoteOf(s) {
+        return {
+            quoteHeader: Facteur.tr("On %1, %2 wrote:").replace("%1", s.fullTime).replace("%2", sender()),
+            quoteText: reader.body,
+            quoteHtml: reader.html
+        };
     }
     function sender() {
         const f = reader.summary.from;
@@ -415,9 +420,9 @@ ApplicationWindow {
             const s = reader.summary;
             draft = {
                 to: s.from.email,
-                subject: /^re:/i.test(s.subject) ? s.subject : "Re: " + s.subject,
-                body: "\n\n" + Facteur.tr("%1 wrote:").replace("%1", sender()) + "\n" + quoted(reader.body)
+                subject: /^re:/i.test(s.subject) ? s.subject : "Re: " + s.subject
             };
+            Object.assign(draft, quoteOf(s));
         } else if (kind === "replyall") {
             const s = reader.summary;
             const self = selectedRef.acct.replace(/^[a-z]+:/, "").toLowerCase();
@@ -426,9 +431,9 @@ ApplicationWindow {
             draft = {
                 to: [s.from.email].concat(others.filter(a => (s.to || []).includes(a)).map(a => a.email)).join(", "),
                 cc: others.filter(a => !(s.to || []).includes(a)).map(a => a.email).join(", "),
-                subject: /^re:/i.test(s.subject) ? s.subject : "Re: " + s.subject,
-                body: "\n\n" + Facteur.tr("%1 wrote:").replace("%1", sender()) + "\n" + quoted(reader.body)
+                subject: /^re:/i.test(s.subject) ? s.subject : "Re: " + s.subject
             };
+            Object.assign(draft, quoteOf(s));
         } else if (kind === "forward") {
             const s = reader.summary;
             draft = {
@@ -443,6 +448,24 @@ ApplicationWindow {
             draft.references = ((s.inReplyTo || "") + " " + (s.messageId || "")).trim();
         }
         openDraft(kind === "new" ? account : selectedRef.acct, draft, "");
+    }
+
+    // A mailto: link (the desktop's mail handler): a new message with its recipients, subject and text
+    function openMailto(url) {
+        const acc = account !== "" ? account : (accounts.length > 0 ? accounts[0].id : "");
+        if (acc === "") return;
+        const dec = t => { try { return decodeURIComponent(t) } catch (e) { return t } };
+        const rest = url.replace(/^mailto:/i, "");
+        const cut = rest.indexOf("?");
+        const draft = { to: dec(cut < 0 ? rest : rest.slice(0, cut)) };
+        for (const pair of (cut < 0 ? "" : rest.slice(cut + 1)).split("&")) {
+            const eq = pair.indexOf("=");
+            if (eq < 0) continue;
+            const key = pair.slice(0, eq).toLowerCase(), value = dec(pair.slice(eq + 1));
+            if (key === "to") draft.to = draft.to ? draft.to + ", " + value : value;
+            else if (key === "cc" || key === "bcc" || key === "subject" || key === "body") draft[key] = value;
+        }
+        openDraft(acc, draft, "");
     }
 
     function newKey() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6) }
@@ -958,6 +981,7 @@ ApplicationWindow {
         }
         // Menu of the fili-bar (fili-mail ctl action NAME)
         function onCommand(name) {
+            if (name.startsWith("mailto:")) { win.openMailto(name); return }
             const boxes = { "inbox": "inbox", "all-inboxes": "all", "all-unread": "allunread", "unread-box": "unread", "starred": "starred", "sent": "sent", "drafts": "drafts", "archive-box": "archive", "spam-box": "spam", "trash-box": "trash" };
             const onMessage = !win.adding && !win.composing && win.selectedId !== "";
             if (name === "about") aboutCard.show();
@@ -1117,6 +1141,8 @@ ApplicationWindow {
         // The window opens on Inbox > All: the inboxes of every account together
         if (accounts.length > 0) mailbox = "all";
         restoreDrafts();
+        const link = Facteur.takeMailto();
+        if (link !== "") openMailto(link);
         visit();
         refresh();
     }

@@ -26,7 +26,10 @@ fn dir() -> Option<PathBuf> {
 
 fn answer(request: &str) -> (String, Option<String>) {
     let (verb, name) = request.trim().split_once('\t').unwrap_or((request.trim(), ""));
-    if verb == "action" && ACTIONS.contains(&name) {
+    if verb == "mailto" && fili_mail::window_parts::is_mailto(name) {
+        // The interface parses the link and opens a new message with it
+        ("{\"ok\":true}".into(), Some(name.to_owned()))
+    } else if verb == "action" && ACTIONS.contains(&name) {
         ("{\"ok\":true}".into(), Some(name.to_owned()))
     } else if verb == "action" {
         (format!("{{\"ok\":false,\"error\":\"unknown action: {}\"}}", name.replace(['"', '\\'], "")), None)
@@ -100,6 +103,20 @@ pub fn focus_existing() -> bool {
     true
 }
 
+/// Hands a `mailto:` link to the open window (a new message there); false when no window is open.
+pub fn send_mailto(url: &str) -> bool {
+    let Some(sock) = target(None) else { return false };
+    let Ok(mut c) = UnixStream::connect(sock) else { return false };
+    c.set_read_timeout(Some(Duration::from_secs(5))).ok();
+    if c.write_all(format!("mailto\t{url}\n").as_bytes()).is_err() {
+        return false;
+    }
+    c.shutdown(std::net::Shutdown::Write).ok();
+    let mut reply = String::new();
+    let _ = c.read_to_string(&mut reply);
+    reply.starts_with("{\"ok\":true")
+}
+
 const USAGE: &str = "usage: fili-mail ctl [--pid PID] action NAME | actions";
 
 /// `fili-mail ctl ...` (arguments after `ctl`): prints the JSON answer; Err carries the reason.
@@ -128,6 +145,14 @@ pub fn run(args: &[String]) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mailto_is_forwarded_and_other_links_refused() {
+        let (reply, action) = answer("mailto\tmailto:a@example.org?subject=Hi\n");
+        assert_eq!(reply, "{\"ok\":true}");
+        assert_eq!(action.as_deref(), Some("mailto:a@example.org?subject=Hi"));
+        assert!(answer("mailto\thttps://example.org\n").1.is_none());
+    }
 
     #[test]
     fn known_action_is_forwarded() {

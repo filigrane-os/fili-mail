@@ -5,7 +5,17 @@ mod gui;
 fn main() {
     // No argument: the window (Facteur). Everything else is the command line and the daemon, which never start Qt.
     #[cfg(feature = "gui")]
-    if std::env::args().skip(1).all(|a| fili_mail::window_parts::is_flag(&a)) {
+    if std::env::args().skip(1).all(|a| fili_mail::window_parts::is_flag(&a) || fili_mail::window_parts::is_mailto(&a)) {
+        // A mailto: link (the desktop's mail handler): a new message, in the open window when there is one
+        let mailto = std::env::args().skip(1).find(|a| fili_mail::window_parts::is_mailto(a));
+        if let Some(url) = &mailto {
+            if ctl::send_mailto(url) {
+                ctl::focus_existing();
+                return;
+            }
+            // SAFETY: nothing else runs yet (single thread, before Qt starts); the window reads it once at start
+            unsafe { std::env::set_var("FILI_MAILTO", url) };
+        }
         if ctl::focus_existing() {
             return;
         }

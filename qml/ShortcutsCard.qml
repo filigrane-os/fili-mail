@@ -45,6 +45,7 @@ Rectangle {
             ["Ctrl+Enter", Facteur.tr("Send")],
             ["Ctrl+Shift+C  Ctrl+Shift+B", Facteur.tr("Add Cc, Bcc")],
             ["Ctrl+Shift+U", Facteur.tr("Attach files")],
+            ["Ctrl+Shift+H", Facteur.tr("Write as plain text or HTML")],
             ["Ctrl+M  Esc", Facteur.tr("Minimise, discard")]
         ] },
         { title: Facteur.tr("Other"), rows: [

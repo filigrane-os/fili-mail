@@ -1,10 +1,11 @@
 // New message, reply or forward: a card at the bottom right of the window (the message list stays visible behind it),
 // as mail clients do. Header with minimise, expand and close; From, To (with Cc / Bcc shown on demand), Subject,
-// plain-text body, attached files, and a footer with discard, attach and Send.
+// body written as rich text (HTML, the default) or as plain text (switchable), attached files, and a footer with discard, attach and Send.
 import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Dialogs
 import Fili.Mail
+import Fili.Html
 
 Rectangle {
     id: compose
@@ -36,6 +37,88 @@ Rectangle {
     property bool loaded: false
     property bool showCc: false
     property bool showBcc: false
+    // The body is edited as rich text (what you see is what is sent: text + HTML alternatives); false: plain text only
+    property bool html: true
+    function escapeHtml(t) { return t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") }
+    function paragraphs(t) {
+        return t.replace(/^\n+|\n+$/g, "").split(/\n{2,}/).filter(p => p.trim() !== "").map(p => "<p>" + escapeHtml(p).replace(/\n/g, "<br>\n") + "</p>").join("\n");
+    }
+    // Plain text to HTML: paragraphs, and the lines quoted with ">" (a reply) become a quotation block
+    function textToHtml(t) {
+        if (t.trim() === "") return "";
+        const lines = t.replace(/\r\n/g, "\n").split("\n");
+        const out = [];
+        // A message starting with a blank line keeps an empty line to type on, above the quotation
+        if (lines[0].trim() === "") out.push("<p><br></p>");
+        let cur = [], quote = false;
+        const flush = () => {
+            if (cur.length === 0) return;
+            const text = (quote ? cur.map(l => l.replace(/^\s*>[ ]?/, "")) : cur).join("\n");
+            const html = paragraphs(text);
+            if (html !== "") out.push(quote ? "<blockquote>" + html + "</blockquote>" : html);
+            cur = [];
+        };
+        for (const l of lines) {
+            const q = /^\s*>/.test(l);
+            if (q !== quote) { flush(); quote = q }
+            cur.push(l);
+        }
+        flush();
+        return out.join("\n");
+    }
+    // Message being answered: kept apart from what is typed, hidden behind a "…" button, appended when sending.
+    // quoteHeader: "On <date>, <sender> wrote:"; quoteText: the message as text; quoteHtml: its sanitized HTML (may be empty)
+    property string quoteHeader: ""
+    property string quoteText: ""
+    property string quoteHtml: ""
+    property bool quoteShown: false
+    readonly property bool hasQuote: quoteText !== "" || quoteHtml !== ""
+    // The quoted message as HTML (its own page when it has one, else its text in paragraphs)
+    function quoteBodyHtml() {
+        if (quoteHtml !== "") {
+            const m = /<body[^>]*>([\s\S]*)<\/body>/i.exec(quoteHtml);
+            return m ? m[1] : quoteHtml;
+        }
+        return paragraphs(quoteText);
+    }
+    function quotedText(t) { return t.split("\n").map(l => l === "" ? ">" : "> " + l).join("\n") }
+    // What goes out: the typed message followed by the quotation
+    function outgoing() {
+        const f = fields();
+        delete f.files;
+        if (!hasQuote) return f;
+        f.body = f.body.replace(/\s+$/, "") + "\n\n" + quoteHeader + "\n" + quotedText(quoteText);
+        if (html) {
+            const block = "<div>" + escapeHtml(quoteHeader) + "</div><blockquote style=\"margin:0 0 0 0.8ex;border-left:1px solid #ccc;padding-left:1ex\">" + quoteBodyHtml() + "</blockquote>";
+            const end = f.html.lastIndexOf("</body>");
+            f.html = end >= 0 ? f.html.slice(0, end) + block + f.html.slice(end) : f.html + block;
+        }
+        return f;
+    }
+    // The typed text, whatever the mode
+    function plainBody() { return html ? body.getText(0, body.length).replace(/[\u2028\u2029]/g, "\n") : body.text }
+    // The editor's HTML without its own font choices (family, size): the reader's defaults apply
+    function cleanHtml(h) {
+        return h.replace(/font-family:[^;"]*;\s*/g, "").replace(/font-size:[^;"]*;\s*/g, "").replace(/font-weight:400;\s*/g, "").replace(/font-style:normal;\s*/g, "");
+    }
+    // Switching keeps what was typed (the formatting is lost going to plain text)
+    function setHtml(on) {
+        if (on === html) return;
+        const plain = plainBody();
+        html = on;
+        body.text = on ? textToHtml(plain) : plain;
+        body.forceActiveFocus();
+        changed();
+    }
+    // Bold, italic, underline on the selection (or on what is typed next)
+    function toggleFormat(prop) {
+        const f = body.cursorSelection.font;
+        const next = {};
+        next[prop] = !f[prop];
+        body.cursorSelection.font = Qt.font(next);
+        body.forceActiveFocus();
+    }
+    function align(a) { body.cursorSelection.alignment = a; body.forceActiveFocus() }
     function addFiles(urls) {
         const next = files.slice();
         for (const u of urls) {
@@ -100,11 +183,11 @@ Rectangle {
     signal edited(var fields)
 
     function fields() {
-        return { to: to.text, cc: cc.text, bcc: bcc.text, subject: subject.text, body: body.text, inReplyTo: inReplyTo, references: references, files: files };
+        return { to: to.text, cc: cc.text, bcc: bcc.text, subject: subject.text, body: plainBody(), html: html ? cleanHtml(body.text) : "", textMode: !html, quoteHeader: quoteHeader, quoteText: quoteText, quoteHtml: quoteHtml, inReplyTo: inReplyTo, references: references, files: files };
     }
     // Nothing typed: no draft to keep
     function isEmpty() {
-        return to.text.trim() === "" && cc.text.trim() === "" && bcc.text.trim() === "" && subject.text.trim() === "" && body.text.trim() === "" && files.length === 0;
+        return to.text.trim() === "" && cc.text.trim() === "" && bcc.text.trim() === "" && subject.text.trim() === "" && plainBody().trim() === "" && files.length === 0;
     }
     function changed() { if (loaded) { savedAt = ""; keep.restart() } }
     Timer { id: keep; interval: 1500; onTriggered: if (!compose.busy) compose.edited(compose.fields()) }
@@ -119,7 +202,12 @@ Rectangle {
         showCc = cc.text !== "";
         showBcc = bcc.text !== "";
         subject.text = draft.subject || "";
-        body.text = draft.body || "";
+        quoteHeader = draft.quoteHeader || "";
+        quoteText = draft.quoteText || "";
+        quoteHtml = draft.quoteHtml || "";
+        quoteShown = false;
+        html = !draft.textMode;
+        body.text = !html ? (draft.body || "") : (draft.html || textToHtml(draft.body || ""));
         inReplyTo = draft.inReplyTo || "";
         references = draft.references || "";
         files = draft.files || [];
@@ -134,7 +222,9 @@ Rectangle {
             error = Facteur.tr("Add at least one recipient.");
             return;
         }
-        submitted({ to: to.text, cc: cc.text, bcc: bcc.text, subject: subject.text, body: body.text, inReplyTo: inReplyTo, references: references, attachments: files.map(f => ({ path: f.path, name: f.name, size: 0 })) });
+        const f = outgoing();
+        f.attachments = files.map(a => ({ path: a.path, name: a.name, size: 0 }));
+        submitted(f);
     }
 
     // The card sits in a dock: its room is `room` (the window) minus the margins
@@ -152,6 +242,7 @@ Rectangle {
     Shortcut { sequences: ["Ctrl+Return", "Ctrl+Enter"]; enabled: compose.current && !compose.minimized; onActivated: compose.submit() }
     Shortcut { sequences: ["Ctrl+Shift+C"]; enabled: compose.current && !compose.minimized; onActivated: { compose.showCc = true; cc.forceActiveFocus() } }
     Shortcut { sequences: ["Ctrl+Shift+B"]; enabled: compose.current && !compose.minimized; onActivated: { compose.showBcc = true; bcc.forceActiveFocus() } }
+    Shortcut { sequences: ["Ctrl+Shift+H"]; enabled: compose.current && !compose.minimized; onActivated: compose.setHtml(!compose.html) }
     Shortcut { sequences: ["Ctrl+M"]; enabled: compose.current; onActivated: compose.minimizeToggled() }
 
     // A field of the card: no frame, a line under it
@@ -314,14 +405,33 @@ Rectangle {
         }
     }
 
+    // Formatting bar (rich text mode)
+    Row {
+        id: fmtBar
+        visible: compose.html && !compose.minimized
+        anchors { left: parent.left; top: form.bottom; leftMargin: FiliTheme.margin; topMargin: FiliTheme.space1 }
+        height: visible ? 24 : 0
+        spacing: 2
+        TextButton { label: "B"; primary: body.cursorSelection.font.bold; onClicked: compose.toggleFormat("bold") }
+        TextButton { label: "I"; primary: body.cursorSelection.font.italic; onClicked: compose.toggleFormat("italic") }
+        TextButton { label: "U"; primary: body.cursorSelection.font.underline; onClicked: compose.toggleFormat("underline") }
+        Item { width: FiliTheme.space2; height: 1 }
+        TextButton { label: "←"; onClicked: compose.align(Qt.AlignLeft) }
+        TextButton { label: "↔"; onClicked: compose.align(Qt.AlignHCenter) }
+        TextButton { label: "→"; onClicked: compose.align(Qt.AlignRight) }
+    }
+    Shortcut { sequence: "Ctrl+B"; enabled: compose.current && !compose.minimized && compose.html; onActivated: compose.toggleFormat("bold") }
+    Shortcut { sequence: "Ctrl+I"; enabled: compose.current && !compose.minimized && compose.html; onActivated: compose.toggleFormat("italic") }
+    Shortcut { sequence: "Ctrl+U"; enabled: compose.current && !compose.minimized && compose.html; onActivated: compose.toggleFormat("underline") }
+
     // Body
     Flickable {
         id: bodyScroll
         visible: !compose.minimized
-        anchors { left: parent.left; right: parent.right; top: form.bottom; bottom: chips.visible ? chips.top : footer.top; leftMargin: FiliTheme.margin; rightMargin: FiliTheme.margin; topMargin: FiliTheme.space2; bottomMargin: FiliTheme.space2 }
+        anchors { left: parent.left; right: parent.right; top: fmtBar.visible ? fmtBar.bottom : form.bottom; bottom: chips.visible ? chips.top : footer.top; leftMargin: FiliTheme.margin; rightMargin: FiliTheme.margin; topMargin: FiliTheme.space2; bottomMargin: FiliTheme.space2 }
         clip: true
         contentWidth: width
-        contentHeight: Math.max(height, body.implicitHeight)
+        contentHeight: Math.max(height, body.height + quoteBox.height + FiliTheme.space2)
         boundsBehavior: Flickable.StopAtBounds
         KineticScroll {}
         // The caret stays in view while typing
@@ -332,10 +442,11 @@ Rectangle {
         TextArea {
             id: body
             width: bodyScroll.width - 14
-            height: bodyScroll.height
+            height: Math.max(implicitHeight, bodyScroll.height - quoteBox.height - FiliTheme.space2)
             enabled: !compose.busy
             wrapMode: TextEdit.Wrap
             font.family: FiliTheme.font
+            textFormat: compose.html ? TextEdit.RichText : TextEdit.PlainText
             font.pixelSize: FiliTheme.size
             color: FiliTheme.text
             selectionColor: FiliTheme.surfaceActive
@@ -346,6 +457,79 @@ Rectangle {
             onTextChanged: compose.changed()
             KeyNavigation.priority: KeyNavigation.BeforeItem
             KeyNavigation.tab: to
+        }
+        // The message answered: a "…" button, which opens it below what is typed
+        Column {
+            id: quoteBox
+            visible: compose.hasQuote
+            y: body.height + FiliTheme.space2
+            width: bodyScroll.width - 14
+            height: visible ? implicitHeight : 0
+            spacing: FiliTheme.space2
+            Rectangle {
+                width: 32
+                height: 20
+                radius: FiliTheme.radiusControl
+                color: dots.pressed ? FiliTheme.surfaceActive : dots.containsMouse ? FiliTheme.surfaceHover : "transparent"
+                border.width: FiliTheme.borderWidth
+                border.color: FiliTheme.border
+                Icon { anchors.centerIn: parent; name: "more"; size: 14; color: FiliTheme.textSecondary }
+                MouseArea { id: dots; anchors.fill: parent; hoverEnabled: true; onClicked: compose.quoteShown = !compose.quoteShown }
+                ToolTip.visible: dots.containsMouse
+                ToolTip.text: Facteur.tr("Show the quoted message")
+            }
+            Text {
+                visible: compose.quoteShown
+                width: parent.width
+                text: compose.quoteHeader
+                wrapMode: Text.Wrap
+                font.family: FiliTheme.font
+                font.pixelSize: FiliTheme.size
+                color: FiliTheme.textSecondary
+            }
+            // Quotation: bar on the left, the original page on paper (senders choose their colors for a white page)
+            Item {
+                id: quote
+                visible: compose.quoteShown
+                width: parent.width
+                height: visible ? (compose.quoteHtml !== "" ? page.contentHeight + 2 * FiliTheme.space2 : plain.implicitHeight + 2 * FiliTheme.space2) : 0
+                Rectangle { id: bar; width: 3; height: parent.height; radius: 1; color: FiliTheme.border }
+                Rectangle {
+                    id: paper
+                    anchors { left: bar.right; leftMargin: FiliTheme.space2; right: parent.right }
+                    height: parent.height
+                    radius: FiliTheme.radiusControl
+                    color: compose.quoteHtml !== "" ? "#ffffff" : "transparent"
+                    clip: true
+                    // Only the visible slice of the page is drawn: the view follows the scroll
+                    readonly property real sliceTop: Math.max(0, Math.min(page.contentHeight, bodyScroll.contentY - quoteBox.y - quote.y - FiliTheme.space2))
+                    HtmlView {
+                        id: page
+                        visible: compose.quoteHtml !== ""
+                        x: FiliTheme.space2
+                        y: FiliTheme.space2 + paper.sliceTop
+                        width: parent.width - 2 * FiliTheme.space2
+                        height: Math.max(1, Math.min(bodyScroll.height, page.contentHeight - paper.sliceTop))
+                        viewportY: paper.sliceTop
+                        html: compose.quoteShown ? compose.quoteHtml : ""
+                        fontFamily: FiliTheme.font
+                        fontSize: FiliTheme.size
+                        onLinkActivated: url => Qt.openUrlExternally(url)
+                    }
+                    Text {
+                        id: plain
+                        visible: compose.quoteHtml === ""
+                        x: FiliTheme.space2
+                        y: FiliTheme.space2
+                        width: parent.width - 2 * FiliTheme.space2
+                        text: compose.quoteText
+                        wrapMode: Text.Wrap
+                        font.family: FiliTheme.font
+                        font.pixelSize: FiliTheme.size
+                        color: FiliTheme.textSecondary
+                    }
+                }
+            }
         }
     }
     FiliScrollBar {
@@ -410,6 +594,10 @@ Rectangle {
             spacing: 2
             IconButton { name: "trash"; tip: Facteur.tr("Discard"); onClicked: if (!compose.busy) compose.discarded() }
             IconButton { name: "paperclip"; tip: Facteur.tr("Attach files"); onClicked: if (!compose.busy) picker.open() }
+            Item { width: FiliTheme.space2; height: 1 }
+            // Body format: rich text (HTML) or plain text
+            TextButton { anchors.verticalCenter: parent.verticalCenter; label: Facteur.tr("Text"); primary: !compose.html; onClicked: if (!compose.busy) compose.setHtml(false) }
+            TextButton { anchors.verticalCenter: parent.verticalCenter; label: "HTML"; primary: compose.html; onClicked: if (!compose.busy) compose.setHtml(true) }
         }
         Text {
             anchors { right: sendButton.left; rightMargin: FiliTheme.space3; verticalCenter: parent.verticalCenter }
