@@ -39,11 +39,13 @@ launch). Kept from release to release to spot a version that gets heavier.
 
 | Version | Window RAM (RSS) | Window CPU | Daemon RAM (RSS) | Daemon CPU |
 |---------|------------------|------------|------------------|------------|
+| 1.4.1   | 202 MB           | 0.3 %      | 40 MB            | 0.2 %      |
 | 1.4.0   | 176 MB           | 0.3 %      | 47 MB            | 0.2 %      |
 | 1.3.0   | 157 MB           | 1.2 %      | 41 MB            | 0.2 %      |
 | 1.2.0   | 214 MB           | 0.7 %      | 30 MB            | 0.1 %      |
 
-Earlier versions were not measured. 1.4.0: window CPU is the average since launch (1 h 19 min, idle at the time
+Earlier versions were not measured. 1.4.1: window CPU measured over 30 s idle, 4 minutes after launch (the average
+since launch is higher, the list loads). 1.4.0: window CPU is the average since launch (1 h 19 min, idle at the time
 of measuring); the daemon figures come from a daemon started before the update (same engine, 4 days of uptime).
 
 ## Google sign-in
