@@ -23,10 +23,10 @@ all: build
 build:
 	$(CARGO) build --release --locked
 
-# The engine tests link without Qt. 24 of them compare with the JavaScript implementation Omamail had and need node;
-# they fail without it (known, to be removed with the old UI).
+# The engine tests link without Qt. They run in debug with the test credential store: the integration tests of tests/cli.rs
+# need it (it refuses release builds), otherwise they look for a Secret Service and stop at auth_signed_out.
 test:
-	$(CARGO) test --release --locked --no-default-features
+	$(CARGO) test --locked --no-default-features --features integration-test-credentials
 
 install: build
 	install -Dm755 $(TARGET_DIR)/release/fili-mail $(DESTDIR)$(BINDIR)/fili-mail

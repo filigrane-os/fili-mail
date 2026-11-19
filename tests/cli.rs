@@ -1802,7 +1802,9 @@ async fn root_list_and_read_use_active_account_and_safe_provider_results() {
             assert_eq!(value["result"]["message"]["id"], "7:INBOX");
             assert_eq!(
                 value["result"]["message"]["nativeContent"]["body"]["text"],
-                "safe body 工"
+                // The HTML alternative is preferred: its text, a placeholder for the remote image (no tracker URL) and the
+                // text of the unsafe `javascript:` link without its target
+                "safe body 工\nUnsubscribe[image 1]Bad"
             );
             assert_eq!(
                 value["result"]["message"]["links"],
@@ -1816,7 +1818,15 @@ async fn root_list_and_read_use_active_account_and_safe_provider_results() {
                     "urls":["https://news.example.org/leave","mailto:leave@example.org"],"oneClick":true
                 })
             );
-            assert!(!value.to_string().contains("tracker.example"));
+            // The remote picture is only listed for the on-request loader (nativeRender.remoteImageSources); no other part
+            // of the result (text, links, render tree) carries its URL
+            assert_eq!(
+                value["result"]["message"]["nativeRender"]["remoteImageSources"],
+                serde_json::json!(["https://tracker.example/pixel"])
+            );
+            let mut readable = value.clone();
+            readable["result"]["message"]["nativeRender"]["remoteImageSources"] = serde_json::json!([]);
+            assert!(!readable.to_string().contains("tracker.example"));
             assert!(!value.to_string().contains("javascript:"));
         } else {
             assert_eq!(value["result"]["messages"][0]["id"], "7:INBOX");
