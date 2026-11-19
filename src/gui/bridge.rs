@@ -72,6 +72,10 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "footer"]
         fn footer(self: &Facteur) -> bool;
+        // Header and footer take the accent colour while the app waits for the user ([window] attention, --no-attention)
+        #[qinvokable]
+        #[cxx_name = "attention"]
+        fn attention(self: &Facteur) -> bool;
         // Interface state kept between runs (~/.local/state/filigrane/mail/ui, lines key=value)
         #[qinvokable]
         #[cxx_name = "uiGet"]
@@ -494,6 +498,10 @@ impl qobject::Facteur {
 
     pub fn footer(&self) -> bool {
         fili_mail::window_parts::shown_now("footer")
+    }
+
+    pub fn attention(&self) -> bool {
+        fili_mail::window_parts::shown_now("attention")
     }
 
     pub fn ui_get(&self, key: &QString) -> QString {

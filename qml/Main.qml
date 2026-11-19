@@ -17,10 +17,24 @@ ApplicationWindow {
     // shows the footer for its duration. The bar menu entries "Show Header" / "Show Status Bar" change them for this window only
     property bool showHeader: Facteur.header()
     property bool showFooter: Facteur.footer()
+    // The window waits for the user (attentionText says why): header and footer take the accent colour when the setting is on
+    // (Settings > Appearance, `fili-theme attention`). Raised by attend() (new mail while the window is not the active one),
+    // lowered by a click on the bands, by an action or when the window is activated.
+    property bool attentionOn: Facteur.attention()
+    property string attentionText: ""
+    readonly property bool attending: attentionOn && attentionText !== ""
+    // Text on the accent: dark or white, whichever reads better
+    readonly property color onAccent: (0.299 * FiliTheme.accentColor.r + 0.587 * FiliTheme.accentColor.g + 0.114 * FiliTheme.accentColor.b) > 0.55 ? "#14181f" : "#ffffff"
+    // Controls of the header while it is in the accent colour: a tint of the text colour instead of the usual surfaces
+    readonly property color tintSurface: FiliTheme.alpha(onAccent, 0.12)
+    readonly property color tintHover: FiliTheme.alpha(onAccent, 0.2)
+    readonly property color tintBorder: FiliTheme.alpha(onAccent, 0.3)
+    function attend(text) { attentionText = text || Facteur.tr("Needs your attention"); }
+    onActiveChanged: if (active) attentionText = ""
     property bool searchOpen: false
     readonly property bool mainView: !adding && accounts.length > 0
     readonly property bool headerShown: mainView && (showHeader || searchOpen || searchInput.text !== "")
-    readonly property bool footerShown: mainView && (showFooter || notice !== "")
+    readonly property bool footerShown: mainView && (showFooter || notice !== "" || attending)
     function openSearch() {
         searchOpen = true;
         searchInput.forceActiveFocus();
@@ -30,6 +44,7 @@ ApplicationWindow {
         function onThemeChanged() {
             win.showHeader = Facteur.header();
             win.showFooter = Facteur.footer();
+            win.attentionOn = Facteur.attention();
         }
     }
     // Fonts embedded in the binary (fonts/, licenses/): same look on every distribution
@@ -963,6 +978,10 @@ ApplicationWindow {
         target: Facteur
         function onUnreadCounted(acc, count) {
             const next = Object.assign({}, win.unreadCounts);
+            // More unread than before in an account already counted, while another window is in front: new mail
+            const before = win.unreadCounts[acc];
+            if (count >= 0 && before !== undefined && count > before && !win.active)
+                win.attend(Facteur.tr("New mail") + (count - before > 1 ? " (" + (count - before) + ")" : "") + "  ·  " + acc.replace(/^[a-z]+:/, ""));
             if (count >= 0) next[acc] = count;
             win.unreadCounts = next;
         }
@@ -1265,16 +1284,17 @@ ApplicationWindow {
         visible: win.headerShown
         width: parent.width
         height: win.headerShown ? FiliTheme.toolbarHeight : 0
-        color: FiliTheme.background
+        color: win.attending ? FiliTheme.accentColor : FiliTheme.background
+        MouseArea { anchors.fill: parent; z: -1; enabled: win.attending; onClicked: win.attentionText = "" }
         Rectangle {
             x: FiliTheme.margin
             anchors.verticalCenter: nav.verticalCenter
             width: nav.width + 2 * FiliTheme.space1 + 2
             height: 30
             radius: 8
-            color: FiliTheme.surface
+            color: win.attending ? win.tintSurface : FiliTheme.surface
             border.width: FiliTheme.borderWidth
-            border.color: FiliTheme.border
+            border.color: win.attending ? win.tintBorder : FiliTheme.border
         }
         Row {
             id: nav
@@ -1282,12 +1302,12 @@ ApplicationWindow {
             anchors.verticalCenter: parent.verticalCenter
             spacing: FiliTheme.space1
             readonly property int at: { const n = messages.count + win.listRev; return win.selectedId === "" ? -1 : win.rowOf(win.selectedId); }
-            IconButton { name: "chevron-left"; tip: Facteur.tr("Previous message"); enabledState: parent.at > 0; onClicked: win.step(-1) }
-            IconButton { name: "chevron-right"; tip: Facteur.tr("Next message"); enabledState: parent.at < messages.count - 1 && messages.count > 0; onClicked: win.step(1) }
-            Rectangle { width: 1; height: 18; anchors.verticalCenter: parent.verticalCenter; color: FiliTheme.border }
-            IconButton { name: "compose"; tip: Facteur.tr("New message"); onClicked: win.startCompose("new") }
-            IconButton { name: "mail-unread"; toggled: listBar.unreadOnly; tip: Facteur.tr("Unread only"); onClicked: listBar.unreadOnly = !listBar.unreadOnly }
-            IconButton { name: "refresh"; tip: Facteur.tr("Refresh"); onClicked: win.refresh() }
+            IconButton { accented: win.attending; ink: win.onAccent; name: "chevron-left"; tip: Facteur.tr("Previous message"); enabledState: parent.at > 0; onClicked: win.step(-1) }
+            IconButton { accented: win.attending; ink: win.onAccent; name: "chevron-right"; tip: Facteur.tr("Next message"); enabledState: parent.at < messages.count - 1 && messages.count > 0; onClicked: win.step(1) }
+            Rectangle { width: 1; height: 18; anchors.verticalCenter: parent.verticalCenter; color: win.attending ? win.tintBorder : FiliTheme.border }
+            IconButton { accented: win.attending; ink: win.onAccent; name: "compose"; tip: Facteur.tr("New message"); onClicked: win.startCompose("new") }
+            IconButton { accented: win.attending; ink: win.onAccent; name: "mail-unread"; toggled: listBar.unreadOnly; tip: Facteur.tr("Unread only"); onClicked: listBar.unreadOnly = !listBar.unreadOnly }
+            IconButton { accented: win.attending; ink: win.onAccent; name: "refresh"; tip: Facteur.tr("Refresh"); onClicked: win.refresh() }
         }
         Column {
             anchors { left: nav.right; leftMargin: FiliTheme.space5; right: tools.left; rightMargin: FiliTheme.space3; verticalCenter: parent.verticalCenter }
@@ -1298,7 +1318,7 @@ ApplicationWindow {
                 font.family: FiliTheme.font
                 font.pixelSize: FiliTheme.size
                 font.weight: FiliTheme.weightAccent
-                color: FiliTheme.text
+                color: win.attending ? win.onAccent : FiliTheme.text
             }
             Text {
                 width: parent.width
@@ -1306,7 +1326,7 @@ ApplicationWindow {
                 elide: Text.ElideRight
                 font.family: FiliTheme.font
                 font.pixelSize: FiliTheme.sizeList
-                color: FiliTheme.textSecondary
+                color: win.attending ? FiliTheme.alpha(win.onAccent, 0.75) : FiliTheme.textSecondary
             }
         }
         Row {
@@ -1316,22 +1336,22 @@ ApplicationWindow {
             readonly property bool on: win.selectedId !== "" || win.checkedCount > 0
             readonly property bool unreadNow: win.checkedCount > 0 ? win.checkedAnyUnread : reader.unread
             readonly property bool starredNow: win.checkedCount > 0 ? win.checkedAllStarred : reader.starred
-            IconButton { visible: win.checkedCount > 0; name: parent.unreadNow ? "mail-open" : "mail"; tip: parent.unreadNow ? Facteur.tr("Mark as read") : Facteur.tr("Mark as unread"); enabledState: parent.on; onClicked: win.actOnSelection(parent.unreadNow ? "read" : "unread") }
-            IconButton { visible: win.checkedCount > 0; name: "archive"; tip: Facteur.tr("Archive message"); enabledState: parent.on; onClicked: win.actOnSelection("archive") }
-            IconButton { visible: win.checkedCount > 0; name: "trash"; tip: Facteur.tr("Move to trash"); enabledState: parent.on; onClicked: win.actOnSelection("trash") }
-            IconButton { visible: win.checkedCount > 0; name: "spam"; tip: Facteur.tr("Mark as spam"); enabledState: parent.on; onClicked: win.actOnSelection("spam") }
-            IconButton { visible: win.checkedCount > 0; name: "star"; filled: parent.starredNow; tip: parent.starredNow ? Facteur.tr("Remove star") : Facteur.tr("Star message"); enabledState: parent.on; onClicked: win.actOnSelection(parent.starredNow ? "unstar" : "star") }
-            Rectangle { visible: win.checkedCount > 0; width: 1; height: 18; anchors.verticalCenter: parent.verticalCenter; color: FiliTheme.border }
-            IconButton { name: "tabs"; toggled: win.categoryTabs; tip: win.categoryTabs ? Facteur.tr("Hide tabs") : Facteur.tr("Show tabs"); onClicked: win.toggleCategoryTabs() }
+            IconButton { accented: win.attending; ink: win.onAccent; visible: win.checkedCount > 0; name: parent.unreadNow ? "mail-open" : "mail"; tip: parent.unreadNow ? Facteur.tr("Mark as read") : Facteur.tr("Mark as unread"); enabledState: parent.on; onClicked: win.actOnSelection(parent.unreadNow ? "read" : "unread") }
+            IconButton { accented: win.attending; ink: win.onAccent; visible: win.checkedCount > 0; name: "archive"; tip: Facteur.tr("Archive message"); enabledState: parent.on; onClicked: win.actOnSelection("archive") }
+            IconButton { accented: win.attending; ink: win.onAccent; visible: win.checkedCount > 0; name: "trash"; tip: Facteur.tr("Move to trash"); enabledState: parent.on; onClicked: win.actOnSelection("trash") }
+            IconButton { accented: win.attending; ink: win.onAccent; visible: win.checkedCount > 0; name: "spam"; tip: Facteur.tr("Mark as spam"); enabledState: parent.on; onClicked: win.actOnSelection("spam") }
+            IconButton { accented: win.attending; ink: win.onAccent; visible: win.checkedCount > 0; name: "star"; filled: parent.starredNow; tip: parent.starredNow ? Facteur.tr("Remove star") : Facteur.tr("Star message"); enabledState: parent.on; onClicked: win.actOnSelection(parent.starredNow ? "unstar" : "star") }
+            Rectangle { visible: win.checkedCount > 0; width: 1; height: 18; anchors.verticalCenter: parent.verticalCenter; color: win.attending ? win.tintBorder : FiliTheme.border }
+            IconButton { accented: win.attending; ink: win.onAccent; name: "tabs"; toggled: win.categoryTabs; tip: win.categoryTabs ? Facteur.tr("Hide tabs") : Facteur.tr("Show tabs"); onClicked: win.toggleCategoryTabs() }
             Rectangle { // where the reader goes: auto, side, bottom
                 id: previewSwitch
                 anchors.verticalCenter: parent.verticalCenter
                 width: modes.width + 2 * FiliTheme.space1
                 height: 24
                 radius: FiliTheme.radiusControl
-                color: FiliTheme.background
+                color: win.attending ? win.tintSurface : FiliTheme.background
                 border.width: FiliTheme.borderWidth
-                border.color: FiliTheme.border
+                border.color: win.attending ? win.tintBorder : FiliTheme.border
                 Row {
                     id: modes
                     x: FiliTheme.space1
@@ -1349,8 +1369,8 @@ ApplicationWindow {
                             width: modelData.icon ? 26 : autoText.implicitWidth + 2 * FiliTheme.space3
                             height: 20
                             radius: FiliTheme.radiusControl
-                            color: on ? FiliTheme.surfaceActive : cellArea.containsMouse ? FiliTheme.surfaceHover : "transparent"
-                            Icon { visible: !!cell.modelData.icon; anchors.centerIn: parent; name: cell.modelData.icon || "layout-right"; size: 14; color: cell.on ? FiliTheme.accentColor : FiliTheme.text }
+                            color: on || cellArea.containsMouse ? (win.attending ? win.tintHover : on ? FiliTheme.surfaceActive : FiliTheme.surfaceHover) : "transparent"
+                            Icon { visible: !!cell.modelData.icon; anchors.centerIn: parent; name: cell.modelData.icon || "layout-right"; size: 14; color: win.attending ? win.onAccent : cell.on ? FiliTheme.accentColor : FiliTheme.text }
                             Text {
                                 id: autoText
                                 visible: !cell.modelData.icon
@@ -1359,7 +1379,7 @@ ApplicationWindow {
                                 font.family: FiliTheme.font
                                 font.pixelSize: FiliTheme.sizeSmall
                                 font.weight: cell.on ? FiliTheme.weightAccent : Font.Normal
-                                color: cell.on ? FiliTheme.accentColor : FiliTheme.text
+                                color: win.attending ? win.onAccent : cell.on ? FiliTheme.accentColor : FiliTheme.text
                             }
                             MouseArea { id: cellArea; anchors.fill: parent; hoverEnabled: true; onClicked: win.setPreviewMode(cell.modelData.key) }
                             ToolTip { visible: cellArea.containsMouse; delay: 600; text: cell.modelData.tip }
@@ -1382,7 +1402,7 @@ ApplicationWindow {
                 kind: "close"
                 width: 16
                 height: 16
-                color: closeArea.containsMouse ? "#ffffff" : FiliTheme.text
+                color: closeArea.containsMouse ? "#ffffff" : win.attending ? win.onAccent : FiliTheme.text
             }
             MouseArea { id: closeArea; anchors.fill: parent; hoverEnabled: true; onClicked: Qt.quit() }
             Accessible.role: Accessible.Button
@@ -1395,8 +1415,8 @@ ApplicationWindow {
             width: 28
             height: 24
             radius: FiliTheme.radiusControl
-            color: windowArea.pressed ? FiliTheme.surfaceActive : windowArea.containsMouse || windowPanel.visible ? FiliTheme.surfaceHover : "transparent"
-            WindowGlyph { anchors.centerIn: parent; kind: "window"; width: 16; height: 16 }
+            color: windowArea.pressed || windowArea.containsMouse || windowPanel.visible ? (win.attending ? win.tintHover : windowArea.pressed ? FiliTheme.surfaceActive : FiliTheme.surfaceHover) : "transparent"
+            WindowGlyph { anchors.centerIn: parent; kind: "window"; width: 16; height: 16; color: win.attending ? win.onAccent : FiliTheme.text }
             MouseArea { id: windowArea; anchors.fill: parent; hoverEnabled: true; onClicked: windowPanel.visible ? windowPanel.close() : windowPanel.open() }
             Accessible.role: Accessible.Button
             Accessible.name: Facteur.tr("Window")
@@ -1407,16 +1427,16 @@ ApplicationWindow {
             width: 180
             height: 26
             radius: FiliTheme.radiusControl
-            color: FiliTheme.surface
+            color: win.attending ? win.tintSurface : FiliTheme.surface
             border.width: FiliTheme.borderWidth
-            border.color: searchInput.activeFocus ? FiliTheme.accentColor : FiliTheme.border
+            border.color: win.attending ? (searchInput.activeFocus ? win.onAccent : win.tintBorder) : searchInput.activeFocus ? FiliTheme.accentColor : FiliTheme.border
             Text {
                 anchors { left: parent.left; leftMargin: FiliTheme.space2; verticalCenter: parent.verticalCenter }
                 visible: searchInput.text === ""
                 text: Facteur.tr("Search")
                 font.family: FiliTheme.font
                 font.pixelSize: FiliTheme.size
-                color: FiliTheme.muted
+                color: win.attending ? FiliTheme.alpha(win.onAccent, 0.6) : FiliTheme.muted
             }
             TextInput {
                 id: searchInput
@@ -1425,7 +1445,7 @@ ApplicationWindow {
                 clip: true
                 font.family: FiliTheme.font
                 font.pixelSize: FiliTheme.size
-                color: FiliTheme.text
+                color: win.attending ? win.onAccent : FiliTheme.text
                 selectionColor: FiliTheme.surfaceActive
                 selectedTextColor: FiliTheme.text
                 // The search starts on Enter or on the button, not while typing (a search can take long)
@@ -1437,7 +1457,7 @@ ApplicationWindow {
                 Keys.onDownPressed: focus = false
             }
             // Clears the search in progress (same as Escape in the field)
-            IconButton {
+            IconButton { accented: win.attending; ink: win.onAccent;
                 visible: searchInput.text !== "" || win.query !== ""
                 name: "x"
                 tip: Facteur.tr("Clear search")
@@ -1446,7 +1466,7 @@ ApplicationWindow {
                 width: 24
                 onClicked: { searchInput.text = ""; win.query = ""; win.searchOpen = false }
             }
-            IconButton {
+            IconButton { accented: win.attending; ink: win.onAccent;
                 name: "search"
                 tip: Facteur.tr("Search")
                 anchors { right: parent.right; rightMargin: 1; verticalCenter: parent.verticalCenter }
@@ -1602,8 +1622,27 @@ ApplicationWindow {
         visible: win.footerShown
         anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
         height: FiliTheme.statusHeight
-        color: FiliTheme.backgroundDeep
+        color: win.attending ? FiliTheme.accentColor : FiliTheme.backgroundDeep
         Rectangle { anchors { left: parent.left; right: parent.right; top: parent.top } height: FiliTheme.borderWidth; color: FiliTheme.border }
+        // What the window waits for, over the usual content
+        Rectangle {
+            visible: win.attending
+            anchors { fill: parent; topMargin: FiliTheme.borderWidth }
+            z: 4
+            color: FiliTheme.accentColor
+            Text {
+                anchors { fill: parent; leftMargin: FiliTheme.margin; rightMargin: FiliTheme.margin }
+                verticalAlignment: Text.AlignVCenter
+                horizontalAlignment: Text.AlignHCenter
+                elide: Text.ElideRight
+                text: win.attentionText
+                font.family: FiliTheme.font
+                font.pixelSize: FiliTheme.sizeSmall
+                font.weight: FiliTheme.weightAccent
+                color: win.onAccent
+            }
+            MouseArea { anchors.fill: parent; onClicked: win.attentionText = "" }
+        }
         Text {
             id: where
             anchors { left: parent.left; leftMargin: FiliTheme.margin; verticalCenter: parent.verticalCenter }
