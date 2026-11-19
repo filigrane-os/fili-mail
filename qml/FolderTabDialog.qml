@@ -98,6 +98,7 @@ Rectangle {
                     id: list
                     anchors { fill: parent; margins: FiliTheme.space1 }
                     clip: true
+                    KineticScroll {}
                     model: dialog.folders
                     currentIndex: dialog.pick
                     onCurrentIndexChanged: positionViewAtIndex(currentIndex, ListView.Contain)
@@ -121,6 +122,10 @@ Rectangle {
                         }
                         MouseArea { id: rowArea; anchors.fill: parent; hoverEnabled: true; onClicked: dialog.choose(index); onDoubleClicked: dialog.submit() }
                     }
+                }
+                FiliScrollBar {
+                    flick: list
+                    anchors { top: list.top; bottom: list.bottom; right: list.right }
                 }
                 Text {
                     visible: dialog.folders.length === 0
