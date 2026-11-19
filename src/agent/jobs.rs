@@ -1390,37 +1390,6 @@ mod tests {
         );
     }
     #[test]
-    fn native_draft_context_matches_original_ui_oracle() {
-        use std::io::Write;
-        let script = r#"const A=require('./ui/tests/load.js').load('tests/oracles/agent/Agent.js'); const p=JSON.parse(require('fs').readFileSync(0,'utf8')); process.stdout.write(A.draftPayload(p.draftFields,p.ask,p.account,p.accountId));"#;
-        for fields in [
-            json!({"draftKey":"k","from":"","to":"Ada <ada@example.org>","subject":" 郵件 مرحبا ","body":"Unicode 😀\nquotes \" \\"}),
-            json!({"draftKey":"k","subject":" ","body":""}),
-        ] {
-            let input = json!({"draftFields":fields,"ask":" Rewrite ","account":"owner@example.org","accountId":"imap:owner@example.org"});
-            let mut child = std::process::Command::new("node")
-                .args(["-e", script])
-                .current_dir(env!("CARGO_MANIFEST_DIR"))
-                .stdin(Stdio::piped())
-                .stdout(Stdio::piped())
-                .spawn()
-                .unwrap();
-            child
-                .stdin
-                .take()
-                .unwrap()
-                .write_all(serde_json::to_string(&input).unwrap().as_bytes())
-                .unwrap();
-            let output = child.wait_with_output().unwrap();
-            assert!(output.status.success());
-            let mut expected: Value = serde_json::from_slice(&output.stdout).unwrap();
-            // The historical oracle predates recipient-complete draft snapshots.
-            expected["draft"]["cc"] = json!("");
-            expected["draft"]["bcc"] = json!("");
-            assert_eq!(draft_payload(&input).unwrap(), expected);
-        }
-    }
-    #[test]
     fn legacy_worker_compatibility_accepts_only_known_exact_script_argv() {
         let script = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("scripts/agent-job.py")

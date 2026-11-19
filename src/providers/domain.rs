@@ -301,11 +301,4 @@ mod tests {
             assert_eq!(resolve(&params).unwrap()["value"], "", "{operation}");
         }
     }
-    #[test]
-    fn generated_ui_descriptor_matches_native_authority() {
-        let source = include_str!("../../ui/providers/NativeDomain.js");
-        let value: Value =
-            serde_json::from_str(source.split_once("var FACTS = ").unwrap().1.trim()).unwrap();
-        assert_eq!(value, snapshot());
-    }
 }

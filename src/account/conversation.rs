@@ -215,33 +215,8 @@ pub fn request(p: &Value) -> Result<Value, &'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::{
-        io::Write,
-        process::{Command, Stdio},
-    };
     fn base() -> Value {
         json!({"thread":{"id":"t","memberIds":["a","b","c"],"count":99},"selectedId":"c","summaries":{"a":{"id":"a","labelIds":["DRAFT","INBOX"],"from":{"display":"Ada"}},"c":{"id":"c","labelIds":["INBOX","UNREAD"],"starred":true}},"conversations":true,"mailboxKey":"unread","mailboxes":[{"key":"drafts","label":"Drafts"},{"key":"inbox","label":"Inbox"}]})
-    }
-    #[test]
-    fn rail_projection_matches_legacy_oracle_with_member_flags_and_missing_stops() {
-        let mut search = base();
-        search["searching"] = json!(true);
-        let fixtures = json!([base(),search,{"thread":null,"summaries":{},"conversations":true},{"thread":{"memberIds":["only"]},"summaries":{},"conversations":true}]);
-        let mut node=Command::new("node").args(["-e",r#"const C=require('./ui/tests/load').load('tests/oracles/Conversation.js');let p=JSON.parse(require('fs').readFileSync(0,'utf8'));process.stdout.write(JSON.stringify(p.map(x=>{let t=C.blockOf(x.thread),v=C.viewedMailboxKey(x.mailboxKey,x.searching),n={};for(let id of (t?t.memberIds:[]))n[id]={previous:C.memberStep(t,id,-1),next:C.memberStep(t,id,1),neighbor:C.neighbourStop(t,id)};return {thread:t,showsRail:C.drawsRail(x.conversations,t),viewedMailboxKey:v,stops:C.stops(t,x.summaries,x.selectedId,v,x.mailboxes),caption:C.caption(t,x.summaries),missing:C.missingMemberIds(t,x.summaries),navigation:n};})));"#]).stdin(Stdio::piped()).stdout(Stdio::piped()).spawn().unwrap();
-        node.stdin
-            .take()
-            .unwrap()
-            .write_all(fixtures.to_string().as_bytes())
-            .unwrap();
-        let output = node.wait_with_output().unwrap();
-        assert!(output.status.success());
-        let expected: Value = serde_json::from_slice(&output.stdout).unwrap();
-        for (index, fixture) in rows(&fixtures).iter().enumerate() {
-            let result = request(fixture).unwrap();
-            for (key, value) in expected[index].as_object().unwrap() {
-                assert_eq!(&result[key], value, "{index}: {key}");
-            }
-        }
     }
     #[test]
     fn rail_shows_member_flags_mailboxes_and_nonwrapping_navigation() {

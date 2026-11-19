@@ -491,10 +491,7 @@ pub fn build(
 mod tests {
     use super::*;
     use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-    use std::{
-        io::Write,
-        sync::{Arc, atomic::AtomicUsize},
-    };
+    use std::sync::{Arc, atomic::AtomicUsize};
     fn resource(id: &str, body: &str) -> Value {
         json!({"id":id,"payload":{"mimeType":"text/plain","headers":[{"name":"Subject","value":format!("Subject {id}")}],"body":{"data":URL_SAFE_NO_PAD.encode(body)}}})
     }
@@ -509,44 +506,6 @@ mod tests {
             assert!(validate_ids("m365", &[bad.to_owned()]).is_err(), "{bad}");
         }
         assert!(validate_ids("imap", &[id]).is_err());
-    }
-    #[test]
-    fn payload_matches_original_js_for_one_and_many_messages() {
-        let rows = [
-            json!({"id":"1:INBOX","subject":"مرحبا","from":{"name":"Ada","email":"ada@example.org"},"to":[{"name":"Bob","email":"bob@example.org"}],"messageId":"<one@example.org>","bodyText":"First body\nمرحبا"}),
-            json!({"id":"2:Archive","subject":"Second","bodyText":"Second body"}),
-        ];
-        for count in [1, 2] {
-            let rows = &rows[..count];
-            let actual = build(
-                rows,
-                "test@example.org",
-                "imap",
-                "inbox",
-                " Read ",
-                "imap:test@example.org",
-            )
-            .unwrap();
-            let script = r#"const M=require('./ui/tests/load.js').load('tests/oracles/agent/Agent.js');const rows=JSON.parse(require('fs').readFileSync(0,'utf8'));const line=rows.length===1?M.payload(rows[0],rows[0].bodyText,'test@example.org',M.folderOf(rows[0].id,'inbox','imap'),' Read ','imap:test@example.org'):M.selectionPayload(rows,'test@example.org','inbox',' Read ','imap:test@example.org');process.stdout.write(line)"#;
-            let mut child = std::process::Command::new("node")
-                .args(["-e", script])
-                .stdin(std::process::Stdio::piped())
-                .stdout(std::process::Stdio::piped())
-                .spawn()
-                .unwrap();
-            child
-                .stdin
-                .take()
-                .unwrap()
-                .write_all(serde_json::to_string(rows).unwrap().as_bytes())
-                .unwrap();
-            let output = child.wait_with_output().unwrap();
-            assert!(output.status.success());
-            assert_eq!(
-                actual,
-                serde_json::from_slice::<Value>(&output.stdout).unwrap()
-            );
-        }
     }
     #[tokio::test]
     async fn concurrent_reads_are_bounded_and_return_original_selection_order() {

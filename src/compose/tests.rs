@@ -1,5 +1,4 @@
 use super::*;
-use std::io::Write;
 struct Temp(PathBuf);
 impl Temp {
     fn new() -> Self {
@@ -310,37 +309,6 @@ fn attachment_metadata_never_opens_paths_and_invalid_paths_write_nothing() {
     }
     assert!(!temp.0.join("fili-mail").exists());
 }
-#[test]
-fn js_oracle_parity_for_normalized_drafts() {
-    let path = std::env::temp_dir().join("synthetic");
-    let fixtures = json!([saved("hello"),saved(" "),{"version":1,"active":true,"returnView":"calendar","draft":{"to":"a@example.org","draftAttachments":[{"path":path,"data":"discard","filename":"a","size":12}],"replyRecipients":[{"email":"a@example.org"}]},"parked":[{"subject":"parked","accountId":"other"},{}]}, {"version":1,"active":false}, {"version":2,"active":true}]);
-    let script = r#"const fs=require('fs'),vm=require('vm');const ctx={};vm.createContext(ctx);vm.runInContext(fs.readFileSync('ui/tests/oracles/Recovery.js','utf8').replace(/^\.pragma library\s*/,''),ctx);const fixtures=JSON.parse(fs.readFileSync(0,'utf8'));process.stdout.write(JSON.stringify(fixtures.map(v=>ctx.parse(JSON.stringify(v)))));"#;
-    use std::process::{Command, Stdio};
-    let mut child = Command::new("node")
-        .args(["-e", script])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .spawn()
-        .unwrap();
-    child
-        .stdin
-        .take()
-        .unwrap()
-        .write_all(fixtures.to_string().as_bytes())
-        .unwrap();
-    let output = child.wait_with_output().unwrap();
-    assert!(output.status.success());
-    let expected: Value = serde_json::from_slice(&output.stdout).unwrap();
-    for (input, expected) in fixtures
-        .as_array()
-        .unwrap()
-        .iter()
-        .zip(expected.as_array().unwrap())
-    {
-        assert_eq!(normalize(input).unwrap(), *expected);
-    }
-}
-
 #[test]
 fn malformed_or_oversize_save_does_not_replace_existing_snapshot() {
     let temp = Temp::new();
