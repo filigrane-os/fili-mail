@@ -177,6 +177,23 @@ pub mod qobject {
         #[qsignal]
         #[cxx_name = "accountRemoved"]
         fn account_removed(self: Pin<&mut Facteur>, result: &QString);
+        // Change every message of a sender in the whole account (all folders): archive, trash or spam. Lists `from:address`
+        // page by page, then acts on what it found; `bulkProgress` counts the messages found, `bulkActed` ends it
+        // (JSON {count} or {error})
+        #[qinvokable]
+        #[cxx_name = "actSender"]
+        fn act_sender(self: Pin<&mut Facteur>, account: &QString, operation: &QString, email: &QString);
+        // Mark every unread message of a mailbox ("inbox", "spam", "folder:NAME"...) as read; answered like `actSender`
+        // (`bulkActed` with the mailbox in place of the address)
+        #[qinvokable]
+        #[cxx_name = "markBoxRead"]
+        fn mark_box_read(self: Pin<&mut Facteur>, account: &QString, mailbox: &QString);
+        #[qsignal]
+        #[cxx_name = "bulkProgress"]
+        fn bulk_progress(self: Pin<&mut Facteur>, account: &QString, found: i32);
+        #[qsignal]
+        #[cxx_name = "bulkActed"]
+        fn bulk_acted(self: Pin<&mut Facteur>, account: &QString, operation: &QString, email: &QString, result: &QString);
         // Change messages: operation read, unread, star, unstar, archive, trash or spam; ids = JSON array.
         // Answered by `acted` (account, operation, ids, JSON result)
         #[qinvokable]
@@ -355,6 +372,131 @@ fn read_accent() -> String {
     std::fs::read_to_string(theme_file().with_file_name("accent"))
         .map(|t| t.trim().to_string())
         .unwrap_or_else(|_| "default".into())
+}
+
+/// Most messages one bulk action takes (the engine refuses more than 2000 at once, and a runaway sender stays bounded)
+const BULK_MAX: usize = 4_000;
+
+/// Finds every message of `email` outside the destination (pages of 50, every mailbox and, on IMAP, every folder),
+/// then changes them 500 at a time. Returns how many were changed.
+async fn act_sender_run(
+    session: &Session,
+    qt: &cxx_qt::CxxQtThread<qobject::Facteur>,
+    account: &str,
+    operation: &str,
+    email: &str,
+) -> Result<usize, &'static str> {
+    if !matches!(operation, "archive" | "trash" | "spam") || email.is_empty() || email.contains(['"', '\\']) {
+        return Err("invalid_params");
+    }
+    let query = format!("from:{email}");
+    // Where the sender's mail can be: archiving only leaves the inbox; the others take it from everywhere but the destination
+    let mut places: Vec<(&str, Option<String>)> = vec![("inbox", None)];
+    if operation != "archive" {
+        places.push(("archive", None));
+        if operation != "spam" {
+            places.push(("spam", None));
+        }
+        // IMAP: the folders and labels the user made (Gmail has no such answer: its "archive" already means every label)
+        if let Ok(answer) = session.dispatch("imap.folders", &json!({"accountId": account})).await {
+            for l in answer["labels"].as_array().cloned().unwrap_or_default() {
+                let raw = l["rawName"].as_str().unwrap_or("");
+                if l["system"] == false && !raw.is_empty() && !matches!(raw, "Labels" | "Folders" | "All Mail" | "INBOX" | "Starred") {
+                    places.push(("inbox", Some(raw.to_owned())));
+                }
+            }
+        }
+    }
+    let mut ids: Vec<String> = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    let (mut asked, mut failed) = (0, 0);
+    'places: for (mailbox, folder) in places {
+        asked += 1;
+        let mut token = String::new();
+        let mut ok = false;
+        loop {
+            let mut params = json!({"account": account, "mailbox": mailbox, "query": query, "limit": 50});
+            if let Some(folder) = &folder {
+                params["folder"] = json!(folder);
+            }
+            if !token.is_empty() {
+                params["pageToken"] = json!(token);
+            }
+            let Ok(page) = session.dispatch("mail.list", &params).await else { break };
+            ok = true;
+            for m in page["messages"].as_array().cloned().unwrap_or_default() {
+                if let Some(id) = m["id"].as_str() {
+                    if seen.insert(id.to_owned()) {
+                        ids.push(id.to_owned());
+                    }
+                }
+            }
+            let found = i32::try_from(ids.len()).unwrap_or(i32::MAX);
+            let _ = qt.queue({
+                let account = account.to_owned();
+                move |f| f.bulk_progress(&QString::from(&account), found)
+            });
+            token = page["nextPageToken"].as_str().unwrap_or("").to_owned();
+            if ids.len() >= BULK_MAX {
+                break 'places;
+            }
+            if token.is_empty() {
+                break;
+            }
+        }
+        if !ok {
+            failed += 1;
+        }
+    }
+    if ids.is_empty() {
+        // Nothing found because every place failed is an error, not "no message"
+        return if failed == asked { Err("mail_list_failed") } else { Ok(0) };
+    }
+    for chunk in ids.chunks(500) {
+        let params = json!({"account": account, "operation": operation, "ids": chunk, "execute": true});
+        session.dispatch("mail.act", &params).await?;
+    }
+    Ok(ids.len())
+}
+
+/// Reads every page of a mailbox and marks the unread messages as read (500 at a time).
+async fn mark_box_read_run(
+    session: &Session,
+    qt: &cxx_qt::CxxQtThread<qobject::Facteur>,
+    account: &str,
+    mailbox: &str,
+) -> Result<usize, &'static str> {
+    let mut ids: Vec<String> = Vec::new();
+    let mut token = String::new();
+    loop {
+        let mut params = match mailbox.strip_prefix("folder:") {
+            Some(folder) => json!({"account": account, "mailbox": "inbox", "folder": folder, "query": "", "limit": 50}),
+            None => json!({"account": account, "mailbox": mailbox, "query": "", "limit": 50}),
+        };
+        if !token.is_empty() {
+            params["pageToken"] = json!(token);
+        }
+        let page = session.dispatch("mail.list", &params).await?;
+        for m in page["messages"].as_array().cloned().unwrap_or_default() {
+            if let (Some(id), true) = (m["id"].as_str(), m["unread"] == true) {
+                ids.push(id.to_owned());
+            }
+        }
+        let found = i32::try_from(ids.len()).unwrap_or(i32::MAX);
+        let _ = qt.queue({
+            let account = account.to_owned();
+            move |f| f.bulk_progress(&QString::from(&account), found)
+        });
+        token = page["nextPageToken"].as_str().unwrap_or("").to_owned();
+        if token.is_empty() || ids.len() >= BULK_MAX {
+            break;
+        }
+    }
+    for chunk in ids.chunks(500) {
+        let params = json!({"account": account, "operation": "read", "ids": chunk, "execute": true});
+        session.dispatch("mail.act", &params).await?;
+    }
+    Ok(ids.len())
 }
 
 fn error_json(error: &str) -> String {
@@ -541,6 +683,18 @@ impl qobject::Facteur {
             .spawn();
     }
 
+    pub fn ask_rob(&self) {
+        use std::process::{Command, Stdio};
+        let child = Command::new("fili-chat").arg("here").stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn();
+        if let Ok(mut child) = child {
+            std::thread::spawn(move || child.wait());
+        }
+    }
+
+    pub fn rob_available(&self) -> bool {
+        std::env::var_os("PATH").is_some_and(|p| std::env::split_paths(&p).any(|d| d.join("fili-chat").is_file()))
+    }
+
     // Wayland clipboard through wl-copy (which stays in the background as long as the text is the selection)
     pub fn copy_text(&self, text: &QString) {
         let child = std::process::Command::new("wl-copy")
@@ -683,18 +837,6 @@ impl qobject::Facteur {
     }
 
     pub fn accounts(&self) -> QString {
-    pub fn ask_rob(&self) {
-        use std::process::{Command, Stdio};
-        let child = Command::new("fili-chat").arg("here").stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn();
-        if let Ok(mut child) = child {
-            std::thread::spawn(move || child.wait());
-        }
-    }
-
-    pub fn rob_available(&self) -> bool {
-        std::env::var_os("PATH").is_some_and(|p| std::env::split_paths(&p).any(|d| d.join("fili-chat").is_file()))
-    }
-
         let (runtime, session) = engine();
         let out = match runtime.block_on(session.dispatch("accounts.list", &json!({}))) {
             Ok(v) => v.to_string(),
@@ -853,6 +995,36 @@ impl qobject::Facteur {
                 Err(e) => error_json(e),
             };
             let _ = qt.queue(move |f| f.account_removed(&QString::from(&out)));
+        });
+    }
+
+    pub fn act_sender(self: Pin<&mut Self>, account: &QString, operation: &QString, email: &QString) {
+        let (account, operation, email) = (account.to_string(), operation.to_string(), email.to_string());
+        let qt = self.qt_thread();
+        let (runtime, session) = engine();
+        runtime.spawn(async move {
+            let out = match act_sender_run(session, &qt, &account, &operation, &email).await {
+                Ok(count) => json!({"count": count}).to_string(),
+                Err(e) => error_json(e),
+            };
+            let _ = qt.queue(move |f| {
+                f.bulk_acted(&QString::from(&account), &QString::from(&operation), &QString::from(&email), &QString::from(&out))
+            });
+        });
+    }
+
+    pub fn mark_box_read(self: Pin<&mut Self>, account: &QString, mailbox: &QString) {
+        let (account, mailbox) = (account.to_string(), mailbox.to_string());
+        let qt = self.qt_thread();
+        let (runtime, session) = engine();
+        runtime.spawn(async move {
+            let out = match mark_box_read_run(session, &qt, &account, &mailbox).await {
+                Ok(count) => json!({"count": count}).to_string(),
+                Err(e) => error_json(e),
+            };
+            let _ = qt.queue(move |f| {
+                f.bulk_acted(&QString::from(&account), &QString::from("read"), &QString::from(&mailbox), &QString::from(&out))
+            });
         });
     }
 

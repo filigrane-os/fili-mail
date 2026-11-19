@@ -266,7 +266,9 @@ ApplicationWindow {
             popup.openAt(x, y, [{ id: "none", label: Facteur.tr("None") }].concat((accountFolders[accountDialog.accountId] || []).map(l => ({ id: l.id, label: l.rawName }))));
             return;
         }
-        const entries = kind === "tab"
+        const entries = kind === "box"
+            ? [{ id: "mark-read", label: Facteur.tr("Mark all as read") }]
+            : kind === "tab"
             ? [{ id: "icon", label: Facteur.tr("Change Icon…") }, { id: "remove", label: Facteur.tr("Remove Tab"), danger: true }]
             : kind === "label" && data.folder
             ? [{ id: "edit", label: Facteur.tr("Rename…") }, { id: "color", label: Facteur.tr("Change colour…") }, { id: "delete", label: Facteur.tr("Delete…"), danger: true }]
@@ -289,6 +291,46 @@ ApplicationWindow {
         entries.push({ id: "select-all", label: Facteur.tr("Select All") });
         popup.openAt(x, y, entries);
     }
+    // Changes on their way to the server (footer: "Moving to trash…"), and a bulk action on a whole sender
+    property var pendingActs: ({ trash: 0, archive: 0, spam: 0 })
+    property string bulkText: ""
+    function actProgress(operation, delta) {
+        if (!(operation in pendingActs)) return;
+        const p = Object.assign({}, pendingActs);
+        p[operation] = Math.max(0, p[operation] + delta);
+        pendingActs = p;
+    }
+    readonly property string actText: pendingActs.trash > 0 ? Facteur.tr("Moving to trash…") : pendingActs.spam > 0 ? Facteur.tr("Marking as spam…") : pendingActs.archive > 0 ? Facteur.tr("Archiving…") : ""
+    readonly property var opName: ({ trash: Facteur.tr("to trash"), archive: Facteur.tr("to archive"), spam: Facteur.tr("to spam") })
+    // Every message of a sender, whatever the folder (the list only holds the current one, 50 at a time)
+    function actSender(operation, acct, email) {
+        if (!email || acct === "" || bulkText !== "") return;
+        bulkSender = email;
+        bulkText = Facteur.tr("Looking for the messages of %1…").replace("%1", email);
+        Facteur.actSender(acct, operation, email);
+    }
+    property string bulkSender: ""
+    // The "more" button of the reader header: the same sender actions as the list menu
+    function openSenderMenu(x, y) {
+        const f = reader.summary ? reader.summary.from : null;
+        if (!f || !f.email) return;
+        contextKind = "message";
+        contextData = { ids: [], id: selectedId, email: f.email, acct: selectedRef.acct };
+        popup.openAt(x, y, [
+            { id: "filter-sender", label: Facteur.tr("Show all messages from this sender") },
+            { id: "trash-sender", label: Facteur.tr("Move all from this sender to trash"), danger: true },
+            { id: "archive-sender", label: Facteur.tr("Archive all from this sender") },
+            { id: "spam-sender", label: Facteur.tr("Mark all from this sender as spam") }
+        ]);
+    }
+    // Filter on a sender: the search field takes `from:address`, in the whole account (IMAP: this mailbox first)
+    function filterSender(email) {
+        if (!email) return;
+        const q = "from:" + email;
+        searchOpen = true;
+        searchInput.text = q;
+        query = q;
+    }
     // Right click on a message of the list: the ticked messages when it is one of them, else this one alone
     property string pendingCompose: ""
     function openMessageMenu(index, x, y) {
@@ -298,12 +340,18 @@ ApplicationWindow {
         const unread = multi ? checkedAnyUnread : row.unread;
         const starred = multi ? checkedAllStarred : row.starred;
         contextKind = "message";
-        contextData = { ids: multi ? checkedIds() : [row.id], id: row.id };
+        contextData = { ids: multi ? checkedIds() : [row.id], id: row.id, email: row.email, acct: row.acct !== "" ? row.acct : account };
         const entries = [];
         if (!multi) {
             entries.push({ id: "reply", label: Facteur.tr("Reply") });
             entries.push({ id: "replyall", label: Facteur.tr("Reply all") });
             entries.push({ id: "forward", label: Facteur.tr("Forward") });
+        }
+        if (!multi && row.email !== "") {
+            entries.push({ id: "filter-sender", label: Facteur.tr("Show all messages from this sender") });
+            entries.push({ id: "trash-sender", label: Facteur.tr("Move all from this sender to trash"), danger: true });
+            entries.push({ id: "archive-sender", label: Facteur.tr("Archive all from this sender") });
+            entries.push({ id: "spam-sender", label: Facteur.tr("Mark all from this sender as spam") });
         }
         entries.push({ id: unread ? "read" : "unread", label: unread ? Facteur.tr("Mark as read") : Facteur.tr("Mark as unread") });
         entries.push({ id: starred ? "unstar" : "star", label: starred ? Facteur.tr("Remove star") : Facteur.tr("Star message") });
@@ -314,11 +362,19 @@ ApplicationWindow {
     }
     function runContext(id) {
         if (contextKind === "message") {
-            if (id === "reply" || id === "replyall" || id === "forward") {
+            if (id === "filter-sender") filterSender(contextData.email);
+            else if (id.endsWith("-sender")) actSender(id.slice(0, -7), contextData.acct, contextData.email);
+            else if (id === "reply" || id === "replyall" || id === "forward") {
                 // Writing needs the message open: open it first, the answer starts the draft (onOpened)
                 if (selectedId === contextData.id && reader.summary !== null) startCompose(id);
                 else { pendingCompose = id; choose(contextData.id); }
             } else doActMany(id, contextData.ids);
+        } else if (contextKind === "box") {
+            if (bulkText === "") {
+                bulkSender = contextData.label;
+                bulkText = Facteur.tr("Looking for the messages of %1…").replace("%1", contextData.label);
+                Facteur.markBoxRead(contextData.account, contextData.box);
+            }
         } else if (contextKind === "page") {
             reader.pageAction(id, contextData);
         } else if (contextKind === "catpick") {
@@ -534,7 +590,7 @@ ApplicationWindow {
             if (messages.get(i).id.startsWith("draft:")) messages.remove(i);
         if (mailbox !== "drafts" || query !== "" || account === "") return;
         const mine = localDrafts().filter(d => d.account === account).sort((a, b) => b.savedAt - a.savedAt);
-        mine.forEach((d, i) => messages.insert(i, { id: "draft:" + d.key, acct: "", date: "", attach: false, labels: "[]", from: Facteur.tr("Draft"), subject: d.subject || Facteur.tr("(no subject)"), time: d.to || "", unread: false, starred: false, checked: false }));
+        mine.forEach((d, i) => messages.insert(i, { id: "draft:" + d.key, acct: "", date: "", attach: false, labels: "[]", from: Facteur.tr("Draft"), email: "", subject: d.subject || Facteur.tr("(no subject)"), time: d.to || "", unread: false, starred: false, checked: false }));
     }
     function openLocalDraft(id) {
         const key = id.slice(6);
@@ -722,7 +778,7 @@ ApplicationWindow {
     }
     Timer { interval: 60000; running: win.accounts.length > 0; repeat: true; triggeredOnStart: true; onTriggered: win.countUnread() }
     function rowOf2(m, acct) {
-        return { id: acct ? acct + sep + m.id : m.id, acct: acct || "", date: m.date || "", attach: m.hasAttachment === true, labels: JSON.stringify(m.labelIds || []), from: m.from.display || m.from.email || "", subject: m.subject, time: m.time, unread: m.unread, starred: m.starred, checked: false };
+        return { id: acct ? acct + sep + m.id : m.id, acct: acct || "", date: m.date || "", attach: m.hasAttachment === true, labels: JSON.stringify(m.labelIds || []), from: m.from.display || m.from.email || "", email: m.from.email || "", subject: m.subject, time: m.time, unread: m.unread, starred: m.starred, checked: false };
     }
     function appendMessages(list, known, acct) {
         for (const m of list) {
@@ -795,7 +851,7 @@ ApplicationWindow {
                 const id = acc + sep + m.id;
                 if ((listBar.unreadOnly || mailbox === "allunread") && !m.unread) continue;
                 if (known.has(id)) { const i = rowOf(id); if (i >= 0) updateRow(i, rowOf2(m, acc)); continue }
-                const row = { id: id, acct: acc, date: m.date || "", attach: m.hasAttachment === true, labels: JSON.stringify(m.labelIds || []), from: m.from.display || m.from.email || "", subject: m.subject, time: m.time, unread: m.unread, starred: m.starred, checked: false };
+                const row = { id: id, acct: acc, date: m.date || "", attach: m.hasAttachment === true, labels: JSON.stringify(m.labelIds || []), from: m.from.display || m.from.email || "", email: m.from.email || "", subject: m.subject, time: m.time, unread: m.unread, starred: m.starred, checked: false };
                 const twin = index[unifiedKey(row)];
                 if (twin !== undefined) {
                     const other = messages.get(twin).acct;
@@ -955,7 +1011,7 @@ ApplicationWindow {
         recount();
         const groups = {};
         for (const id of ids) { const r = splitId(id); (groups[r.acct] = groups[r.acct] || []).push(r.id); }
-        for (const a in groups) Facteur.act(a, operation, JSON.stringify(groups[a]));
+        for (const a in groups) { actProgress(operation, 1); Facteur.act(a, operation, JSON.stringify(groups[a])); }
     }
 
     function choose(id, quiet) {
@@ -1165,12 +1221,30 @@ ApplicationWindow {
             accountDialog.visible = false;
             win.loadAccounts();
         }
+        function onBulkProgress(acc, found) {
+            if (win.bulkText !== "") win.bulkText = Facteur.tr("Looking for the messages of %1… %2 found").replace("%1", win.bulkSender).replace("%2", found);
+        }
+        function onBulkActed(acc, operation, email, json) {
+            const r = JSON.parse(json);
+            win.bulkText = "";
+            if (r.error) win.notice = win.errorText(r.error);
+            else if (operation === "read") win.notice = Facteur.tr("%1 messages of %2 marked as read").replace("%1", r.count).replace("%2", email);
+            else win.notice = Facteur.tr("%1 messages from %2 moved %3").replace("%1", r.count).replace("%2", email).replace("%3", win.opName[operation] || "");
+            Facteur.countUnread(acc);
+            if (acc === win.account || win.unified) win.refresh();
+        }
         function onActed(acc, operation, ids, json) {
+            win.actProgress(operation, -1);
             if (acc !== win.account && !win.unified)
                 return;
             const r = JSON.parse(json);
+            // The server's pages are offsets: once messages left, the next-page token skips some. Few rows left, and more
+            // on the server: start the list again from the top (once the last change is done)
+            const left = (operation === "trash" || operation === "archive" || operation === "spam") && win.nextToken !== "" && messages.count < 25 && win.actText === "";
             if (r.error) {
                 win.notice = win.errorText(r.error);
+                win.refresh();
+            } else if (left) {
                 win.refresh();
             } else {
                 Facteur.countUnread(acc);
@@ -1421,6 +1495,12 @@ ApplicationWindow {
             Accessible.role: Accessible.Button
             Accessible.name: Facteur.tr("Window")
         }
+        RobButton {
+            id: robButton
+            visible: Facteur.robAvailable()
+            anchors { right: win.windowButtons ? windowButton.left : parent.right; rightMargin: win.windowButtons ? FiliTheme.space1 : FiliTheme.margin; verticalCenter: parent.verticalCenter }
+            ink: win.attending ? win.onAccent : FiliTheme.text
+        }
         Rectangle {
             id: search
             anchors { right: robButton.visible ? robButton.left : win.windowButtons ? windowButton.left : parent.right; rightMargin: robButton.visible || win.windowButtons ? FiliTheme.space3 : FiliTheme.margin; verticalCenter: parent.verticalCenter }
@@ -1495,12 +1575,6 @@ ApplicationWindow {
             width: FiliTheme.sidebarWidth
             height: parent.height
             accounts: win.accounts
-        RobButton {
-            id: robButton
-            visible: Facteur.robAvailable()
-            anchors { right: win.windowButtons ? windowButton.left : parent.right; rightMargin: win.windowButtons ? FiliTheme.space1 : FiliTheme.margin; verticalCenter: parent.verticalCenter }
-            ink: win.attending ? win.onAccent : FiliTheme.text
-        }
             unreadCounts: win.unreadCounts
             account: win.account
             mailbox: win.mailbox
@@ -1567,6 +1641,9 @@ ApplicationWindow {
                     onReplyAll: win.startCompose("replyall")
                     onForward: win.startCompose("forward")
                     onSearchRequested: win.openSearch()
+                    searchQuery: win.query
+                    searchBusy: win.busy
+                    onSearchCleared: { searchInput.text = ""; win.query = ""; win.searchOpen = false }
                 }
                 Rectangle {
                     x: panes.below ? 0 : messageList.width
@@ -1587,6 +1664,9 @@ ApplicationWindow {
                     onSaveAllAttachments: Facteur.saveAllAttachments(win.selectedRef.acct, win.selectedRef.id, JSON.stringify(reader.attachments.filter(a => !!a.attachmentId).map(a => ({ attachmentId: a.attachmentId, filename: a.filename }))))
                     onSaveAttachment: index => Facteur.saveAttachment(win.selectedRef.acct, win.selectedRef.id, reader.attachments[index].attachmentId, reader.attachments[index].filename)
                     onPageMenu: (x, y, link, image) => win.openPageMenu(x, y, link, image)
+                    onSenderMenu: (x, y) => { const p = popup.mapFromItem(null, x, y); win.openSenderMenu(p.x, p.y) }
+                    onTrashSender: win.actSender("trash", win.selectedRef.acct, reader.summary ? reader.summary.from.email : "")
+                    onFilterSender: win.filterSender(reader.summary ? reader.summary.from.email : "")
                     onLoadImages: { reader.loadingImages = true; Facteur.loadImages(win.selectedRef.acct, win.selectedRef.id) }
                     x: panes.below ? 0 : messageList.width + FiliTheme.borderWidth
                     y: panes.below ? messageList.height + FiliTheme.borderWidth : 0
@@ -1641,9 +1721,6 @@ ApplicationWindow {
             Text {
                 anchors { fill: parent; leftMargin: FiliTheme.margin; rightMargin: FiliTheme.margin }
                 verticalAlignment: Text.AlignVCenter
-                    searchQuery: win.query
-                    searchBusy: win.busy
-                    onSearchCleared: { searchInput.text = ""; win.query = ""; win.searchOpen = false }
                 horizontalAlignment: Text.AlignHCenter
                 elide: Text.ElideRight
                 text: win.attentionText
@@ -1670,6 +1747,8 @@ ApplicationWindow {
             text: {
                 if (win.notice !== "") return win.notice;
                 const parts = [];
+                if (win.bulkText !== "") parts.push(win.bulkText);
+                else if (win.actText !== "") parts.push(win.actText);
                 if (win.busy) parts.push(win.query !== "" ? Facteur.tr("Searching…") : Facteur.tr("Loading…"));
                 else if (win.listError === "") {
                     if (win.searchPhase === "full") parts.push(Facteur.tr("Searching the content…"));

@@ -327,7 +327,17 @@ Rectangle {
                                 font.pixelSize: FiliTheme.sizeSmall
                                 color: FiliTheme.muted
                             }
-                            MouseArea { id: row; anchors.fill: parent; hoverEnabled: true; onClicked: acct.current ? side.mailboxChosen(modelData.key) : side.boxOfAccountChosen(acct.info.id, modelData.key) }
+                            MouseArea {
+                                id: row
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                acceptedButtons: Qt.LeftButton | Qt.RightButton
+                                onClicked: mouse => {
+                                    if (mouse.button === Qt.RightButton) { const p = row.mapToItem(null, mouse.x, mouse.y); side.contextRequested("box", { account: acct.info.id, box: modelData.key, label: modelData.label }, p.x, p.y); }
+                                    else if (acct.current) side.mailboxChosen(modelData.key);
+                                    else side.boxOfAccountChosen(acct.info.id, modelData.key);
+                                }
+                            }
                         }
                     }
                     // Labels (Gmail): heading with fold arrow and a button to make one

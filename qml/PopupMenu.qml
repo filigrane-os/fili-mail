@@ -12,6 +12,26 @@ Item {
     anchors.fill: parent
     z: 200
 
+    // The card is as wide as its longest label (never wider than the window): text must never overflow the menu
+    property real textWidth: 0
+    function measure() {
+        let w = 0;
+        for (let i = 0; i < metrics.count; i++) w = Math.max(w, metrics.itemAt(i).advanceWidth);
+        textWidth = w;
+    }
+    Repeater {
+        id: metrics
+        model: menu.items
+        onCountChanged: menu.measure()
+        TextMetrics {
+            required property var modelData
+            text: modelData.label
+            font.family: FiliTheme.font
+            font.pixelSize: FiliTheme.size
+            Component.onCompleted: menu.measure()
+            onAdvanceWidthChanged: menu.measure()
+        }
+    }
     function openAt(x, y, entries) {
         items = entries;
         index = 0;
@@ -38,7 +58,7 @@ Item {
     }
     Rectangle {
         id: card
-        width: 190
+        width: Math.max(190, Math.min(menu.textWidth + 2 * FiliTheme.space2 + 2 * FiliTheme.space1, menu.width - 8))
         height: col.height + 2 * FiliTheme.space1
         radius: FiliTheme.radiusControl
         color: FiliTheme.surface
@@ -60,6 +80,8 @@ Item {
                     color: area.containsMouse || (Facteur.keyNav && menu.index === index) ? FiliTheme.surfaceHover : "transparent"
                     Text {
                         anchors { left: parent.left; leftMargin: FiliTheme.space2; verticalCenter: parent.verticalCenter }
+                        width: parent.width - 2 * FiliTheme.space2
+                        elide: Text.ElideRight
                         text: modelData.label
                         font.family: FiliTheme.font
                         font.pixelSize: FiliTheme.size
