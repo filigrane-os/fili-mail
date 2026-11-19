@@ -89,6 +89,100 @@ fn safe(text: &str) -> String {
     result
 }
 
+// Like `safe`, but keeps line breaks (message bodies)
+fn safe_body(text: &str) -> String {
+    text.lines().map(|l| safe(l.trim_end()).replace("\\|", "|")).collect::<Vec<_>>().join("\n")
+}
+
+fn who(value: &Value) -> String {
+    let name = value["display"].as_str().or(value["name"].as_str()).unwrap_or("");
+    let email = value["email"].as_str().unwrap_or("");
+    match (name.is_empty(), email.is_empty()) {
+        (false, false) if name != email => format!("{name} <{email}>"),
+        (false, _) => name.to_string(),
+        _ => email.to_string(),
+    }
+}
+
+fn people(value: &Value) -> String {
+    value.as_array().map(|a| a.iter().map(who).collect::<Vec<_>>().join(", ")).unwrap_or_default()
+}
+
+// One line per message: id, date, flags, sender, subject (what a person or an agent needs to pick a mail)
+fn compact_list(object: &serde_json::Map<String, Value>) -> String {
+    let messages = object["messages"].as_array().map(Vec::as_slice).unwrap_or(&[]);
+    let mut out = format!(
+        "{} - {} message(s) shown, about {} in all\n",
+        safe(&cell(&object["mailbox"])),
+        messages.len(),
+        cell(&object["estimate"])
+    );
+    for m in messages {
+        let flag = |on: &Value, c: &str| if on == &Value::Bool(true) { c.to_string() } else { "-".to_string() };
+        let flags = format!("{}{}{}", flag(&m["unread"], "U"), flag(&m["starred"], "*"), flag(&m["hasAttachment"], "@"));
+        let sender = who(&m["from"]);
+        out.push_str(&format!(
+            "{}  {}  {}  {}  {}\n",
+            safe(&cell(&m["id"])),
+            safe(&cell(&m["fullTime"])),
+            flags,
+            safe(&sender),
+            safe(&cell(&m["subject"]))
+        ));
+    }
+    if let Some(token) = object["nextPageToken"].as_str().filter(|t| !t.is_empty()) {
+        out.push_str(&format!("more: --page-token {}\n", safe(token)));
+    }
+    out.push_str("flags: U unread, * starred, @ attachment\n");
+    out
+}
+
+// Headers and the readable text of one message (links, remote images and the render tree stay in --json)
+fn compact_message(object: &serde_json::Map<String, Value>) -> Option<String> {
+    let message = object.get("message")?;
+    let summary = message.get("summary")?;
+    let body = message["nativeContent"]["body"]["text"].as_str().unwrap_or("");
+    let collapsed = body.split('\n').map(str::trim_end).collect::<Vec<_>>().join("\n");
+    let mut text = String::new();
+    let mut blank = 0;
+    for line in collapsed.lines() {
+        if line.trim().is_empty() {
+            blank += 1;
+            if blank > 1 {
+                continue;
+            }
+        } else {
+            blank = 0;
+        }
+        text.push_str(line);
+        text.push('\n');
+    }
+    const LIMIT: usize = 6000;
+    let total = text.chars().count();
+    let shown: String = text.chars().take(LIMIT).collect();
+    let mut out = format!(
+        "From: {}\nTo: {}\n",
+        safe(&who(&summary["from"])),
+        safe(&people(&summary["to"]))
+    );
+    let cc = people(&summary["cc"]);
+    if !cc.is_empty() {
+        out.push_str(&format!("Cc: {}\n", safe(&cc)));
+    }
+    out.push_str(&format!("Date: {}\nSubject: {}\n", safe(&cell(&summary["fullTime"])), safe(&cell(&summary["subject"]))));
+    let attachments = message["attachments"].as_array().map(Vec::len).unwrap_or(0);
+    if attachments > 0 {
+        out.push_str(&format!("Attachments: {attachments}\n"));
+    }
+    out.push('\n');
+    out.push_str(&safe_body(&shown));
+    out.push('\n');
+    if total > LIMIT {
+        out.push_str(&format!("[truncated: {LIMIT} of {total} characters; --json has everything]\n"));
+    }
+    Some(out)
+}
+
 fn cell(value: &Value) -> String {
     match value {
         Value::Null => "-".into(),
@@ -156,6 +250,10 @@ fn pretty(value: &Value) -> String {
                 pretty(&object["accounts"])
             )
         }
+        Value::Object(object) if object.get("messages").is_some_and(Value::is_array) && object.contains_key("mailbox") => {
+            compact_list(object)
+        }
+        Value::Object(object) if compact_message(object).is_some() => compact_message(object).unwrap(),
         Value::Object(object) => table(
             vec!["Field".into(), "Value".into()],
             object
@@ -191,6 +289,29 @@ fn pretty(value: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn list_is_one_line_per_message_and_escapes_sender_text() {
+        let v = json!({"mailbox":"inbox","estimate":2,"nextPageToken":"1","messages":[
+            {"id":"1:INBOX","fullTime":"Nov 19","unread":true,"starred":false,"hasAttachment":true,
+             "from":{"display":"Eve\u{1b}[31m","email":"e@x.org"},"subject":"a\nb | c"}]});
+        let out = pretty(&v);
+        assert!(out.contains("1:INBOX  Nov 19  U-@  "));
+        assert!(!out.contains('\u{1b}'));
+        assert_eq!(out.lines().filter(|l| l.starts_with("1:INBOX")).count(), 1);
+        assert!(out.contains("more: --page-token 1"));
+    }
+
+    #[test]
+    fn message_shows_headers_and_body_without_the_render_tree() {
+        let v = json!({"accountId":"a","message":{"attachments":[],"links":[{"url":"https://x"}],
+            "nativeContent":{"body":{"text":"Hello\n\n\n\nworld"}},
+            "summary":{"from":{"name":"Ann","email":"a@x.org"},"to":[{"email":"me@x.org"}],"cc":[],"fullTime":"Nov 19","subject":"Hi"}}});
+        let out = pretty(&v);
+        assert!(out.starts_with("From: Ann <a@x.org>\nTo: me@x.org\n"));
+        assert!(out.contains("Hello\n\nworld"));
+        assert!(!out.contains("https://x"));
+    }
 
     #[test]
     fn send_storage_failure_is_not_reported_as_a_provider_refusal() {
