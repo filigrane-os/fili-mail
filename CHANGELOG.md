@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.5.0
+
+- The window asks for attention: the header and footer take the accent colour when new mail arrives while another window is in front (`[window] attention`, `--no-attention`).
+- A search in progress shows a banner above the list (words, count, clear button), and the search field stays tinted in the accent while it filters.
+- Actions on every message of a sender: move to trash, archive, mark as spam, mark as read, or show all of them, from the context menu of a message; the mailboxes of the sidebar have a context menu too. Popup menus are as wide as their longest label.
+- Header: an Ask Rob button (left of the window button) shows Rob's small floating field for Facteur (`fili-chat here`).
+- Command line: `fili-mail list` prints one line per message (id, date, U unread / * starred / @ attachment, sender, subject) and `fili-mail read` prints the headers and the text (6000 characters at most); `--json` is unchanged.
+- The shortcuts card and the folder tab dialog scroll with the shell's kinetic scrolling and scroll bar.
+
 ## 1.4.1
 
 - Opening an account (or "All") shows its cached list at once and updates it in place when the server answers: no placeholder rows, no "Loading..." or moving bar while rows are on screen, the selection and the scroll stay. The bar and the empty text only show when there is nothing to display yet or a search runs.
