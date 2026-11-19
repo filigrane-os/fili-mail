@@ -1427,9 +1427,11 @@ ApplicationWindow {
             width: 180
             height: 26
             radius: FiliTheme.radiusControl
-            color: win.attending ? win.tintSurface : FiliTheme.surface
+            // A search filtering the list keeps the field tinted and outlined in the accent, focused or not
+            readonly property bool active: win.query !== ""
+            color: win.attending ? win.tintSurface : active ? FiliTheme.alpha(FiliTheme.accentColor, 0.14) : FiliTheme.surface
             border.width: FiliTheme.borderWidth
-            border.color: win.attending ? (searchInput.activeFocus ? win.onAccent : win.tintBorder) : searchInput.activeFocus ? FiliTheme.accentColor : FiliTheme.border
+            border.color: win.attending ? (searchInput.activeFocus ? win.onAccent : win.tintBorder) : searchInput.activeFocus || active ? FiliTheme.accentColor : FiliTheme.border
             Text {
                 anchors { left: parent.left; leftMargin: FiliTheme.space2; verticalCenter: parent.verticalCenter }
                 visible: searchInput.text === ""
@@ -1633,6 +1635,9 @@ ApplicationWindow {
             Text {
                 anchors { fill: parent; leftMargin: FiliTheme.margin; rightMargin: FiliTheme.margin }
                 verticalAlignment: Text.AlignVCenter
+                    searchQuery: win.query
+                    searchBusy: win.busy
+                    onSearchCleared: { searchInput.text = ""; win.query = ""; win.searchOpen = false }
                 horizontalAlignment: Text.AlignHCenter
                 elide: Text.ElideRight
                 text: win.attentionText

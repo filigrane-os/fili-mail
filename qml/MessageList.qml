@@ -9,6 +9,10 @@ Rectangle {
     property string emptyText: ""
     // Nothing to show yet and the list is being fetched (or a search runs): a thin moving bar; a refresh behind rows is silent
     property bool loading: false
+    // The list is a search result: the words, and whether the slow pass is still running
+    property string searchQuery: ""
+    property bool searchBusy: false
+    signal searchCleared()
     signal chosen(string id)
     // Right click on a row: its index and the pointer position in the window
     signal contextRequested(int index, real x, real y)
@@ -43,10 +47,38 @@ Rectangle {
 
     color: FiliTheme.background
 
+    // Says that this list is a search result, with the way out beside it: without it the only sign is the field in the toolbar
+    Rectangle {
+        id: banner
+        visible: list.searchQuery !== ""
+        anchors { left: parent.left; right: parent.right; top: parent.top }
+        height: visible ? 30 : 0
+        color: FiliTheme.alpha(FiliTheme.accentColor, 0.14)
+        Text {
+            anchors { left: parent.left; leftMargin: FiliTheme.space2; right: bannerClear.left; rightMargin: FiliTheme.space2; verticalCenter: parent.verticalCenter }
+            elide: Text.ElideRight
+            textFormat: Text.PlainText
+            font.family: FiliTheme.font
+            font.pixelSize: FiliTheme.sizeList
+            color: FiliTheme.text
+            text: Facteur.tr("Results for “%1”").replace("%1", list.searchQuery) + "  ·  " + (list.searchBusy ? Facteur.tr("Searching…") : Facteur.tr("%1 messages").replace("%1", view.count))
+        }
+        IconButton {
+            id: bannerClear
+            name: "x"
+            tip: Facteur.tr("Clear search")
+            anchors { right: parent.right; rightMargin: FiliTheme.space2; verticalCenter: parent.verticalCenter }
+            height: 24
+            width: 24
+            onClicked: list.searchCleared()
+        }
+        Rectangle { anchors { left: parent.left; right: parent.right; bottom: parent.bottom } height: FiliTheme.borderWidth; color: FiliTheme.alpha(FiliTheme.accentColor, 0.5) }
+    }
+
     // Master tick box: ticks every message of the list, or none
     Rectangle {
         id: head
-        anchors { left: parent.left; right: parent.right; top: parent.top }
+        anchors { left: parent.left; right: parent.right; top: banner.bottom }
         height: 30
         color: FiliTheme.background
         readonly property bool all: view.count > 0 && list.checkedCount === view.count
