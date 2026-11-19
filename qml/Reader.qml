@@ -30,6 +30,9 @@ Rectangle {
     signal reply()
     signal replyAll()
     signal forward()
+    signal filterSender()
+    signal senderMenu(real x, real y)
+    signal trashSender()
     signal loadImages()
     signal unsubscribe(string url)
     // Files attached to the message ({filename, mimeType, size, attachmentId}); clicking one opens it, its arrow saves it
@@ -156,13 +159,40 @@ Rectangle {
                         spacing: FiliTheme.space3
                         Text { id: fromLabel; width: 44; text: Facteur.tr("From"); font.family: FiliTheme.font; font.pixelSize: FiliTheme.sizeList; color: FiliTheme.textSecondary }
                         Text {
-                            width: Math.max(0, parent.width - 44 - parent.spacing - (when.visible ? when.width + parent.spacing : 0))
+                            width: Math.max(0, parent.width - 44 - 3 * 24 - 4 * parent.spacing - (when.visible ? when.width + parent.spacing : 0))
                             textFormat: Text.StyledText
                             text: reader.summary ? "<b>" + (reader.summary.from.display || reader.summary.from.email) + "</b>" + (reader.summary.from.display ? " &lt;" + reader.summary.from.email + "&gt;" : "") : ""
                             elide: Text.ElideRight
                             font.family: FiliTheme.font
                             font.pixelSize: FiliTheme.size
                             color: FiliTheme.text
+                        }
+                        // Every message from this sender (fills the search field with from:address)
+                        IconButton {
+                            name: "filter"
+                            width: 24
+                            height: 22
+                            tip: Facteur.tr("Show all messages from this sender")
+                            enabledState: !!reader.summary && !!reader.summary.from.email
+                            onClicked: reader.filterSender()
+                        }
+                        // The same actions for every message of the sender, in every folder
+                        IconButton {
+                            id: senderMore
+                            name: "more"
+                            width: 24
+                            height: 22
+                            tip: Facteur.tr("More actions for this sender")
+                            enabledState: !!reader.summary && !!reader.summary.from.email
+                            onClicked: { const p = senderMore.mapToItem(null, 0, senderMore.height); reader.senderMenu(p.x, p.y) }
+                        }
+                        IconButton {
+                            name: "trash"
+                            width: 24
+                            height: 22
+                            tip: Facteur.tr("Move all from this sender to trash")
+                            enabledState: !!reader.summary && !!reader.summary.from.email
+                            onClicked: reader.trashSender()
                         }
                         Text {
                             id: when

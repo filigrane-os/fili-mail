@@ -82,6 +82,7 @@ Rectangle {
             contentHeight: column.height
             clip: true
             boundsBehavior: Flickable.StopAtBounds
+            KineticScroll {}
             Column {
                 id: column
                 width: flick.width
@@ -114,6 +115,10 @@ Rectangle {
                     }
                 }
             }
+        }
+        FiliScrollBar {
+            flick: flick
+            anchors { top: flick.top; bottom: flick.bottom; right: flick.right }
         }
     }
 }
