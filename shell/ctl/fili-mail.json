@@ -13,7 +13,6 @@
     },
     {
       "verb": "actions",
-      "args": "",
       "summary": "JSON list of the action names",
       "reads": true
     }
