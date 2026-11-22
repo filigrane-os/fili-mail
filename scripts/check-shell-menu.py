@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """The fili-bar menu of Facteur (shell/appmenu/fili-mail.json) stays in agreement with the window (qml/Main.qml): every
 `fili-mail ctl --pid %pid action NAME` of the menu is an action of the window, every action of the window is in the menu (the
-few that have none are listed below), every announced shortcut is a key of the window's QML, and the brief of Rob
-(shell/rob/fili-mail.md) exists. Usage: scripts/check-shell-menu.py (from anywhere)."""
+few that have none are listed below), every announced shortcut is a key of the window's QML, and the brief of Lia
+(shell/lia/fili-mail.md) exists. Usage: scripts/check-shell-menu.py (from anywhere)."""
 import json, pathlib, re, sys
 
 root = pathlib.Path(__file__).resolve().parents[1]
@@ -27,8 +27,8 @@ without_menu = {"shortcuts", "all-inboxes", "all-unread", "load-pictures"}
 # Keys the text fields handle themselves (copy and select all)
 native_keys = {"Ctrl+C", "Ctrl+A"}
 errors = []
-if not (root / "shell/rob/fili-mail.md").is_file():
-    errors.append("brief of Rob missing: shell/rob/fili-mail.md")
+if not (root / "shell/lia/fili-mail.md").is_file():
+    errors.append("brief of Lia missing: shell/lia/fili-mail.md")
 
 def entries(items):
     for e in items:

@@ -1484,15 +1484,15 @@ ApplicationWindow {
             Accessible.role: Accessible.Button
             Accessible.name: Facteur.tr("Window")
         }
-        RobButton {
-            id: robButton
-            visible: Facteur.robAvailable()
+        LiaButton {
+            id: liaButton
+            visible: Facteur.liaAvailable()
             anchors { right: win.windowButtons ? windowButton.left : parent.right; rightMargin: win.windowButtons ? FiliTheme.space1 : FiliTheme.margin; verticalCenter: parent.verticalCenter }
             ink: win.attending ? win.onAccent : FiliTheme.text
         }
         Rectangle {
             id: search
-            anchors { right: robButton.visible ? robButton.left : win.windowButtons ? windowButton.left : parent.right; rightMargin: robButton.visible || win.windowButtons ? FiliTheme.space3 : FiliTheme.margin; verticalCenter: parent.verticalCenter }
+            anchors { right: liaButton.visible ? liaButton.left : win.windowButtons ? windowButton.left : parent.right; rightMargin: liaButton.visible || win.windowButtons ? FiliTheme.space3 : FiliTheme.margin; verticalCenter: parent.verticalCenter }
             width: 180
             height: 26
             radius: FiliTheme.radiusControl
