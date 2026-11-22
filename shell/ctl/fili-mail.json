@@ -17,5 +17,172 @@
       "summary": "JSON list of the action names",
       "reads": true
     }
+  ],
+  "actions": [
+    {
+      "name": "new-message",
+      "label": "New Message",
+      "keys": "Ctrl+N"
+    },
+    {
+      "name": "next-message",
+      "label": "Next Message"
+    },
+    {
+      "name": "previous-message",
+      "label": "Previous Message"
+    },
+    {
+      "name": "reply",
+      "label": "Reply",
+      "keys": "Ctrl+Shift+R"
+    },
+    {
+      "name": "reply-all",
+      "label": "Reply All",
+      "keys": "Ctrl+Alt+R"
+    },
+    {
+      "name": "forward",
+      "label": "Forward",
+      "keys": "Ctrl+Shift+F"
+    },
+    {
+      "name": "refresh",
+      "label": "Refresh",
+      "keys": "F5"
+    },
+    {
+      "name": "archive",
+      "label": "Archive",
+      "keys": "E"
+    },
+    {
+      "name": "trash",
+      "label": "Move to Trash",
+      "keys": "Delete"
+    },
+    {
+      "name": "spam",
+      "label": "Mark as Spam"
+    },
+    {
+      "name": "star",
+      "label": "Star",
+      "keys": "S"
+    },
+    {
+      "name": "unstar",
+      "label": "Remove Star"
+    },
+    {
+      "name": "read",
+      "label": "Mark as Read"
+    },
+    {
+      "name": "unread",
+      "label": "Mark as Unread",
+      "keys": "U"
+    },
+    {
+      "name": "add-account",
+      "label": "Add Account…",
+      "keys": "Ctrl+Shift+A"
+    },
+    {
+      "name": "about",
+      "label": "About Facteur"
+    },
+    {
+      "name": "close",
+      "label": "Close",
+      "keys": "Ctrl+W"
+    },
+    {
+      "name": "inbox",
+      "label": "Inbox"
+    },
+    {
+      "name": "all-inboxes"
+    },
+    {
+      "name": "all-unread"
+    },
+    {
+      "name": "unread-box",
+      "label": "Unread"
+    },
+    {
+      "name": "starred",
+      "label": "Starred"
+    },
+    {
+      "name": "sent",
+      "label": "Sent"
+    },
+    {
+      "name": "drafts",
+      "label": "Drafts"
+    },
+    {
+      "name": "archive-box",
+      "label": "Archive"
+    },
+    {
+      "name": "spam-box",
+      "label": "Spam"
+    },
+    {
+      "name": "trash-box",
+      "label": "Trash"
+    },
+    {
+      "name": "window-actions",
+      "label": "Window Actions…",
+      "keys": "Ctrl+Shift+W"
+    },
+    {
+      "name": "toggle-window-buttons",
+      "label": "Show Window Buttons"
+    },
+    {
+      "name": "toggle-category-tabs",
+      "label": "Show Tabs"
+    },
+    {
+      "name": "toggle-header",
+      "label": "Show Header"
+    },
+    {
+      "name": "toggle-footer",
+      "label": "Show Status Bar"
+    },
+    {
+      "name": "shortcuts"
+    },
+    {
+      "name": "copy",
+      "label": "Copy",
+      "keys": "Ctrl+C"
+    },
+    {
+      "name": "select-all",
+      "label": "Select All",
+      "keys": "Ctrl+A"
+    },
+    {
+      "name": "load-pictures"
+    },
+    {
+      "name": "debug",
+      "label": "Debug Logs",
+      "keys": "Ctrl+Alt+L"
+    },
+    {
+      "name": "attention"
+    },
+    {
+      "name": "attention-clear"
+    }
   ]
 }
