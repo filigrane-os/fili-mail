@@ -33,6 +33,7 @@ build:
 test:
 	$(CARGO) test --locked --no-default-features --features integration-test-credentials
 	python3 -I scripts/check-shell-menu.py
+	python3 -I scripts/check-ctl-catalog.py
 
 install: build install-data
 	install -Dm755 $(TARGET_DIR)/release/fili-mail $(DESTDIR)$(BINDIR)/fili-mail
@@ -53,4 +54,4 @@ uninstall:
 	rm -f $(DESTDIR)$(DATADIR)/icons/hicolor/scalable/apps/fili-mail.svg
 	rm -rf $(DESTDIR)$(DATADIR)/licenses/fili-mail
 	rm -rf $(DESTDIR)$(DATADIR)/filigrane/shell/fili-bar/mail
-	rm -f $(DESTDIR)$(DATADIR)/filigrane/shell/appmenu/fili-mail.json $(DESTDIR)$(DATADIR)/filigrane/shell/rob/fili-mail.md
+	rm -f $(DESTDIR)$(DATADIR)/filigrane/shell/ctl/fili-mail.json $(DESTDIR)$(DATADIR)/filigrane/shell/appmenu/fili-mail.json $(DESTDIR)$(DATADIR)/filigrane/shell/rob/fili-mail.md

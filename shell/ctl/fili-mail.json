@@ -1,0 +1,21 @@
+{
+  "v": 1,
+  "app_id": "fili-mail",
+  "name": "Facteur",
+  "program": "fili-mail",
+  "ctl": "fili-mail ctl --pid %pid",
+  "commands": [
+    {
+      "verb": "action",
+      "args": "NAME",
+      "summary": "Run a menu command in the open window",
+      "reads": false
+    },
+    {
+      "verb": "actions",
+      "args": "",
+      "summary": "JSON list of the action names",
+      "reads": true
+    }
+  ]
+}
