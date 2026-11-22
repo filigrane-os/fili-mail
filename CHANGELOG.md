@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Closed compose windows no longer reappear when Facteur starts: a draft you close is kept in the Drafts mailbox (open it from there), not put back in the dock.
+
 ## 1.6.0
 
 - Everything Facteur brings to the desktop now lives in this repository and is installed with it (`make install`): the launcher and icon, and what the Filigrane shell reads, in `shell/`, instead of being kept in the distribution's repository: the `mail` module of the fili-bar (`shell/fili-bar/mail/`, with its French translations), the fallback menu of the bar (`shell/appmenu/fili-mail.json`) and the brief of Rob for this application (`shell/rob/fili-mail.md`). The package puts it in `/usr/share/filigrane/shell/`, `fili-bar link-system` (run at login) links it into the bar and the menus; a module, menu or brief of your own with the same name wins.

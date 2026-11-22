@@ -574,16 +574,6 @@ ApplicationWindow {
     function localDrafts() {
         try { return JSON.parse(Facteur.drafts()) } catch (e) { return [] }
     }
-    // Drafts found from an earlier run come back as bars in the dock
-    function restoreDrafts() {
-        for (const d of localDrafts())
-            if (d.key && accounts.some(a => a.id === d.account) && draftIndex(d.key) < 0)
-                draftModel.append({ key: d.key, account: d.account, init: JSON.stringify(d), title: d.subject || "" });
-        if (draftModel.count > 0) {
-            activeDraft = draftModel.get(0).key;
-            dockMinimized = true;
-        }
-    }
     // The Drafts mailbox lists the ones kept here first (the server does not have them)
     function showLocalDrafts() {
         for (let i = messages.count - 1; i >= 0; i--)
@@ -1288,7 +1278,6 @@ ApplicationWindow {
         loadAccounts();
         // The window opens on Inbox > All: the inboxes of every account together
         if (accounts.length > 0) mailbox = "all";
-        restoreDrafts();
         const link = Facteur.takeMailto();
         if (link !== "") openMailto(link);
         visit();
