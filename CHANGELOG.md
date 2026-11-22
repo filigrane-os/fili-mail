@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## 1.7.0 (2026-11-22)
+
+- The assistant is now named Lia: the header button and the menu entry say "Ask Lia", and the hidden brief is `shell/lia/<app_id>.md` (the older `rob/` is still read).
+- A catalog of the commands of the window (`shell/ctl/<app_id>.json`, `fili-api show`) that follows the shared format; the assistant is driven by `fili-ai` as one client of the Filigrane contracts.
 
 - Closed compose windows no longer reappear when Facteur starts: a draft you close is kept in the Drafts mailbox (open it from there), not put back in the dock.
 
