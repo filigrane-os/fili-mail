@@ -21,7 +21,7 @@ TARGET_DIR ?= $(if $(CARGO_TARGET_DIR),$(CARGO_TARGET_DIR),target)
 QMAKE ?= $(firstword $(wildcard /usr/lib/qt6/bin/qmake6 /usr/lib64/qt6/bin/qmake6 /usr/lib/qt6/bin/qmake /usr/lib64/qt6/bin/qmake) $(shell command -v qmake6 qmake-qt6 2>/dev/null))
 export QMAKE
 
-.PHONY: all build test install install-data uninstall
+.PHONY: all build dev run test install install-data uninstall
 
 all: build
 
@@ -55,3 +55,13 @@ uninstall:
 	rm -rf $(DESTDIR)$(DATADIR)/licenses/fili-mail
 	rm -rf $(DESTDIR)$(DATADIR)/filigrane/shell/fili-bar/mail
 	rm -f $(DESTDIR)$(DATADIR)/filigrane/shell/ctl/fili-mail.json $(DESTDIR)$(DATADIR)/filigrane/shell/appmenu/fili-mail.json $(DESTDIR)$(DATADIR)/filigrane/shell/lia/fili-mail.md
+
+# Development. `make dev` builds without link-time optimisation (target/fast); `make run` starts that build with the QML read from the source folders,
+# so after a change of a .qml file just run it again, no build. `make run ARGS=...`.
+
+dev:
+	$(CARGO) build --profile fast
+
+run:
+	@test -x $(TARGET_DIR)/fast/fili-mail || { echo "build first (make dev)" >&2; exit 1; }
+	FILI_QML_DIR=$(CURDIR)/qml QT_QUICK_BACKEND=software $(TARGET_DIR)/fast/fili-mail $(ARGS)

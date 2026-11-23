@@ -35,8 +35,13 @@ pub fn run() -> i32 {
     // SAFETY: registers a QML type; the application object exists and no engine has loaded yet
     unsafe { fili_register_html_view() };
     let mut engine = QQmlApplicationEngine::new();
-    if let Some(engine) = engine.as_mut() {
-        engine.load(&QUrl::from("qrc:/qt/qml/Fili/Mail/qml/Main.qml"));
+    if let Some(mut engine) = engine.as_mut() {
+        // Development (`make run`): the QML is read from the source folders instead of the binary, so a change of a .qml file
+        // needs no build. FILI_QML_DIR holds Main.qml.
+        match std::env::var("FILI_QML_DIR") {
+            Ok(dir) => engine.load(&QUrl::from(&format!("file://{dir}/Main.qml"))),
+            Err(_) => engine.load(&QUrl::from("qrc:/qt/qml/Fili/Mail/qml/Main.qml")),
+        }
     }
     match app.as_mut() {
         Some(app) => app.exec(),
