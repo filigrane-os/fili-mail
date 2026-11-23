@@ -1410,49 +1410,17 @@ ApplicationWindow {
             FiliIconButton { accented: win.attending; ink: win.onAccent; visible: win.checkedCount > 0; name: "star"; filled: parent.starredNow; tip: parent.starredNow ? Facteur.tr("Remove star") : Facteur.tr("Star message"); enabledState: parent.on; onClicked: win.actOnSelection(parent.starredNow ? "unstar" : "star") }
             Rectangle { visible: win.checkedCount > 0; width: 1; height: 18; anchors.verticalCenter: parent.verticalCenter; color: win.attending ? win.tintBorder : FiliTheme.border }
             FiliIconButton { accented: win.attending; ink: win.onAccent; name: "tabs"; toggled: win.categoryTabs; tip: win.categoryTabs ? Facteur.tr("Hide tabs") : Facteur.tr("Show tabs"); onClicked: win.toggleCategoryTabs() }
-            Rectangle { // where the reader goes: auto, side, bottom
-                id: previewSwitch
+            FiliViewSwitch { // where the reader goes: auto, side, bottom
                 anchors.verticalCenter: parent.verticalCenter
-                width: modes.width + 2 * FiliTheme.space1
-                height: 24
-                radius: FiliTheme.radiusControl
-                color: win.attending ? win.tintSurface : FiliTheme.background
-                border.width: FiliTheme.borderWidth
-                border.color: win.attending ? win.tintBorder : FiliTheme.border
-                Row {
-                    id: modes
-                    x: FiliTheme.space1
-                    anchors.verticalCenter: parent.verticalCenter
-                    Repeater {
-                        model: [
-                            { key: "auto", icon: "layout-auto", tip: Facteur.tr("Preview: automatic, by window width") },
-                            { key: "side", icon: "layout-right", tip: Facteur.tr("Preview on the right") },
-                            { key: "bottom", icon: "layout-below", tip: Facteur.tr("Preview below") }
-                        ]
-                        Rectangle {
-                            id: cell
-                            required property var modelData
-                            readonly property bool on: win.previewMode === modelData.key
-                            width: modelData.icon ? 26 : autoText.implicitWidth + 2 * FiliTheme.space3
-                            height: 20
-                            radius: FiliTheme.radiusControl
-                            color: on || cellArea.containsMouse ? (win.attending ? win.tintHover : on ? FiliTheme.surfaceActive : FiliTheme.surfaceHover) : "transparent"
-                            FiliIcon { visible: !!cell.modelData.icon; anchors.centerIn: parent; name: cell.modelData.icon || "layout-right"; size: 14; color: win.attending ? win.onAccent : cell.on ? FiliTheme.accentColor : FiliTheme.text }
-                            Text {
-                                id: autoText
-                                visible: !cell.modelData.icon
-                                anchors.centerIn: parent
-                                text: cell.modelData.label || ""
-                                font.family: FiliTheme.font
-                                font.pixelSize: FiliTheme.sizeSmall
-                                font.weight: cell.on ? FiliTheme.weightAccent : Font.Normal
-                                color: win.attending ? win.onAccent : cell.on ? FiliTheme.accentColor : FiliTheme.text
-                            }
-                            MouseArea { id: cellArea; anchors.fill: parent; hoverEnabled: true; onClicked: win.setPreviewMode(cell.modelData.key) }
-                            ToolTip { visible: cellArea.containsMouse; delay: 600; text: cell.modelData.tip }
-                        }
-                    }
-                }
+                accented: win.attending
+                ink: win.onAccent
+                mode: win.previewMode
+                modes: [
+                    { key: "auto", icon: "layout-auto", tip: Facteur.tr("Preview: automatic, by window width") },
+                    { key: "side", icon: "layout-right", tip: Facteur.tr("Preview on the right") },
+                    { key: "bottom", icon: "layout-below", tip: Facteur.tr("Preview below") }
+                ]
+                onChose: key => win.setPreviewMode(key)
             }
         }
         // Window buttons at the far right: close, and the panel of window actions (niri)
@@ -1919,6 +1887,10 @@ ApplicationWindow {
         id: popup
         onActivated: id => win.runContext(id)
     }
+    // The label under a button (FiliIconButton and the switches call win.showTip / hideTip): the kit's tooltip card
+    function showTip(owner, text) { tooltip.show(owner, { text: text }); }
+    function hideTip(owner) { tooltip.hide(owner); }
+    FiliTooltip { id: tooltip; blocked: windowPanel.visible || debug.open }
     FiliWindowPanel {
         id: windowPanel
         anchorRight: width - (toolbar.height - closeButton.height) / 2
