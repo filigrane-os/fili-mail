@@ -42,10 +42,16 @@ Rectangle {
     signal saveAllAttachments()
     // Right click on the HTML page, at (x, y) in the window: the link and whether a picture is under it
     signal pageMenu(real x, real y, string link, bool image)
-    readonly property bool hasSelection: reader.html !== "" && page.hasSelection
+    readonly property TextEdit textBody: reader.html !== "" ? null : (reader.rich !== "" ? richText : plainText)
+    readonly property bool hasSelection: reader.html !== "" ? page.hasSelection : (textBody !== null && textBody.selectedText !== "")
     // Selection of the HTML page (Edit menu, Ctrl+C, Ctrl+A)
-    function copySelection() { return reader.html !== "" && page.copy(); }
-    function selectAllText() { if (reader.html !== "") page.selectAll(); }
+    function copySelection() {
+        if (reader.html !== "") return page.copy();
+        if (textBody === null || textBody.selectedText === "") return false;
+        textBody.copy();
+        return true;
+    }
+    function selectAllText() { if (reader.html !== "") page.selectAll(); else if (textBody !== null) textBody.selectAll(); }
     function pageAction(id, link) {
         if (id === "open-link") Qt.openUrlExternally(link);
         else if (id === "copy-link") page.copyText(link.startsWith("mailto:") ? decodeURIComponent(link.slice(7).split("?")[0]) : link);
@@ -411,33 +417,37 @@ Rectangle {
                 height: richText.implicitHeight + 2 * FiliTheme.space3
                 radius: FiliTheme.radiusControl
                 color: "#ffffff"
-                Text {
+                TextEdit {
                     id: richText
+                    readOnly: true
+                    selectByMouse: true
+                    selectionColor: "#1a56c4"
+                    selectedTextColor: "#ffffff"
                     x: FiliTheme.space3
                     y: FiliTheme.space3
                     width: parent.width - 2 * FiliTheme.space3
                     text: reader.rich
-                    wrapMode: Text.Wrap
-                    textFormat: Text.RichText
-                    linkColor: "#1a56c4"
+                    wrapMode: TextEdit.Wrap
+                    textFormat: TextEdit.RichText
                     onLinkActivated: link => Qt.openUrlExternally(link)
                     onHoveredLinkChanged: reader.hovered = hoveredLink
-                    HoverHandler { cursorShape: richText.hoveredLink !== "" ? Qt.PointingHandCursor : Qt.ArrowCursor }
                     font.family: FiliTheme.font
                     font.pixelSize: FiliTheme.size
-                    lineHeight: 1.25
                     color: "#202124"
                 }
             }
-            Text {
+            TextEdit {
+                id: plainText
                 visible: reader.rich === "" && reader.html === ""
                 width: parent.width
+                readOnly: true
+                selectByMouse: true
+                selectionColor: FiliTheme.accent
                 text: reader.body
-                wrapMode: Text.Wrap
-                textFormat: Text.PlainText
+                wrapMode: TextEdit.Wrap
+                textFormat: TextEdit.PlainText
                 font.family: FiliTheme.font
                 font.pixelSize: FiliTheme.size
-                lineHeight: 1.25
                 color: FiliTheme.text
             }
         }
