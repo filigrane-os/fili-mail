@@ -1,6 +1,7 @@
 // Modal "Edit account": the name shown in the sidebar and, for an IMAP account, its servers, user name and password
 // (left empty, the password stays as it is).
 import QtQuick
+import Fili.UI
 import Fili.Mail
 
 Rectangle {
@@ -32,7 +33,7 @@ Rectangle {
         password.text = "";
         error = "";
         visible = true;
-        label.forceActiveFocus();
+        label.focusField();
     }
     function submit() {
         if (busy) return;
@@ -106,8 +107,8 @@ Rectangle {
                 color: FiliTheme.text
             }
             SectionTitle { text: Facteur.tr("Account") }
-            FormRow { title: Facteur.tr("Address"); Field { id: email; anchors.fill: parent; readOnly: true; enabled: false } }
-            FormRow { title: Facteur.tr("Name"); Field { id: label; anchors.fill: parent; placeholderText: Facteur.tr("Name shown in the sidebar"); enabled: !dialog.busy; onAccepted: dialog.submit() } }
+            FormRow { title: Facteur.tr("Address"); FiliTextField { id: email; anchors.fill: parent; enabledState: false } }
+            FormRow { title: Facteur.tr("Name"); FiliTextField { id: label; anchors.fill: parent; placeholder: Facteur.tr("Name shown in the sidebar"); enabledState: !dialog.busy; onAccepted: dialog.submit() } }
             Column {
                 visible: dialog.imap
                 width: parent.width
@@ -115,16 +116,16 @@ Rectangle {
                 SectionTitle { text: Facteur.tr("Server") }
                 FormRow {
                     title: Facteur.tr("Incoming (IMAP)")
-                    Field { id: imapHost; anchors { left: parent.left; right: imapPort.left; rightMargin: FiliTheme.space2 } placeholderText: Facteur.tr("IMAP server"); enabled: !dialog.busy }
-                    Field { id: imapPort; anchors.right: parent.right; width: 72; placeholderText: Facteur.tr("Port"); enabled: !dialog.busy }
+                    FiliTextField { id: imapHost; anchors { left: parent.left; right: imapPort.left; rightMargin: FiliTheme.space2 } placeholder: Facteur.tr("IMAP server"); enabledState: !dialog.busy }
+                    FiliTextField { id: imapPort; anchors.right: parent.right; width: 72; placeholder: Facteur.tr("Port"); enabledState: !dialog.busy }
                 }
                 FormRow {
                     title: Facteur.tr("Outgoing (SMTP)")
-                    Field { id: smtpHost; anchors { left: parent.left; right: smtpPort.left; rightMargin: FiliTheme.space2 } placeholderText: Facteur.tr("SMTP server"); enabled: !dialog.busy }
-                    Field { id: smtpPort; anchors.right: parent.right; width: 72; placeholderText: Facteur.tr("Port"); enabled: !dialog.busy }
+                    FiliTextField { id: smtpHost; anchors { left: parent.left; right: smtpPort.left; rightMargin: FiliTheme.space2 } placeholder: Facteur.tr("SMTP server"); enabledState: !dialog.busy }
+                    FiliTextField { id: smtpPort; anchors.right: parent.right; width: 72; placeholder: Facteur.tr("Port"); enabledState: !dialog.busy }
                 }
-                FormRow { title: Facteur.tr("User name"); Field { id: username; anchors.fill: parent; enabled: !dialog.busy } }
-                FormRow { title: Facteur.tr("Password"); Field { id: password; anchors.fill: parent; secret: true; placeholderText: Facteur.tr("Empty: keep the current one"); enabled: !dialog.busy; onAccepted: dialog.submit() } }
+                FormRow { title: Facteur.tr("User name"); FiliTextField { id: username; anchors.fill: parent; enabledState: !dialog.busy } }
+                FormRow { title: Facteur.tr("Password"); FiliTextField { id: password; anchors.fill: parent; secret: true; placeholder: Facteur.tr("Empty: keep the current one"); enabledState: !dialog.busy; onAccepted: dialog.submit() } }
             }
             Column {
                 visible: dialog.mapped
@@ -161,7 +162,7 @@ Rectangle {
                                 font.pixelSize: FiliTheme.size
                                 color: pick.folder !== "" ? FiliTheme.text : FiliTheme.muted
                             }
-                            Icon { id: chev; anchors { right: parent.right; rightMargin: FiliTheme.space2; verticalCenter: parent.verticalCenter } name: "chevron-down"; size: 14; color: FiliTheme.textSecondary }
+                            FiliIcon { id: chev; anchors { right: parent.right; rightMargin: FiliTheme.space2; verticalCenter: parent.verticalCenter } name: "chevron-down"; size: 14; color: FiliTheme.textSecondary }
                             MouseArea {
                                 id: pickArea
                                 anchors.fill: parent
@@ -184,8 +185,8 @@ Rectangle {
             Row {
                 anchors.right: parent.right
                 spacing: FiliTheme.space2
-                TextButton { label: Facteur.tr("Cancel"); onClicked: if (!dialog.busy) dialog.cancelled() }
-                TextButton { label: dialog.busy ? "…" : Facteur.tr("Save"); primary: true; onClicked: dialog.submit() }
+                FiliButton { label: Facteur.tr("Cancel"); onClicked: if (!dialog.busy) dialog.cancelled() }
+                FiliButton { label: dialog.busy ? "…" : Facteur.tr("Save"); primary: true; onClicked: dialog.submit() }
             }
         }
     }

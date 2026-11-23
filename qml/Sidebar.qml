@@ -1,5 +1,6 @@
 // Accounts and mailboxes: the account heading selects the account, the rows below are its mailboxes.
 import QtQuick
+import Fili.UI
 import Fili.Mail
 
 Rectangle {
@@ -187,7 +188,7 @@ Rectangle {
                     font.pixelSize: FiliTheme.sizeSmall
                     color: FiliTheme.muted
                 }
-                Icon {
+                FiliIcon {
                     id: groupIcon
                     anchors { left: groupArrow.right; leftMargin: FiliTheme.space2; bottom: parent.bottom; bottomMargin: (FiliTheme.sideRowHeight - height) / 2 }
                     name: "inbox"
@@ -261,7 +262,7 @@ Rectangle {
                             font.pixelSize: FiliTheme.sizeSmall
                             color: FiliTheme.muted
                         }
-                        Icon {
+                        FiliIcon {
                             id: service
                             anchors { left: arrow.right; leftMargin: FiliTheme.space2; bottom: parent.bottom; bottomMargin: (FiliTheme.sideRowHeight - height) / 2 }
                             name: side.serviceIcon(modelData)
@@ -369,7 +370,7 @@ Rectangle {
                             color: FiliTheme.muted
                         }
                         MouseArea { id: lhArea; anchors.fill: parent; hoverEnabled: true; onClicked: side.toggle("labels:" + modelData.id) }
-                        IconButton {
+                        FiliIconButton {
                             anchors { right: parent.right; rightMargin: FiliTheme.space2; bottom: parent.bottom; bottomMargin: (FiliTheme.sideRowHeight - height) / 2 }
                             glyph: "+"
                             tip: Facteur.tr("New label")
@@ -434,7 +435,7 @@ Rectangle {
         flick: sideFlick
         anchors { top: sideFlick.top; bottom: sideFlick.bottom; right: sideFlick.right }
     }
-    TextButton {
+    FiliButton {
         anchors { left: parent.left; bottom: parent.bottom; leftMargin: FiliTheme.space3; bottomMargin: FiliTheme.space2 }
         label: "+ " + Facteur.tr("Add account")
         onClicked: side.addAccount()

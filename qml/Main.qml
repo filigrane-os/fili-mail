@@ -1,10 +1,13 @@
 // Window of Facteur: sidebar (accounts, mailboxes), message list, reader. Without an account, the window is the account form.
 import QtQuick
 import QtQuick.Controls.Basic
+import Fili.UI
 import Fili.Mail
 
 ApplicationWindow {
     id: win
+    // The kit reads the theme through this object. Evaluated first: the tokens must be right from the first binding
+    readonly property bool kitReady: { FiliHost.backend = Facteur; return true; }
     // Close and window-actions buttons at the right of the header (bar menu: Window > Show Window Buttons), kept in
     // the state file like Casier's
     property bool windowButtons: Facteur.uiGet("window_buttons") !== "0"
@@ -221,7 +224,8 @@ ApplicationWindow {
         if (key.startsWith("cat:")) { if (!unified) mailbox = "inbox"; category = key.slice(4); }
         else mailbox = key.slice(4);
     }
-    function reorderTabs(keys) {
+    function reorderTabs(keys, from, to) {
+        if (from !== undefined) { const k = keys.splice(from, 1)[0]; keys.splice(to, 0, k); }
         const entries = keys.map(k => { const t = tabItems.find(t => t.key === k); return k.startsWith("box:") ? { key: k, icon: t ? t.icon : boxIcon(k.slice(4)) } : { key: k }; });
         saveTabs(entries);
     }
@@ -1365,12 +1369,12 @@ ApplicationWindow {
             anchors.verticalCenter: parent.verticalCenter
             spacing: FiliTheme.space1
             readonly property int at: { const n = messages.count + win.listRev; return win.selectedId === "" ? -1 : win.rowOf(win.selectedId); }
-            IconButton { accented: win.attending; ink: win.onAccent; name: "chevron-left"; tip: Facteur.tr("Previous message"); enabledState: parent.at > 0; onClicked: win.step(-1) }
-            IconButton { accented: win.attending; ink: win.onAccent; name: "chevron-right"; tip: Facteur.tr("Next message"); enabledState: parent.at < messages.count - 1 && messages.count > 0; onClicked: win.step(1) }
+            FiliIconButton { accented: win.attending; ink: win.onAccent; name: "chevron-left"; tip: Facteur.tr("Previous message"); enabledState: parent.at > 0; onClicked: win.step(-1) }
+            FiliIconButton { accented: win.attending; ink: win.onAccent; name: "chevron-right"; tip: Facteur.tr("Next message"); enabledState: parent.at < messages.count - 1 && messages.count > 0; onClicked: win.step(1) }
             Rectangle { width: 1; height: 18; anchors.verticalCenter: parent.verticalCenter; color: win.attending ? win.tintBorder : FiliTheme.border }
-            IconButton { accented: win.attending; ink: win.onAccent; name: "compose"; tip: Facteur.tr("New message"); onClicked: win.startCompose("new") }
-            IconButton { accented: win.attending; ink: win.onAccent; name: "mail-unread"; toggled: listBar.unreadOnly; tip: Facteur.tr("Unread only"); onClicked: listBar.unreadOnly = !listBar.unreadOnly }
-            IconButton { accented: win.attending; ink: win.onAccent; name: "refresh"; tip: Facteur.tr("Refresh"); onClicked: win.refresh() }
+            FiliIconButton { accented: win.attending; ink: win.onAccent; name: "compose"; tip: Facteur.tr("New message"); onClicked: win.startCompose("new") }
+            FiliIconButton { accented: win.attending; ink: win.onAccent; name: "mail-unread"; toggled: listBar.unreadOnly; tip: Facteur.tr("Unread only"); onClicked: listBar.unreadOnly = !listBar.unreadOnly }
+            FiliIconButton { accented: win.attending; ink: win.onAccent; name: "refresh"; tip: Facteur.tr("Refresh"); onClicked: win.refresh() }
         }
         Column {
             anchors { left: nav.right; leftMargin: FiliTheme.space5; right: tools.left; rightMargin: FiliTheme.space3; verticalCenter: parent.verticalCenter }
@@ -1399,13 +1403,13 @@ ApplicationWindow {
             readonly property bool on: win.selectedId !== "" || win.checkedCount > 0
             readonly property bool unreadNow: win.checkedCount > 0 ? win.checkedAnyUnread : reader.unread
             readonly property bool starredNow: win.checkedCount > 0 ? win.checkedAllStarred : reader.starred
-            IconButton { accented: win.attending; ink: win.onAccent; visible: win.checkedCount > 0; name: parent.unreadNow ? "mail-open" : "mail"; tip: parent.unreadNow ? Facteur.tr("Mark as read") : Facteur.tr("Mark as unread"); enabledState: parent.on; onClicked: win.actOnSelection(parent.unreadNow ? "read" : "unread") }
-            IconButton { accented: win.attending; ink: win.onAccent; visible: win.checkedCount > 0; name: "archive"; tip: Facteur.tr("Archive message"); enabledState: parent.on; onClicked: win.actOnSelection("archive") }
-            IconButton { accented: win.attending; ink: win.onAccent; visible: win.checkedCount > 0; name: "trash"; tip: Facteur.tr("Move to trash"); enabledState: parent.on; onClicked: win.actOnSelection("trash") }
-            IconButton { accented: win.attending; ink: win.onAccent; visible: win.checkedCount > 0; name: "spam"; tip: Facteur.tr("Mark as spam"); enabledState: parent.on; onClicked: win.actOnSelection("spam") }
-            IconButton { accented: win.attending; ink: win.onAccent; visible: win.checkedCount > 0; name: "star"; filled: parent.starredNow; tip: parent.starredNow ? Facteur.tr("Remove star") : Facteur.tr("Star message"); enabledState: parent.on; onClicked: win.actOnSelection(parent.starredNow ? "unstar" : "star") }
+            FiliIconButton { accented: win.attending; ink: win.onAccent; visible: win.checkedCount > 0; name: parent.unreadNow ? "mail-open" : "mail"; tip: parent.unreadNow ? Facteur.tr("Mark as read") : Facteur.tr("Mark as unread"); enabledState: parent.on; onClicked: win.actOnSelection(parent.unreadNow ? "read" : "unread") }
+            FiliIconButton { accented: win.attending; ink: win.onAccent; visible: win.checkedCount > 0; name: "archive"; tip: Facteur.tr("Archive message"); enabledState: parent.on; onClicked: win.actOnSelection("archive") }
+            FiliIconButton { accented: win.attending; ink: win.onAccent; visible: win.checkedCount > 0; name: "trash"; tip: Facteur.tr("Move to trash"); enabledState: parent.on; onClicked: win.actOnSelection("trash") }
+            FiliIconButton { accented: win.attending; ink: win.onAccent; visible: win.checkedCount > 0; name: "spam"; tip: Facteur.tr("Mark as spam"); enabledState: parent.on; onClicked: win.actOnSelection("spam") }
+            FiliIconButton { accented: win.attending; ink: win.onAccent; visible: win.checkedCount > 0; name: "star"; filled: parent.starredNow; tip: parent.starredNow ? Facteur.tr("Remove star") : Facteur.tr("Star message"); enabledState: parent.on; onClicked: win.actOnSelection(parent.starredNow ? "unstar" : "star") }
             Rectangle { visible: win.checkedCount > 0; width: 1; height: 18; anchors.verticalCenter: parent.verticalCenter; color: win.attending ? win.tintBorder : FiliTheme.border }
-            IconButton { accented: win.attending; ink: win.onAccent; name: "tabs"; toggled: win.categoryTabs; tip: win.categoryTabs ? Facteur.tr("Hide tabs") : Facteur.tr("Show tabs"); onClicked: win.toggleCategoryTabs() }
+            FiliIconButton { accented: win.attending; ink: win.onAccent; name: "tabs"; toggled: win.categoryTabs; tip: win.categoryTabs ? Facteur.tr("Hide tabs") : Facteur.tr("Show tabs"); onClicked: win.toggleCategoryTabs() }
             Rectangle { // where the reader goes: auto, side, bottom
                 id: previewSwitch
                 anchors.verticalCenter: parent.verticalCenter
@@ -1433,7 +1437,7 @@ ApplicationWindow {
                             height: 20
                             radius: FiliTheme.radiusControl
                             color: on || cellArea.containsMouse ? (win.attending ? win.tintHover : on ? FiliTheme.surfaceActive : FiliTheme.surfaceHover) : "transparent"
-                            Icon { visible: !!cell.modelData.icon; anchors.centerIn: parent; name: cell.modelData.icon || "layout-right"; size: 14; color: win.attending ? win.onAccent : cell.on ? FiliTheme.accentColor : FiliTheme.text }
+                            FiliIcon { visible: !!cell.modelData.icon; anchors.centerIn: parent; name: cell.modelData.icon || "layout-right"; size: 14; color: win.attending ? win.onAccent : cell.on ? FiliTheme.accentColor : FiliTheme.text }
                             Text {
                                 id: autoText
                                 visible: !cell.modelData.icon
@@ -1484,7 +1488,7 @@ ApplicationWindow {
             Accessible.role: Accessible.Button
             Accessible.name: Facteur.tr("Window")
         }
-        LiaButton {
+        FiliLiaButton {
             id: liaButton
             visible: Facteur.liaAvailable()
             anchors { right: win.windowButtons ? windowButton.left : parent.right; rightMargin: win.windowButtons ? FiliTheme.space1 : FiliTheme.margin; verticalCenter: parent.verticalCenter }
@@ -1528,7 +1532,7 @@ ApplicationWindow {
                 Keys.onDownPressed: focus = false
             }
             // Clears the search in progress (same as Escape in the field)
-            IconButton { accented: win.attending; ink: win.onAccent;
+            FiliIconButton { accented: win.attending; ink: win.onAccent;
                 visible: searchInput.text !== "" || win.query !== ""
                 name: "x"
                 tip: Facteur.tr("Clear search")
@@ -1537,7 +1541,7 @@ ApplicationWindow {
                 width: 24
                 onClicked: { searchInput.text = ""; win.query = ""; win.searchOpen = false }
             }
-            IconButton { accented: win.attending; ink: win.onAccent;
+            FiliIconButton { accented: win.attending; ink: win.onAccent;
                 name: "search"
                 tip: Facteur.tr("Search")
                 anchors { right: parent.right; rightMargin: 1; verticalCenter: parent.verticalCenter }
@@ -1583,20 +1587,29 @@ ApplicationWindow {
             id: content
             width: parent.width - FiliTheme.sidebarWidth - FiliTheme.borderWidth
             height: parent.height
-            ListBar {
+            // Tab row over the list and the reader (full width): the Gmail categories and the folders the user pinned ("+")
+            Item {
                 id: listBar
                 width: parent.width
+                // The tab system is in use; off, the band is not there at all
+                visible: win.categoryTabs
+                height: win.categoryTabs ? tabBar.height : 0
+                // Only unread messages (the list is filtered when loaded); toggled from the header
+                property bool unreadOnly: false
                 onUnreadOnlyChanged: { messages.clear(); win.selectedId = ""; win.refresh() }
-                tabs: win.tabItems
-                shown: win.categoryTabs
-                tabsAddable: !win.unified
-                tabCounts: win.tabCounts
-                tab: win.currentTab
-                onTabChosen: key => win.chooseTab(key)
-                onTabsReordered: keys => win.reorderTabs(keys)
-                onTabAddRequested: folderTabDialog.open(win.pinnableFolders())
-                onTabCloseRequested: key => win.removeTab(key)
-                onTabContext: (key, x, y) => win.openContext("tab", key, x, y)
+                FiliTabBar {
+                    id: tabBar
+                    width: parent.width
+                    detachable: false
+                    addable: !win.unified
+                    model: win.tabItems.map(t => ({ label: t.label, icon: t.icon, count: win.tabCounts[t.key] ? "" + win.tabCounts[t.key] : "", iconColor: t.key === win.currentTab ? FiliTheme.accentColor : FiliTheme.textSecondary, closable: !t.key.startsWith("cat:") }))
+                    currentIndex: win.tabItems.findIndex(t => t.key === win.currentTab)
+                    onTabClicked: index => win.chooseTab(win.tabItems[index].key)
+                    onReordered: (from, to) => win.reorderTabs(win.tabItems.map(t => t.key), from, to)
+                    onAddRequested: folderTabDialog.open(win.pinnableFolders())
+                    onCloseRequested: index => win.removeTab(win.tabItems[index].key)
+                    onContextRequested: (index, x, y) => win.openContext("tab", win.tabItems[index].key, x, y)
+                }
             }
             Rectangle { width: parent.width; height: FiliTheme.borderWidth; color: FiliTheme.border }
             Item {
@@ -1684,12 +1697,12 @@ ApplicationWindow {
         Row {
             anchors { right: parent.right; rightMargin: FiliTheme.margin; verticalCenter: parent.verticalCenter }
             spacing: FiliTheme.space2
-            TextButton { label: Facteur.tr("Remove"); primary: true; onClicked: Facteur.removeAccount(win.removing) }
-            TextButton { label: Facteur.tr("Cancel"); onClicked: win.removing = "" }
+            FiliButton { label: Facteur.tr("Remove"); primary: true; onClicked: Facteur.removeAccount(win.removing) }
+            FiliButton { label: Facteur.tr("Cancel"); onClicked: win.removing = "" }
         }
     }
     // Debug panel (View > Debug Logs, Ctrl+Alt+L: Ctrl+Shift+L is the labels here): the log of the window process, above the footer
-    DebugPanel {
+    FiliDebugPanel {
         id: debug
         anchors { bottom: footer.visible ? footer.top : parent.bottom; left: parent.left; right: parent.right }
     }
@@ -1898,15 +1911,15 @@ ApplicationWindow {
         Row {
             anchors { right: parent.right; rightMargin: FiliTheme.margin; verticalCenter: parent.verticalCenter }
             spacing: FiliTheme.space2
-            TextButton { label: Facteur.tr("Delete"); primary: true; onClicked: win.confirmDeleteLabel() }
-            TextButton { label: Facteur.tr("Cancel"); onClicked: win.deletingLabel = null }
+            FiliButton { label: Facteur.tr("Delete"); primary: true; onClicked: win.confirmDeleteLabel() }
+            FiliButton { label: Facteur.tr("Cancel"); onClicked: win.deletingLabel = null }
         }
     }
-    PopupMenu {
+    FiliMenu {
         id: popup
         onActivated: id => win.runContext(id)
     }
-    WindowPanel {
+    FiliWindowPanel {
         id: windowPanel
         anchorRight: width - (toolbar.height - closeButton.height) / 2
         anchorTop: toolbar.height + 1

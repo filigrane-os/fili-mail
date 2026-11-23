@@ -1,6 +1,7 @@
 // Add a mail account (IMAP/SMTP): Gmail and Proton Mail through Bridge need nothing but an address and a password.
 // Gmail wants an app password, Bridge its own generated password.
 import QtQuick
+import Fili.UI
 import Fili.Mail
 
 Rectangle {
@@ -89,7 +90,7 @@ Rectangle {
                     { key: "bridge", label: "Proton Mail (Bridge)" },
                     { key: "other", label: Facteur.tr("Other IMAP") }
                 ]
-                delegate: TextButton {
+                delegate: FiliButton {
                     label: modelData.label
                     primary: setup.kind === modelData.key
                     onClicked: setup.kind = modelData.key
@@ -129,8 +130,8 @@ Rectangle {
                     + "3. " + Facteur.tr("Keep it running in the background, without a window:") + "\n   protonmail-bridge --noninteractive"
             }
         }
-        Field { id: email; width: parent.width; placeholderText: Facteur.tr("Email address"); inputMethodHints: Qt.ImhEmailCharactersOnly; KeyNavigation.tab: password; onAccepted: password.forceActiveFocus() }
-        Field { id: password; visible: setup.kind !== "google"; width: parent.width; placeholderText: Facteur.tr("Password"); secret: true; KeyNavigation.tab: setup.kind === "other" ? imapHost : email; onAccepted: setup.submit() }
+        FiliTextField { id: email; width: parent.width; placeholder: Facteur.tr("Email address"); inputMethodHints: Qt.ImhEmailCharactersOnly; tabNext: password; onAccepted: password.focusField() }
+        FiliTextField { id: password; visible: setup.kind !== "google"; width: parent.width; placeholder: Facteur.tr("Password"); secret: true; tabNext: setup.kind === "other" ? imapHost : email; onAccepted: setup.submit() }
         Column {
             width: parent.width
             spacing: FiliTheme.space2
@@ -162,7 +163,7 @@ Rectangle {
                 font.pixelSize: FiliTheme.sizeList
                 color: FiliTheme.danger
             }
-            TextButton { label: Facteur.tr("Save the client"); primary: true; onClicked: setup.saveClient() }
+            FiliButton { label: Facteur.tr("Save the client"); primary: true; onClicked: setup.saveClient() }
         }
         Column {
             width: parent.width
@@ -170,15 +171,15 @@ Rectangle {
             visible: setup.kind === "other"
             Row {
                 spacing: FiliTheme.space2
-                Field { id: imapHost; width: parent.parent.width - 80 - FiliTheme.space2; placeholderText: Facteur.tr("IMAP server"); KeyNavigation.tab: imapPort }
-                Field { id: imapPort; width: 80; placeholderText: "993"; inputMethodHints: Qt.ImhDigitsOnly; KeyNavigation.tab: smtpHost }
+                FiliTextField { id: imapHost; width: parent.parent.width - 80 - FiliTheme.space2; placeholder: Facteur.tr("IMAP server"); tabNext: imapPort }
+                FiliTextField { id: imapPort; width: 80; placeholder: "993"; inputMethodHints: Qt.ImhDigitsOnly; tabNext: smtpHost }
             }
             Row {
                 spacing: FiliTheme.space2
-                Field { id: smtpHost; width: parent.parent.width - 80 - FiliTheme.space2; placeholderText: Facteur.tr("SMTP server"); KeyNavigation.tab: smtpPort }
-                Field { id: smtpPort; width: 80; placeholderText: "465"; inputMethodHints: Qt.ImhDigitsOnly; KeyNavigation.tab: username }
+                FiliTextField { id: smtpHost; width: parent.parent.width - 80 - FiliTheme.space2; placeholder: Facteur.tr("SMTP server"); tabNext: smtpPort }
+                FiliTextField { id: smtpPort; width: 80; placeholder: "465"; inputMethodHints: Qt.ImhDigitsOnly; tabNext: username }
             }
-            Field { id: username; width: parent.width; placeholderText: Facteur.tr("User name (if not the address)"); KeyNavigation.tab: email; onAccepted: setup.submit() }
+            FiliTextField { id: username; width: parent.width; placeholder: Facteur.tr("User name (if not the address)"); tabNext: email; onAccepted: setup.submit() }
         }
         Text {
             width: parent.width
@@ -209,17 +210,17 @@ Rectangle {
         }
         Row {
             spacing: FiliTheme.space2
-            TextButton {
+            FiliButton {
                 visible: setup.kind !== "google" || setup.googleReady
                 label: setup.busy ? (setup.kind === "google" ? Facteur.tr("Waiting for the browser…") : Facteur.tr("Adding…")) : setup.kind === "google" ? Facteur.tr("Sign in with Google") : Facteur.tr("Add account")
                 primary: true
                 onClicked: setup.submit()
             }
-            TextButton { visible: setup.cancellable; label: Facteur.tr("Cancel"); onClicked: setup.cancelled() }
+            FiliButton { visible: setup.cancellable; label: Facteur.tr("Cancel"); onClicked: setup.cancelled() }
         }
     }
     }
     FiliScrollBar { flick: scroller; anchors { top: scroller.top; bottom: scroller.bottom; right: scroller.right } }
-    Component.onCompleted: email.forceActiveFocus()
+    Component.onCompleted: email.focusField()
     Keys.onEscapePressed: if (cancellable) cancelled()
 }

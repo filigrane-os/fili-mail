@@ -1,5 +1,6 @@
 // Messages of the mailbox: one dense row each (sender and time, subject and preview), unread in bold with a dot.
 import QtQuick
+import Fili.UI
 import Fili.Mail
 
 Rectangle {
@@ -63,7 +64,7 @@ Rectangle {
             color: FiliTheme.text
             text: Facteur.tr("Results for “%1”").replace("%1", list.searchQuery) + "  ·  " + (list.searchBusy ? Facteur.tr("Searching…") : Facteur.tr("%1 messages").replace("%1", view.count))
         }
-        IconButton {
+        FiliIconButton {
             id: bannerClear
             name: "x"
             tip: Facteur.tr("Clear search")
@@ -187,7 +188,7 @@ Rectangle {
                 font.pixelSize: FiliTheme.sizeList
                 color: model.unread ? FiliTheme.text : FiliTheme.textSecondary
             }
-            Icon { // attachment
+            FiliIcon { // attachment
                 visible: model.attach === true
                 anchors { right: parent.right; rightMargin: FiliTheme.space3 }
                 y: 28
@@ -205,7 +206,7 @@ Rectangle {
                     visible: list.showAccount
                     spacing: FiliTheme.space1
                     anchors.verticalCenter: parent.verticalCenter
-                    Icon { anchors.verticalCenter: parent.verticalCenter; name: (list.accountInfo[row.acct] || ({ icon: "mail" })).icon; size: 11; color: FiliTheme.muted }
+                    FiliIcon { anchors.verticalCenter: parent.verticalCenter; name: (list.accountInfo[row.acct] || ({ icon: "mail" })).icon; size: 11; color: FiliTheme.muted }
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
                         width: Math.min(implicitWidth, 130)
@@ -257,10 +258,10 @@ Rectangle {
                     x: FiliTheme.space1
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: 2
-                    IconButton { name: model.unread ? "mail-open" : "mail"; tip: model.unread ? Facteur.tr("Mark as read") : Facteur.tr("Mark as unread"); onClicked: list.rowAct(model.unread ? "read" : "unread", model.id) }
-                    IconButton { name: "archive"; tip: Facteur.tr("Archive message"); onClicked: list.rowAct("archive", model.id) }
-                    IconButton { name: "trash"; tip: Facteur.tr("Move to trash"); onClicked: list.rowAct("trash", model.id) }
-                    IconButton { name: "star"; filled: model.starred; tip: model.starred ? Facteur.tr("Remove star") : Facteur.tr("Star message"); onClicked: list.rowAct(model.starred ? "unstar" : "star", model.id) }
+                    FiliIconButton { name: model.unread ? "mail-open" : "mail"; tip: model.unread ? Facteur.tr("Mark as read") : Facteur.tr("Mark as unread"); onClicked: list.rowAct(model.unread ? "read" : "unread", model.id) }
+                    FiliIconButton { name: "archive"; tip: Facteur.tr("Archive message"); onClicked: list.rowAct("archive", model.id) }
+                    FiliIconButton { name: "trash"; tip: Facteur.tr("Move to trash"); onClicked: list.rowAct("trash", model.id) }
+                    FiliIconButton { name: "star"; filled: model.starred; tip: model.starred ? Facteur.tr("Remove star") : Facteur.tr("Star message"); onClicked: list.rowAct(model.starred ? "unstar" : "star", model.id) }
                 }
             }
         }
@@ -321,8 +322,11 @@ Rectangle {
         flick: view
         anchors { top: view.top; bottom: view.bottom; right: view.right }
     }
-    LoadingBar {
-        active: list.loading
+    FiliProgressBar {
+        indeterminate: list.loading
+        visible: list.loading
+        height: 2
+        z: 40
         anchors { left: parent.left; right: parent.right; top: head.bottom }
     }
     Text {

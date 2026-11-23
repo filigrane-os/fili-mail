@@ -1,4 +1,6 @@
 //! Facteur's window: Qt Quick interface (qml/) over the mail engine of this crate.
+use fili_ui as _;
+
 pub mod appearance;
 pub mod bridge;
 pub mod i18n;
@@ -46,5 +48,43 @@ pub fn run() -> i32 {
     match app.as_mut() {
         Some(app) => app.exec(),
         None => 1,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+
+    // A misspelled token does not fail at run time: the item just stays transparent
+    #[test]
+    fn every_theme_token_used_in_qml_is_defined() {
+        let defined: Vec<String> = fs::read_to_string(env!("FILI_UI_THEME_QML"))
+            .unwrap()
+            .lines()
+            .filter_map(|l| l.trim().strip_prefix("readonly property "))
+            .filter_map(|l| Some(l.split(':').next()?.split_whitespace().last()?.to_string()))
+            .chain(["alpha".to_string()])
+            .collect();
+        for entry in fs::read_dir(format!("{}/qml", env!("CARGO_MANIFEST_DIR"))).unwrap() {
+            let path = entry.unwrap().path();
+            let text = fs::read_to_string(&path).unwrap();
+            for (i, _) in text.match_indices("FiliTheme.") {
+                let name: String = text[i + 10..].chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect();
+                assert!(defined.contains(&name), "{}: FiliTheme.{name} is not defined", path.display());
+            }
+        }
+    }
+
+    // Every action the panel shows is on the list, and every listed action is in the panel
+    #[test]
+    fn the_panel_and_the_list_agree() {
+        let qml = std::fs::read_to_string(std::path::Path::new(env!("FILI_UI_THEME_QML")).with_file_name("FiliWindowPanel.qml")).unwrap();
+        let used: Vec<&str> = qml.split("action: \"").skip(1).filter_map(|t| t.split('"').next()).collect();
+        for u in &used {
+            assert!(fili_mail::window::ACTIONS.contains(u), "{u} is shown but not allowed");
+        }
+        for a in fili_mail::window::ACTIONS {
+            assert!(used.contains(a), "{a} is allowed but not shown");
+        }
     }
 }

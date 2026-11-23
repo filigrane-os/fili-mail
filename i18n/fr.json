@@ -288,5 +288,9 @@
  "Clear": "Effacer",
  "Open file": "Ouvrir le fichier",
  "Lia was asked to look at it": "Lia a été prévenu",
- "Could not record the problem": "Impossible d'enregistrer le problème"
+ "Could not record the problem": "Impossible d'enregistrer le problème",
+ "Needs your attention": "Demande votre attention",
+ "OK": "OK",
+ "New mail": "Nouveau courrier",
+ "%1 messages": "%1 messages"
 }
