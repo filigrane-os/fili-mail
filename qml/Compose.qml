@@ -442,7 +442,8 @@ Rectangle {
         TextArea {
             id: body
             width: bodyScroll.width - 14
-            height: Math.max(implicitHeight, bodyScroll.height - quoteBox.height - FiliTheme.space2)
+            // The minimum leaves room for the "…" button only: using quoteBox.height would loop (the quotation's page is placed from body.height)
+            height: Math.max(implicitHeight, bodyScroll.height - (compose.hasQuote ? 20 + FiliTheme.space2 : 0) - FiliTheme.space2)
             enabled: !compose.busy
             wrapMode: TextEdit.Wrap
             font.family: FiliTheme.font
