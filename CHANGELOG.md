@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.8.0 (2026-11-24)
+
+- The interface controls (theme, buttons, menus, text fields, progress bar, tab row, window and debug panels, About and shortcuts cards) come from the shared `fili-ui` kit instead of local copies.
+- The tabs above the list are the kit's: they scroll with the wheel when there are many, the category tabs cannot be closed, the pinned folders can.
+- Where the reader goes (automatic, right, below) is the kit's segmented switch, as high as the other header buttons.
+- Button labels show on hover again (drawn by the window).
+- The plain and rich message bodies are selectable and copyable (Ctrl+C, Ctrl+A); the compose body no longer loops when it quotes a long message.
+
 ## 1.7.0 (2026-11-22)
 
 - The assistant is now named Lia: the header button and the menu entry say "Ask Lia", and the hidden brief is `shell/lia/<app_id>.md` (the older `rob/` is still read).

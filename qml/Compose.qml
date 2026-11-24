@@ -4,6 +4,7 @@
 import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Dialogs
+import Fili.UI
 import Fili.Mail
 import Fili.Html
 
@@ -315,7 +316,7 @@ Rectangle {
                         font.weight: on ? FiliTheme.weightAccent : Font.Normal
                         color: on ? FiliTheme.text : FiliTheme.textSecondary
                     }
-                    IconButton {
+                    FiliIconButton {
                         id: closeTab
                         name: "x"
                         width: 22; height: 22
@@ -325,15 +326,15 @@ Rectangle {
                     }
                 }
             }
-            IconButton { id: plus; name: "plus"; tip: Facteur.tr("New message"); onClicked: compose.newRequested() }
+            FiliIconButton { id: plus; name: "plus"; tip: Facteur.tr("New message"); onClicked: compose.newRequested() }
         }
         Row {
             id: controls
             anchors { right: parent.right; rightMargin: FiliTheme.space2; verticalCenter: parent.verticalCenter }
             spacing: 2
-            IconButton { name: compose.minimized ? "chevron-up" : "minus"; tip: compose.minimized ? Facteur.tr("Restore") : Facteur.tr("Minimise"); onClicked: compose.minimizeToggled() }
-            IconButton { visible: !compose.minimized; name: compose.expanded ? "minimize-2" : "maximize"; tip: compose.expanded ? Facteur.tr("Reduce") : Facteur.tr("Expand"); onClicked: compose.expanded = !compose.expanded }
-            IconButton { name: "x"; tip: Facteur.tr("Close (the draft is kept)"); onClicked: if (!compose.busy) compose.cancelled() }
+            FiliIconButton { name: compose.minimized ? "chevron-up" : "minus"; tip: compose.minimized ? Facteur.tr("Restore") : Facteur.tr("Minimise"); onClicked: compose.minimizeToggled() }
+            FiliIconButton { visible: !compose.minimized; name: compose.expanded ? "minimize-2" : "maximize"; tip: compose.expanded ? Facteur.tr("Reduce") : Facteur.tr("Expand"); onClicked: compose.expanded = !compose.expanded }
+            FiliIconButton { name: "x"; tip: Facteur.tr("Close (the draft is kept)"); onClicked: if (!compose.busy) compose.cancelled() }
         }
     }
 
@@ -412,13 +413,13 @@ Rectangle {
         anchors { left: parent.left; top: form.bottom; leftMargin: FiliTheme.margin; topMargin: FiliTheme.space1 }
         height: visible ? 24 : 0
         spacing: 2
-        TextButton { label: "B"; primary: body.cursorSelection.font.bold; onClicked: compose.toggleFormat("bold") }
-        TextButton { label: "I"; primary: body.cursorSelection.font.italic; onClicked: compose.toggleFormat("italic") }
-        TextButton { label: "U"; primary: body.cursorSelection.font.underline; onClicked: compose.toggleFormat("underline") }
+        FiliButton { label: "B"; primary: body.cursorSelection.font.bold; onClicked: compose.toggleFormat("bold") }
+        FiliButton { label: "I"; primary: body.cursorSelection.font.italic; onClicked: compose.toggleFormat("italic") }
+        FiliButton { label: "U"; primary: body.cursorSelection.font.underline; onClicked: compose.toggleFormat("underline") }
         Item { width: FiliTheme.space2; height: 1 }
-        TextButton { label: "←"; onClicked: compose.align(Qt.AlignLeft) }
-        TextButton { label: "↔"; onClicked: compose.align(Qt.AlignHCenter) }
-        TextButton { label: "→"; onClicked: compose.align(Qt.AlignRight) }
+        FiliButton { label: "←"; onClicked: compose.align(Qt.AlignLeft) }
+        FiliButton { label: "↔"; onClicked: compose.align(Qt.AlignHCenter) }
+        FiliButton { label: "→"; onClicked: compose.align(Qt.AlignRight) }
     }
     Shortcut { sequence: "Ctrl+B"; enabled: compose.current && !compose.minimized && compose.html; onActivated: compose.toggleFormat("bold") }
     Shortcut { sequence: "Ctrl+I"; enabled: compose.current && !compose.minimized && compose.html; onActivated: compose.toggleFormat("italic") }
@@ -442,7 +443,8 @@ Rectangle {
         TextArea {
             id: body
             width: bodyScroll.width - 14
-            height: Math.max(implicitHeight, bodyScroll.height - quoteBox.height - FiliTheme.space2)
+            // The minimum leaves room for the "…" button only: using quoteBox.height would loop (the quotation's page is placed from body.height)
+            height: Math.max(implicitHeight, bodyScroll.height - (compose.hasQuote ? 20 + FiliTheme.space2 : 0) - FiliTheme.space2)
             enabled: !compose.busy
             wrapMode: TextEdit.Wrap
             font.family: FiliTheme.font
@@ -473,7 +475,7 @@ Rectangle {
                 color: dots.pressed ? FiliTheme.surfaceActive : dots.containsMouse ? FiliTheme.surfaceHover : "transparent"
                 border.width: FiliTheme.borderWidth
                 border.color: FiliTheme.border
-                Icon { anchors.centerIn: parent; name: "more"; size: 14; color: FiliTheme.textSecondary }
+                FiliIcon { anchors.centerIn: parent; name: "more"; size: 14; color: FiliTheme.textSecondary }
                 MouseArea { id: dots; anchors.fill: parent; hoverEnabled: true; onClicked: compose.quoteShown = !compose.quoteShown }
                 ToolTip.visible: dots.containsMouse
                 ToolTip.text: Facteur.tr("Show the quoted message")
@@ -592,12 +594,12 @@ Rectangle {
         Row {
             anchors { left: parent.left; leftMargin: FiliTheme.space3; verticalCenter: parent.verticalCenter }
             spacing: 2
-            IconButton { name: "trash"; tip: Facteur.tr("Discard"); onClicked: if (!compose.busy) compose.discarded() }
-            IconButton { name: "paperclip"; tip: Facteur.tr("Attach files"); onClicked: if (!compose.busy) picker.open() }
+            FiliIconButton { name: "trash"; tip: Facteur.tr("Discard"); onClicked: if (!compose.busy) compose.discarded() }
+            FiliIconButton { name: "paperclip"; tip: Facteur.tr("Attach files"); onClicked: if (!compose.busy) picker.open() }
             Item { width: FiliTheme.space2; height: 1 }
             // Body format: rich text (HTML) or plain text
-            TextButton { anchors.verticalCenter: parent.verticalCenter; label: Facteur.tr("Text"); primary: !compose.html; onClicked: if (!compose.busy) compose.setHtml(false) }
-            TextButton { anchors.verticalCenter: parent.verticalCenter; label: "HTML"; primary: compose.html; onClicked: if (!compose.busy) compose.setHtml(true) }
+            FiliButton { anchors.verticalCenter: parent.verticalCenter; label: Facteur.tr("Text"); primary: !compose.html; onClicked: if (!compose.busy) compose.setHtml(false) }
+            FiliButton { anchors.verticalCenter: parent.verticalCenter; label: "HTML"; primary: compose.html; onClicked: if (!compose.busy) compose.setHtml(true) }
         }
         Text {
             anchors { right: sendButton.left; rightMargin: FiliTheme.space3; verticalCenter: parent.verticalCenter }

@@ -1,5 +1,6 @@
 // Modal "Add a folder tab": pick a folder of the account and an icon. Editing a tab (`edit`) only changes its icon.
 import QtQuick
+import Fili.UI
 import Fili.Mail
 
 Rectangle {
@@ -109,7 +110,7 @@ Rectangle {
                         height: 28
                         radius: FiliTheme.radiusControl
                         color: dialog.pick === index ? FiliTheme.surfaceActive : rowArea.containsMouse ? FiliTheme.surfaceHover : "transparent"
-                        Icon { x: FiliTheme.space3; anchors.verticalCenter: parent.verticalCenter; name: modelData.icon; size: 14; color: dialog.pick === index ? FiliTheme.accentColor : FiliTheme.textSecondary }
+                        FiliIcon { x: FiliTheme.space3; anchors.verticalCenter: parent.verticalCenter; name: modelData.icon; size: 14; color: dialog.pick === index ? FiliTheme.accentColor : FiliTheme.textSecondary }
                         Text {
                             x: FiliTheme.space3 + 14 + FiliTheme.space3
                             width: parent.width - x - FiliTheme.space3
@@ -152,7 +153,7 @@ Rectangle {
                         width: 40; height: 32
                         radius: FiliTheme.radiusControl
                         color: dialog.icon === modelData ? FiliTheme.surfaceActive : iconArea.containsMouse ? FiliTheme.surfaceHover : "transparent"
-                        Icon { anchors.centerIn: parent; name: modelData; size: 16; color: dialog.icon === modelData ? FiliTheme.accentColor : FiliTheme.text }
+                        FiliIcon { anchors.centerIn: parent; name: modelData; size: 16; color: dialog.icon === modelData ? FiliTheme.accentColor : FiliTheme.text }
                         MouseArea { id: iconArea; anchors.fill: parent; hoverEnabled: true; onClicked: dialog.icon = modelData }
                     }
                 }
@@ -160,8 +161,8 @@ Rectangle {
             Row {
                 anchors.right: parent.right
                 spacing: FiliTheme.space2
-                TextButton { label: Facteur.tr("Cancel"); onClicked: dialog.cancelled() }
-                TextButton { label: dialog.editKey !== "" ? Facteur.tr("Save") : Facteur.tr("Add"); primary: true; onClicked: dialog.submit() }
+                FiliButton { label: Facteur.tr("Cancel"); onClicked: dialog.cancelled() }
+                FiliButton { label: dialog.editKey !== "" ? Facteur.tr("Save") : Facteur.tr("Add"); primary: true; onClicked: dialog.submit() }
             }
         }
     }

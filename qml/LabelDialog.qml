@@ -1,5 +1,6 @@
 // Modal "New label": a name and a colour from Gmail's palette (Gmail refuses other colours), with a live preview.
 import QtQuick
+import Fili.UI
 import Fili.Mail
 
 Rectangle {
@@ -46,7 +47,7 @@ Rectangle {
         error = "";
         pick = Math.floor(Math.random() * swatches.length);
         visible = true;
-        name.forceActiveFocus();
+        name.focusField();
     }
     function edit(label) {
         colorOnly = false;
@@ -56,7 +57,7 @@ Rectangle {
         error = "";
         pick = swatches.findIndex(s => s[0] === editColor);
         visible = true;
-        name.forceActiveFocus();
+        name.focusField();
         name.selectAll();
     }
     function submit() {
@@ -94,18 +95,18 @@ Rectangle {
                 font.weight: FiliTheme.weightAccent
                 color: FiliTheme.text
             }
-            Field {
+            FiliTextField {
                 id: name
                 width: parent.width
-                placeholderText: Facteur.tr("Label name")
-                enabled: !dialog.busy && !dialog.colorOnly
+                placeholder: Facteur.tr("Label name")
+                enabledState: !dialog.busy && !dialog.colorOnly
                 onAccepted: dialog.submit()
             }
             Row {
                 visible: dialog.imap && dialog.bridge && dialog.editId === ""
                 spacing: FiliTheme.space2
-                TextButton { label: (dialog.kind === "label" ? "● " : "○ ") + Facteur.tr("Label"); onClicked: dialog.kind = "label" }
-                TextButton { label: (dialog.kind === "folder" ? "● " : "○ ") + Facteur.tr("Folder"); onClicked: dialog.kind = "folder" }
+                FiliButton { label: (dialog.kind === "label" ? "● " : "○ ") + Facteur.tr("Label"); onClicked: dialog.kind = "label" }
+                FiliButton { label: (dialog.kind === "folder" ? "● " : "○ ") + Facteur.tr("Folder"); onClicked: dialog.kind = "folder" }
             }
             Text {
                 text: Facteur.tr("Colour")
@@ -161,8 +162,8 @@ Rectangle {
             Row {
                 anchors.right: parent.right
                 spacing: FiliTheme.space2
-                TextButton { label: Facteur.tr("Cancel"); onClicked: if (!dialog.busy) dialog.cancelled() }
-                TextButton { label: dialog.busy ? "…" : dialog.editId !== "" ? Facteur.tr("Save") : Facteur.tr("Create"); primary: true; onClicked: dialog.submit() }
+                FiliButton { label: Facteur.tr("Cancel"); onClicked: if (!dialog.busy) dialog.cancelled() }
+                FiliButton { label: dialog.busy ? "…" : dialog.editId !== "" ? Facteur.tr("Save") : Facteur.tr("Create"); primary: true; onClicked: dialog.submit() }
             }
         }
     }

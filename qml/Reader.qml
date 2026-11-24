@@ -1,6 +1,7 @@
 // The open message: title, a frame with sender, recipients and the actions, then the message on paper.
 import QtQuick
 import QtQuick.Controls.Basic
+import Fili.UI
 import Fili.Mail
 import Fili.Html
 
@@ -42,10 +43,16 @@ Rectangle {
     signal saveAllAttachments()
     // Right click on the HTML page, at (x, y) in the window: the link and whether a picture is under it
     signal pageMenu(real x, real y, string link, bool image)
-    readonly property bool hasSelection: reader.html !== "" && page.hasSelection
+    readonly property TextEdit textBody: reader.html !== "" ? null : (reader.rich !== "" ? richText : plainText)
+    readonly property bool hasSelection: reader.html !== "" ? page.hasSelection : (textBody !== null && textBody.selectedText !== "")
     // Selection of the HTML page (Edit menu, Ctrl+C, Ctrl+A)
-    function copySelection() { return reader.html !== "" && page.copy(); }
-    function selectAllText() { if (reader.html !== "") page.selectAll(); }
+    function copySelection() {
+        if (reader.html !== "") return page.copy();
+        if (textBody === null || textBody.selectedText === "") return false;
+        textBody.copy();
+        return true;
+    }
+    function selectAllText() { if (reader.html !== "") page.selectAll(); else if (textBody !== null) textBody.selectAll(); }
     function pageAction(id, link) {
         if (id === "open-link") Qt.openUrlExternally(link);
         else if (id === "copy-link") page.copyText(link.startsWith("mailto:") ? decodeURIComponent(link.slice(7).split("?")[0]) : link);
@@ -168,7 +175,7 @@ Rectangle {
                             color: FiliTheme.text
                         }
                         // Every message from this sender (fills the search field with from:address)
-                        IconButton {
+                        FiliIconButton {
                             name: "filter"
                             width: 24
                             height: 22
@@ -177,7 +184,7 @@ Rectangle {
                             onClicked: reader.filterSender()
                         }
                         // The same actions for every message of the sender, in every folder
-                        IconButton {
+                        FiliIconButton {
                             id: senderMore
                             name: "more"
                             width: 24
@@ -186,7 +193,7 @@ Rectangle {
                             enabledState: !!reader.summary && !!reader.summary.from.email
                             onClicked: { const p = senderMore.mapToItem(null, 0, senderMore.height); reader.senderMenu(p.x, p.y) }
                         }
-                        IconButton {
+                        FiliIconButton {
                             name: "trash"
                             width: 24
                             height: 22
@@ -233,7 +240,7 @@ Rectangle {
                         color: FiliTheme.surface
                         border.width: FiliTheme.borderWidth
                         border.color: FiliTheme.border
-                        Icon { x: FiliTheme.space3; anchors.verticalCenter: parent.verticalCenter; name: "mail"; size: 14; color: FiliTheme.textSecondary }
+                        FiliIcon { x: FiliTheme.space3; anchors.verticalCenter: parent.verticalCenter; name: "mail"; size: 14; color: FiliTheme.textSecondary }
                         Text {
                             x: FiliTheme.space3 + 14 + FiliTheme.space2
                             anchors.verticalCenter: parent.verticalCenter
@@ -245,7 +252,7 @@ Rectangle {
                             font.pixelSize: FiliTheme.sizeList
                             color: FiliTheme.textSecondary
                         }
-                        TextButton {
+                        FiliButton {
                             id: unsubscribeButton
                             anchors { right: parent.right; rightMargin: FiliTheme.space2; verticalCenter: parent.verticalCenter }
                             label: Facteur.tr("Unsubscribe")
@@ -272,7 +279,7 @@ Rectangle {
                                 color: chipArea.containsMouse ? FiliTheme.surfaceHover : FiliTheme.surface
                                 border.width: FiliTheme.borderWidth
                                 border.color: FiliTheme.border
-                                Icon { x: FiliTheme.space3; anchors.verticalCenter: parent.verticalCenter; name: "archive"; size: 14; color: FiliTheme.textSecondary }
+                                FiliIcon { x: FiliTheme.space3; anchors.verticalCenter: parent.verticalCenter; name: "archive"; size: 14; color: FiliTheme.textSecondary }
                                 Text {
                                     id: chipText
                                     x: FiliTheme.space3 + 14 + FiliTheme.space2
@@ -292,7 +299,7 @@ Rectangle {
                                     onClicked: reader.openAttachment(index)
                                 }
                                 // Save to the Downloads folder without opening
-                                IconButton {
+                                FiliIconButton {
                                     anchors { right: parent.right; rightMargin: 2; verticalCenter: parent.verticalCenter }
                                     name: "download"
                                     tip: Facteur.tr("Download")
@@ -301,7 +308,7 @@ Rectangle {
                                 }
                             }
                         }
-                        TextButton {
+                        FiliButton {
                             visible: reader.attachments.filter(a => !!a.attachmentId).length > 1
                             label: Facteur.tr("Download all")
                             onClicked: reader.saveAllAttachments()
@@ -323,11 +330,11 @@ Rectangle {
                                 id: leftActions
                                 x: FiliTheme.space1
                                 anchors.verticalCenter: parent.verticalCenter
-                                IconButton { name: reader.unread ? "mail-open" : "mail"; tip: reader.unread ? Facteur.tr("Mark as read") : Facteur.tr("Mark as unread"); onClicked: reader.act(reader.unread ? "read" : "unread") }
-                                IconButton { name: "trash"; tip: Facteur.tr("Move to trash"); onClicked: reader.act("trash") }
-                                IconButton { name: "archive"; tip: Facteur.tr("Archive message"); onClicked: reader.act("archive") }
-                                IconButton { name: "spam"; tip: Facteur.tr("Mark as spam"); onClicked: reader.act("spam") }
-                                IconButton { name: "star"; filled: reader.starred; tip: reader.starred ? Facteur.tr("Remove star") : Facteur.tr("Star message"); onClicked: reader.act(reader.starred ? "unstar" : "star") }
+                                FiliIconButton { name: reader.unread ? "mail-open" : "mail"; tip: reader.unread ? Facteur.tr("Mark as read") : Facteur.tr("Mark as unread"); onClicked: reader.act(reader.unread ? "read" : "unread") }
+                                FiliIconButton { name: "trash"; tip: Facteur.tr("Move to trash"); onClicked: reader.act("trash") }
+                                FiliIconButton { name: "archive"; tip: Facteur.tr("Archive message"); onClicked: reader.act("archive") }
+                                FiliIconButton { name: "spam"; tip: Facteur.tr("Mark as spam"); onClicked: reader.act("spam") }
+                                FiliIconButton { name: "star"; filled: reader.starred; tip: reader.starred ? Facteur.tr("Remove star") : Facteur.tr("Star message"); onClicked: reader.act(reader.starred ? "unstar" : "star") }
                             }
                         }
                         // Pushes the reply group to the right when both fit on one line
@@ -344,9 +351,9 @@ Rectangle {
                                 id: rightActions
                                 x: FiliTheme.space1
                                 anchors.verticalCenter: parent.verticalCenter
-                                IconButton { name: "reply"; tip: Facteur.tr("Reply"); onClicked: reader.reply() }
-                                IconButton { name: "reply-all"; tip: Facteur.tr("Reply all"); onClicked: reader.replyAll() }
-                                IconButton { name: "forward"; tip: Facteur.tr("Forward"); onClicked: reader.forward() }
+                                FiliIconButton { name: "reply"; tip: Facteur.tr("Reply"); onClicked: reader.reply() }
+                                FiliIconButton { name: "reply-all"; tip: Facteur.tr("Reply all"); onClicked: reader.replyAll() }
+                                FiliIconButton { name: "forward"; tip: Facteur.tr("Forward"); onClicked: reader.forward() }
                             }
                         }
                     }
@@ -369,7 +376,7 @@ Rectangle {
                     font.pixelSize: FiliTheme.sizeList
                     color: FiliTheme.textSecondary
                 }
-                TextButton {
+                FiliButton {
                     id: loadButton
                     anchors { right: parent.right; rightMargin: FiliTheme.space2; verticalCenter: parent.verticalCenter }
                     label: reader.loadingImages ? "…" : Facteur.tr("Load pictures (%1)").replace("%1", reader.remoteImages)
@@ -411,40 +418,44 @@ Rectangle {
                 height: richText.implicitHeight + 2 * FiliTheme.space3
                 radius: FiliTheme.radiusControl
                 color: "#ffffff"
-                Text {
+                TextEdit {
                     id: richText
+                    readOnly: true
+                    selectByMouse: true
+                    selectionColor: "#1a56c4"
+                    selectedTextColor: "#ffffff"
                     x: FiliTheme.space3
                     y: FiliTheme.space3
                     width: parent.width - 2 * FiliTheme.space3
                     text: reader.rich
-                    wrapMode: Text.Wrap
-                    textFormat: Text.RichText
-                    linkColor: "#1a56c4"
+                    wrapMode: TextEdit.Wrap
+                    textFormat: TextEdit.RichText
                     onLinkActivated: link => Qt.openUrlExternally(link)
                     onHoveredLinkChanged: reader.hovered = hoveredLink
-                    HoverHandler { cursorShape: richText.hoveredLink !== "" ? Qt.PointingHandCursor : Qt.ArrowCursor }
                     font.family: FiliTheme.font
                     font.pixelSize: FiliTheme.size
-                    lineHeight: 1.25
                     color: "#202124"
                 }
             }
-            Text {
+            TextEdit {
+                id: plainText
                 visible: reader.rich === "" && reader.html === ""
                 width: parent.width
+                readOnly: true
+                selectByMouse: true
+                selectionColor: FiliTheme.accent
                 text: reader.body
-                wrapMode: Text.Wrap
-                textFormat: Text.PlainText
+                wrapMode: TextEdit.Wrap
+                textFormat: TextEdit.PlainText
                 font.family: FiliTheme.font
                 font.pixelSize: FiliTheme.size
-                lineHeight: 1.25
                 color: FiliTheme.text
             }
         }
     }
     FocusRing { target: scroller; gap: -2; shown: scroller.activeFocus }
     // The message on screen is the previous one until the chosen message is here
-    LoadingBar { active: reader.loadingNext; anchors { left: parent.left; right: parent.right; top: parent.top } }
+    FiliProgressBar { indeterminate: reader.loadingNext; visible: reader.loadingNext; height: 2; z: 40; anchors { left: parent.left; right: parent.right; top: parent.top } }
     Rectangle { visible: reader.loadingNext && reader.summary !== null; anchors.fill: scroller; color: reader.color; opacity: 0.35 }
     FiliScrollBar {
         flick: scroller

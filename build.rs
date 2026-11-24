@@ -1,13 +1,17 @@
 // Qt Quick interface of Facteur, compiled into the binary (module Fili.Mail, qrc:/qt/qml/Fili/Mail/qml/);
 // the Rust object it talks to is in src/gui/bridge.rs.
 #[cfg(feature = "gui")]
-use cxx_qt_build::{CxxQtBuilder, QmlFile, QmlModule};
+use cxx_qt_build::{CxxQtBuilder, QmlModule};
 
 #[cfg(not(feature = "gui"))]
 fn main() {}
 
 #[cfg(feature = "gui")]
 fn main() {
+    // Tokens of the shared kit (Fili.UI), for the test that checks the FiliTheme.* names used in the QML
+    if let Ok(p) = std::env::var("DEP_FILI_UI_THEME_QML") {
+        println!("cargo::rustc-env=FILI_UI_THEME_QML={p}");
+    }
     // Version of the About card: tag or commit of the repository (absent outside a repository)
     if let Ok(o) = std::process::Command::new("git").args(["describe", "--tags", "--always", "--dirty"]).output() {
         if o.status.success() {
@@ -21,30 +25,15 @@ fn main() {
                 "qml/AccountSetup.qml",
                 "qml/Sidebar.qml",
                 "qml/LabelDialog.qml",
-                "qml/TabStrip.qml",
                 "qml/FolderTabDialog.qml",
-                "qml/PopupMenu.qml",
                 "qml/AccountDialog.qml",
                 "qml/MessageList.qml",
-                "qml/ListBar.qml",
                 "qml/Reader.qml",
-                "qml/FiliScrollBar.qml",
-                "qml/WindowGlyph.qml",
-                "qml/WindowPanel.qml",
-                "qml/KineticScroll.qml",
                 "qml/Compose.qml",
-                "qml/LoadingBar.qml",
                 "qml/AboutCard.qml",
                 "qml/ShortcutsCard.qml",
-                "qml/Icon.qml",
-                "qml/Field.qml",
-                "qml/IconButton.qml",
-                "qml/TextButton.qml",
-                "qml/DebugPanel.qml",
-                "qml/LiaButton.qml",
-                "qml/FocusRing.qml",
             ])
-            .qml_file(QmlFile::from("qml/FiliTheme.qml").singleton(true))
+            .depend("Fili.UI")
             .depend("QtQuick")
             .depend("QtQuick.Controls"),
     )
