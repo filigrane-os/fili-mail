@@ -32,8 +32,7 @@ build:
 # need it (it refuses release builds), otherwise they look for a Secret Service and stop at auth_signed_out.
 test:
 	$(CARGO) test --locked --no-default-features --features integration-test-credentials
-	# The window: the theme tokens and window actions the QML uses exist in the kit (needs Qt; own target directory, see the notes above)
-	CARGO_TARGET_DIR=$(TARGET_DIR)/gui-test $(CARGO) test --locked --bin fili-mail
+	python3 -I scripts/check-kit-qml.py
 	python3 -I scripts/check-i18n.py
 	python3 -I scripts/check-shell-menu.py
 	python3 -I scripts/fili-api-lint --app .
