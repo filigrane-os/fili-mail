@@ -1412,6 +1412,8 @@ ApplicationWindow {
             FiliIconButton { accented: win.attending; ink: win.onAccent; name: "tabs"; toggled: win.categoryTabs; tip: win.categoryTabs ? Facteur.tr("Hide tabs") : Facteur.tr("Show tabs"); onClicked: win.toggleCategoryTabs() }
             FiliViewSwitch { // where the reader goes: auto, side, bottom
                 anchors.verticalCenter: parent.verticalCenter
+                // As high as the other buttons of this row (24): a taller capsule pushes them to the top of the row
+                height: 24
                 accented: win.attending
                 ink: win.onAccent
                 mode: win.previewMode
