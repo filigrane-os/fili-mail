@@ -816,7 +816,7 @@ dependencies = [
 
 [[package]]
 name = "fili-mail"
-version = "1.8.1"
+version = "1.9.0"
 dependencies = [
  "base64",
  "cc",
@@ -862,8 +862,8 @@ dependencies = [
 
 [[package]]
 name = "fili-ui"
-version = "0.4.0"
-source = "git+https://github.com/filigrane-os/fili-ui?tag=v0.4.0#31220abde94a35a85a3b03c0680accbc97cfc306"
+version = "0.7.1"
+source = "git+https://github.com/filigrane-os/fili-ui?tag=v0.7.1#49c9600caa86934aa57d5fd6c12f416659fb3b5c"
 dependencies = [
  "cxx",
  "cxx-qt",
@@ -2577,7 +2577,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.4.3",
+ "getrandom 0.3.4",
  "once_cell",
  "rustix",
  "windows-sys 0.61.2",

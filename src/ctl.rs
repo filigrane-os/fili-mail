@@ -14,8 +14,8 @@ use std::{
 pub const ACTIONS: &[&str] = &[
     "new-message", "next-message", "previous-message", "reply", "reply-all", "forward", "refresh", "archive", "trash", "spam", "star", "unstar",
     "read", "unread", "add-account", "about", "close", "inbox", "all-inboxes", "all-unread", "unread-box", "starred", "sent",
-    "drafts", "archive-box", "spam-box", "trash-box", "window-actions", "toggle-window-buttons", "toggle-category-tabs", "toggle-header", "toggle-footer", "shortcuts",
-    "copy", "select-all", "load-pictures", "debug", "attention", "attention-clear",
+    "drafts", "archive-box", "spam-box", "trash-box", "empty-trash", "window-actions", "toggle-window-buttons", "toggle-category-tabs", "toggle-header", "toggle-footer", "shortcuts",
+    "copy", "select-all", "load-pictures", "add-to-agenda", "debug", "attention", "attention-clear",
 ];
 
 fn dir() -> Option<PathBuf> {

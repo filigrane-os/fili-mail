@@ -19,6 +19,10 @@ Rectangle {
     signal contextRequested(int index, real x, real y)
     // Keyboard action on the current message: archive, trash, star, unread
     signal act(string operation)
+    // In the Trash the trash button empties it (when the account can); nothing is "moved to the trash" there
+    property bool inTrash: false
+    property bool canEmptyTrash: false
+    signal emptyTrash()
     // Previous or next message of the list (-1, +1)
     signal step(int delta)
     // Ticking: toggle one row (mode 0) or a range (mode 1), all, none
@@ -260,7 +264,8 @@ Rectangle {
                     spacing: 2
                     FiliIconButton { name: model.unread ? "mail-open" : "mail"; tip: model.unread ? Facteur.tr("Mark as read") : Facteur.tr("Mark as unread"); onClicked: list.rowAct(model.unread ? "read" : "unread", model.id) }
                     FiliIconButton { name: "archive"; tip: Facteur.tr("Archive message"); onClicked: list.rowAct("archive", model.id) }
-                    FiliIconButton { name: "trash"; tip: Facteur.tr("Move to trash"); onClicked: list.rowAct("trash", model.id) }
+                    FiliIconButton { visible: !list.inTrash; name: "trash"; tip: Facteur.tr("Move to trash"); onClicked: list.rowAct("trash", model.id) }
+                    FiliIconButton { visible: list.canEmptyTrash; name: "trash"; tip: Facteur.tr("Empty Trash"); onClicked: list.emptyTrash() }
                     FiliIconButton { name: "star"; filled: model.starred; tip: model.starred ? Facteur.tr("Remove star") : Facteur.tr("Star message"); onClicked: list.rowAct(model.starred ? "unstar" : "star", model.id) }
                 }
             }
@@ -299,7 +304,7 @@ Rectangle {
                 event.accepted = true;
                 return;
             } else if (event.key === Qt.Key_NumberSign || event.key === Qt.Key_Delete) {
-                list.act("trash");
+                if (!list.inTrash) list.act("trash");
                 event.accepted = true;
                 return;
             } else if (event.key === Qt.Key_S) {

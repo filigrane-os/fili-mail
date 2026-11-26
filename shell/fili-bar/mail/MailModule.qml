@@ -10,7 +10,7 @@ AlertModule {
     kind: "mail"
     title: FiliI18n.tr("Mail")
     glyph: ""
-    accent: FiliTheme.barWarn
+    accent: FiliTheme.barText
     openHint: FiliI18n.tr("click: open Facteur")
     click: "fili-mail"
     hover.onRightClicked: contextMenu([{ glyph: "\uf08e", text: FiliI18n.tr("Open Facteur"), cmd: "fili-mail", app: true }])

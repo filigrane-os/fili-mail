@@ -31,6 +31,7 @@ fn main() {
                 "qml/Reader.qml",
                 "qml/Compose.qml",
                 "qml/AboutCard.qml",
+                "qml/EmptyTrashDialog.qml",
                 "qml/ShortcutsCard.qml",
             ])
             .depend("Fili.UI")

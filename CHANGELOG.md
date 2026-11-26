@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.9.0 (2026-11-26)
+
+- The Window button of the header is the kit's (`fili-ui` v0.7.1): a click maximizes the column (niri's Mod+F) or gives it back its
+  width, and its picture shows which; resting the pointer on it for a second opens the window panel, a right click opens it at once.
+- A clearer selection from the kit: the current tab, the selected sidebar row and selected text are a translucent wash of the accent
+  instead of grey steps; the kit's dialogs have a × at the top right.
+- Empty Trash… (bar menu, the trash button of a message in the Trash): a confirmation, then the progress in a dialog you can hide;
+  a stop part way says how many messages were deleted and that running it again finishes.
+- Add to Agenda: a message with an invitation, an .ics file or a video meeting link (Meet, Teams, Zoom) is handed to Agenda, which
+  shows its import preview or a filled event editor; nothing is added until you save there.
+- Quick search on IMAP accounts is answered from a local index of the headers (subject, sender, recipients) when it can: from
+  13 s to a tenth of a second on a 17 000 message Proton inbox. The index fills once in the background; anything it cannot answer
+  goes to the server as before.
+- When the full search is too slow, the matches in the headers are shown, with a note that says so.
+- IMAP errors say what happened (the server took too long, refused the command, refused some messages).
+- The bar module shows new mail in the normal text colour instead of the warning yellow.
+
 ## 1.8.1 (2026-11-26)
 
 - Shift+Enter sends the message being written, as in every message composer of Filigrane (Enter makes a new line; Ctrl+Enter still sends). The shortcuts card says so.

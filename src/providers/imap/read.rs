@@ -2,6 +2,7 @@
 use super::*;
 use base64::engine::general_purpose::{STANDARD_NO_PAD, URL_SAFE_NO_PAD};
 use std::collections::{BTreeMap, BTreeSet};
+mod headers;
 mod search;
 #[derive(Clone, Debug, PartialEq)]
 enum Node {
@@ -609,6 +610,12 @@ async fn list(w: &mut Wire, p: &Value, boxes: &Mailboxes) -> Result<Value> {
         }
         if criteria.is_empty() {
             return Ok::<_, &'static str>((snapshot, dates));
+        }
+        // A quick header search is answered by the local index when it can (Proton Bridge scans every message).
+        if let Some((validity, _, _)) = state {
+            if let Some(found) = headers::search(p, &folder, validity, &snapshot, &criteria).await {
+                return Ok((found, dates));
+            }
         }
         let mut matches = Vec::new();
         for window in snapshot.chunks(4096).rev() {
