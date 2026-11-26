@@ -77,13 +77,19 @@ fn advertises(response: &[u8], capability: &str) -> bool {
 }
 async fn release(wire: Wire, key: String) {
     let mut pool = POOL.get_or_init(Default::default).lock().await;
-    if pool.len() < 32 {
-        pool.push(Idle {
-            key,
-            wire,
-            since: Instant::now(),
-        });
+    // A full pool makes room for the connection just used (the one most likely to be asked for again): expired ones go
+    // first, then the oldest. Dropping the new one instead made the next request of the same account log in again.
+    pool.retain(|entry| entry.since.elapsed() < Duration::from_secs(45));
+    if pool.len() >= 32
+        && let Some(oldest) = (0..pool.len()).min_by_key(|&i| pool[i].since)
+    {
+        pool.swap_remove(oldest);
     }
+    pool.push(Idle {
+        key,
+        wire,
+        since: Instant::now(),
+    });
 }
 fn string<'a>(p: &'a Value, key: &str) -> Result<&'a str> {
     p.get(key).and_then(Value::as_str).ok_or("invalid_params")
