@@ -38,7 +38,7 @@ FiliShortcutsCard {
         ] },
         { title: Facteur.tr("Writing"), rows: [
             ["Ctrl+N", Facteur.tr("New message")],
-            ["Ctrl+Enter", Facteur.tr("Send")],
+            ["Shift+Enter  Ctrl+Enter", Facteur.tr("Send")],
             ["Ctrl+Shift+C  Ctrl+Shift+B", Facteur.tr("Add Cc, Bcc")],
             ["Ctrl+Shift+U", Facteur.tr("Attach files")],
             ["Ctrl+Shift+H", Facteur.tr("Write as plain text or HTML")],

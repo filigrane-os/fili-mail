@@ -33,6 +33,7 @@ build:
 test:
 	$(CARGO) test --locked --no-default-features --features integration-test-credentials
 	python3 -I scripts/check-kit-qml.py
+	python3 -I scripts/check-compose-keys.py
 	python3 -I scripts/check-i18n.py
 	python3 -I scripts/check-shell-menu.py
 	python3 -I scripts/fili-api-lint --app .
