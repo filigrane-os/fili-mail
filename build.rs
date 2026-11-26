@@ -35,6 +35,7 @@ fn main() {
                 "qml/Compose.qml",
                 "qml/LoadingBar.qml",
                 "qml/AboutCard.qml",
+                "qml/EmptyTrashDialog.qml",
                 "qml/ShortcutsCard.qml",
                 "qml/Icon.qml",
                 "qml/Field.qml",

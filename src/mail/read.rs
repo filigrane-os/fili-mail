@@ -243,6 +243,11 @@ fn safe_message(request: &ReadRequest, value: Value) -> Result<(Value, Vec<Strin
     let (render, links) = safe_render(&value["nativeRender"])?;
     let unsubscribe = super::read_links::unsubscribe(&value["payload"]["headers"]);
     let content = json!({"body":body,"attachments":attachments});
+    // An invitation's iCalendar text (empty when there is none), without control characters other than line ends
+    let calendar = value["nativeContent"]["calendar"]
+        .as_str()
+        .filter(|t| t.len() <= 512 * 1024 && !t.chars().any(|c| c.is_control() && !matches!(c, '\r' | '\n' | '\t')))
+        .unwrap_or("");
     Ok((
         json!({
             "id":request.id,
@@ -252,6 +257,7 @@ fn safe_message(request: &ReadRequest, value: Value) -> Result<(Value, Vec<Strin
             "attachments":content["attachments"],
             "links":links,
             "unsubscribe":unsubscribe,
+            "calendar":calendar,
         }),
         members,
     ))

@@ -176,6 +176,9 @@ async fn records(
                 .starts_with("OK ")
                 && text[tag.len() + 1..].trim() != "OK"
             {
+                // For the log (a local file): the server's own reason, cut short
+                let reply = text[tag.len() + 1..].trim();
+                log::warn!("IMAP refusal: {}", reply.chars().take(120).collect::<String>());
                 return Err(refusal(&text[tag.len() + 1..]));
             }
             visit(&l)?;
@@ -224,7 +227,15 @@ fn literal_length(line: &str) -> Option<std::result::Result<usize, std::num::Par
 }
 async fn command(w: &mut Wire, cmd: &str) -> Result<Vec<u8>> {
     write(w, format!("O1 {cmd}\r\n").as_bytes()).await?;
-    response(w, "O1", false).await
+    response(w, "O1", false).await.inspect_err(|e| {
+        // The verb only (UID MOVE, SELECT…): never a folder name or an identifier
+        let mut words = cmd.split_whitespace();
+        let verb = match words.next() {
+            Some("UID") => format!("UID {}", words.next().unwrap_or("")),
+            other => other.unwrap_or("").to_owned(),
+        };
+        log::warn!("IMAP {verb} failed: {e}");
+    })
 }
 async fn tls(w: Wire, host: &str) -> Result<Wire> {
     if !w.buffer().is_empty() {
@@ -651,6 +662,7 @@ async fn execute(method: &str, p: &Value, sent: &std::sync::atomic::AtomicBool) 
         "imap.modify"
             | "imap.trash"
             | "imap.untrash"
+            | "imap.emptyTrash"
             | "imap.createFolder"
             | "imap.renameFolder"
             | "imap.deleteFolder"

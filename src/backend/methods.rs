@@ -155,6 +155,7 @@ pub const ALL: &[&str] = &[
     "imap.modify",
     "imap.trash",
     "imap.untrash",
+    "imap.emptyTrash",
     "imap.createFolder",
     "imap.renameFolder",
     "imap.deleteFolder",

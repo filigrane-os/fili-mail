@@ -62,6 +62,9 @@ ApplicationWindow {
     property var accounts: []
     property string account: ""
     property string mailbox: "inbox"
+    // In the Trash, moving to the trash is pointless: its button becomes "Empty Trash" (where the account can)
+    readonly property bool inTrash: mailbox === "trash"
+    readonly property bool canEmptyTrash: inTrash && !unified && providerIsImap(account)
     // Where the reader sits: "side" (beside the list), "bottom" (under it) or "auto": beside as soon as the window is wide
     // enough for a message to read well next to the list (list 340 + reader 520, the sidebar included), under it below that.
     readonly property int sideMinWidth: FiliTheme.sidebarWidth + FiliTheme.borderWidth + 340 + FiliTheme.borderWidth + 520
@@ -267,7 +270,7 @@ ApplicationWindow {
             return;
         }
         const entries = kind === "box"
-            ? [{ id: "mark-read", label: Facteur.tr("Mark all as read") }]
+            ? [{ id: "mark-read", label: Facteur.tr("Mark all as read") }].concat(data.box === "trash" && providerIsImap(data.account) ? [{ id: "empty-trash", label: Facteur.tr("Empty Trash…"), danger: true }] : [])
             : kind === "tab"
             ? [{ id: "icon", label: Facteur.tr("Change Icon…") }, { id: "remove", label: Facteur.tr("Remove Tab"), danger: true }]
             : kind === "label" && data.folder
@@ -304,7 +307,7 @@ ApplicationWindow {
     readonly property var opName: ({ trash: Facteur.tr("to trash"), archive: Facteur.tr("to archive"), spam: Facteur.tr("to spam") })
     // Every message of a sender, whatever the folder (the list only holds the current one, 50 at a time)
     function actSender(operation, acct, email) {
-        if (!email || acct === "" || bulkText !== "") return;
+        if (!email || acct === "" || bulkText !== "" || (operation === "trash" && inTrash)) return;
         bulkSender = email;
         bulkText = Facteur.tr("Looking for the messages of %1…").replace("%1", email);
         Facteur.actSender(acct, operation, email);
@@ -349,7 +352,7 @@ ApplicationWindow {
         }
         if (!multi && row.email !== "") {
             entries.push({ id: "filter-sender", label: Facteur.tr("Show all messages from this sender") });
-            entries.push({ id: "trash-sender", label: Facteur.tr("Move all from this sender to trash"), danger: true });
+            if (!inTrash) entries.push({ id: "trash-sender", label: Facteur.tr("Move all from this sender to trash"), danger: true });
             entries.push({ id: "archive-sender", label: Facteur.tr("Archive all from this sender") });
             entries.push({ id: "spam-sender", label: Facteur.tr("Mark all from this sender as spam") });
         }
@@ -357,12 +360,14 @@ ApplicationWindow {
         entries.push({ id: starred ? "unstar" : "star", label: starred ? Facteur.tr("Remove star") : Facteur.tr("Star message") });
         entries.push({ id: "archive", label: Facteur.tr("Archive message") });
         entries.push({ id: "spam", label: Facteur.tr("Mark as spam") });
-        entries.push({ id: "trash", label: Facteur.tr("Move to trash"), danger: true });
+        if (!inTrash) entries.push({ id: "trash", label: Facteur.tr("Move to trash"), danger: true });
+        else if (canEmptyTrash) entries.push({ id: "empty-trash", label: Facteur.tr("Empty Trash…"), danger: true });
         popup.openAt(x, y, entries);
     }
     function runContext(id) {
         if (contextKind === "message") {
-            if (id === "filter-sender") filterSender(contextData.email);
+            if (id === "empty-trash") askEmptyTrash(contextData.acct);
+            else if (id === "filter-sender") filterSender(contextData.email);
             else if (id.endsWith("-sender")) actSender(id.slice(0, -7), contextData.acct, contextData.email);
             else if (id === "reply" || id === "replyall" || id === "forward") {
                 // Writing needs the message open: open it first, the answer starts the draft (onOpened)
@@ -370,7 +375,8 @@ ApplicationWindow {
                 else { pendingCompose = id; choose(contextData.id); }
             } else doActMany(id, contextData.ids);
         } else if (contextKind === "box") {
-            if (bulkText === "") {
+            if (id === "empty-trash") askEmptyTrash(contextData.account);
+            else if (bulkText === "") {
                 bulkSender = contextData.label;
                 bulkText = Facteur.tr("Looking for the messages of %1…").replace("%1", contextData.label);
                 Facteur.markBoxRead(contextData.account, contextData.box);
@@ -410,6 +416,21 @@ ApplicationWindow {
     }
     // IMAP account whose server is Proton Bridge (labels and folders live under "Labels/" and "Folders/")
     property bool bridge: false
+    function providerIsImap(acct) { const a = accounts.find(x => x.id === acct); return !!a && (a.provider === "imap" || a.provider === "outlook"); }
+    // Emptying the trash deletes for good: it asks first. Only IMAP accounts can (Gmail's scope has no delete, and
+    // Gmail empties its own trash after 30 days)
+    function askEmptyTrash(acct) {
+        if (bulkText !== "") return;
+        if (!providerIsImap(acct)) { notice = Facteur.tr("This account cannot empty its trash from here."); return; }
+        trashDialog.ask(acct);
+    }
+    function doEmptyTrash() {
+        const acct = trashDialog.account;
+        bulkSender = "";
+        bulkText = Facteur.tr("Emptying the trash…");
+        trashDialog.working();
+        Facteur.emptyTrash(acct);
+    }
     function isImap() { const a = accounts.find(x => x.id === account); return !!a && (a.provider === "imap" || a.provider === "outlook"); }
     // Which pane has the keyboard: 0 sidebar, 1 list, 2 reader
     property int pane: 1
@@ -588,6 +609,11 @@ ApplicationWindow {
         if (d) openDraft(d.account, d, key);
     }
 
+    // The meeting of the message shown (an invitation, an .ics file, a video link) handed to Agenda (fili-cal)
+    function addToAgenda() {
+        if (reader.meeting)
+            Facteur.addToAgenda(win.selectedRef.acct, win.selectedRef.id, JSON.stringify(reader.meeting));
+    }
     function errorText(code) {
         const known = {
             "credential_missing": Facteur.tr("The password is not in the keyring."),
@@ -595,6 +621,10 @@ ApplicationWindow {
             "invalid_params": Facteur.tr("Check the address and the password."),
             "mail_network_failed": Facteur.tr("Cannot reach the mail server."),
             "mail_connection_closed": Facteur.tr("The server closed the connection."),
+            "request_timed_out": Facteur.tr("The server took too long to answer."),
+            "mail_action_partial": Facteur.tr("The server refused some of the messages."),
+            "imap_command_failed": Facteur.tr("The server refused the command."),
+            "mail_list_failed": Facteur.tr("The messages could not be listed."),
             "mail_auth_failed": Facteur.tr("The server refused the login."),
             "imap_auth_failed": Facteur.tr("The server refused the login."),
             "gmail_client_missing": Facteur.tr("No Google OAuth client: paste the client file first."),
@@ -603,6 +633,7 @@ ApplicationWindow {
             "attachment_open_refused": Facteur.tr("This kind of file is not opened from a message: download it instead."),
             "attachment_open_failed": Facteur.tr("No application could open this file."),
             "attachment_unavailable": Facteur.tr("This attachment is not available."),
+            "agenda_missing": Facteur.tr("Agenda (fili-cal) is not installed."),
             "auth_timeout": Facteur.tr("Google sign-in took too long. Try again."),
             "auth_offline_access_missing": Facteur.tr("Google did not grant lasting access. Remove Facteur from your Google account permissions and try again."),
             "auth_missing_scope": Facteur.tr("Mail access was not granted: tick every permission on Google's page.")
@@ -948,6 +979,8 @@ ApplicationWindow {
         doActMany(operation, [id]);
     }
     function doActMany(operation, ids) {
+        // A message of the Trash is already there
+        if (operation === "trash" && inTrash) return;
         // Drafts kept on this computer: only removing makes sense
         const local = ids.filter(id => id.startsWith("draft:"));
         if (local.length > 0) {
@@ -1055,7 +1088,8 @@ ApplicationWindow {
             const merge = !quick && win.searchPhase === "full";
             if (merge) {
                 win.searchPhase = "";
-                if (r.error) return;
+                // The full pass of a big account can take too long: the quick results stay, and the user is told
+                if (r.error) { win.notice = Facteur.tr("The full search was too slow: only the matches in the headers are shown"); return; }
             }
             const more = !merge && (r.append === true || (!!r.error && win.loadingMore));
             if (more && !win.loadingMore)
@@ -1104,6 +1138,7 @@ ApplicationWindow {
             const boxes = { "inbox": "inbox", "all-inboxes": "all", "all-unread": "allunread", "unread-box": "unread", "starred": "starred", "sent": "sent", "drafts": "drafts", "archive-box": "archive", "spam-box": "spam", "trash-box": "trash" };
             const onMessage = !win.adding && !win.composing && win.selectedId !== "";
             if (name === "about") aboutCard.show();
+            else if (name === "empty-trash") win.askEmptyTrash(win.account);
             else if (name === "shortcuts") shortcutsCard.show();
             else if (name === "close") Qt.quit();
             else if (name === "window-actions") { if (win.mainView) windowPanel.visible ? windowPanel.close() : windowPanel.open() }
@@ -1121,6 +1156,7 @@ ApplicationWindow {
                 else win.step(name === "next-message" ? 1 : -1);
             }
             else if (name === "refresh") win.refresh();
+            else if (name === "add-to-agenda") { if (onMessage) win.addToAgenda() }
             else if (name === "load-pictures") { if (reader.remoteImages > 0 && !reader.loadingImages) { reader.loadingImages = true; Facteur.loadImages(win.selectedRef.acct, win.selectedRef.id) } }
             else if (name === "copy") { if (!win.composing && !win.adding) reader.copySelection() }
             else if (name === "select-all") { if (!win.composing && !win.adding) reader.selectAllText() }
@@ -1159,7 +1195,13 @@ ApplicationWindow {
             reader.remoteImages = r.message.remoteImages || 0;
             reader.unsubscribeUrl = (r.message.unsubscribe && r.message.unsubscribe.urls && r.message.unsubscribe.urls[0]) || "";
             reader.attachments = r.message.nativeContent.attachments || [];
+            reader.meeting = r.message.event || null;
             reader.loadingImages = false;
+        }
+        function onAgendaOpened(json) {
+            const r = JSON.parse(json);
+            win.noticeFolder = "";
+            win.notice = r.error ? win.errorText(r.error) : "";
         }
         function onAttachmentSaved(json) {
             const r = JSON.parse(json);
@@ -1214,12 +1256,37 @@ ApplicationWindow {
         function onBulkProgress(acc, found) {
             if (win.bulkText !== "") win.bulkText = Facteur.tr("Looking for the messages of %1… %2 found").replace("%1", win.bulkSender).replace("%2", found);
         }
+        function onBulkApplying(acc, operation, done, total) {
+            if (win.bulkText !== "" && done < total)
+                win.bulkText = Facteur.tr("%1 of %2 messages done…").replace("%1", done).replace("%2", total);
+        }
+        function onTrashProgress(acc, deleted, remaining) {
+            if (remaining > 0) {
+                const text = Facteur.tr("%1 deleted, %2 left").replace("%1", deleted).replace("%2", remaining);
+                win.bulkText = Facteur.tr("Emptying the trash…") + " " + text;
+                trashDialog.progress = text;
+            }
+        }
         function onBulkActed(acc, operation, email, json) {
             const r = JSON.parse(json);
             win.bulkText = "";
-            if (r.error) win.notice = win.errorText(r.error);
+            if (operation === "empty-trash") {
+                if (r.error) trashDialog.fail(win.errorText(r.error));
+                else trashDialog.finish(r.count > 0 ? Facteur.tr("%1 messages deleted for good.").replace("%1", r.count) : Facteur.tr("The trash was already empty."));
+            }
+            if (r.error) {
+                if (operation === "empty-trash") {}
+                // Some messages were changed before it stopped: say how far it got
+                else if (r.error === "mail_action_partial") win.notice = Facteur.tr("%1 of %2 messages done: the server refused the others").replace("%1", r.count).replace("%2", r.total);
+                else if (r.count > 0) win.notice = Facteur.tr("Stopped after %1 of %2 messages: %3").replace("%1", r.count).replace("%2", r.total).replace("%3", win.errorText(r.error));
+                else win.notice = win.errorText(r.error);
+            }
+            else if (operation === "empty-trash") win.notice = Facteur.tr("Trash emptied (%1 messages deleted)").replace("%1", r.count);
             else if (operation === "read") win.notice = Facteur.tr("%1 messages of %2 marked as read").replace("%1", r.count).replace("%2", email);
             else win.notice = Facteur.tr("%1 messages from %2 moved %3").replace("%1", r.count).replace("%2", email).replace("%3", win.opName[operation] || "");
+            // The search stopped at its cap (or a folder did not answer): the job may not be complete
+            if (!r.error && r.truncated === true && operation !== "empty-trash")
+                win.notice += "  ·  " + Facteur.tr("There may be more: run it again to finish");
             Facteur.countUnread(acc);
             if (acc === win.account || win.unified) win.refresh();
         }
@@ -1401,7 +1468,8 @@ ApplicationWindow {
             readonly property bool starredNow: win.checkedCount > 0 ? win.checkedAllStarred : reader.starred
             IconButton { accented: win.attending; ink: win.onAccent; visible: win.checkedCount > 0; name: parent.unreadNow ? "mail-open" : "mail"; tip: parent.unreadNow ? Facteur.tr("Mark as read") : Facteur.tr("Mark as unread"); enabledState: parent.on; onClicked: win.actOnSelection(parent.unreadNow ? "read" : "unread") }
             IconButton { accented: win.attending; ink: win.onAccent; visible: win.checkedCount > 0; name: "archive"; tip: Facteur.tr("Archive message"); enabledState: parent.on; onClicked: win.actOnSelection("archive") }
-            IconButton { accented: win.attending; ink: win.onAccent; visible: win.checkedCount > 0; name: "trash"; tip: Facteur.tr("Move to trash"); enabledState: parent.on; onClicked: win.actOnSelection("trash") }
+            IconButton { accented: win.attending; ink: win.onAccent; visible: win.checkedCount > 0 && !win.inTrash; name: "trash"; tip: Facteur.tr("Move to trash"); enabledState: parent.on; onClicked: win.actOnSelection("trash") }
+            IconButton { accented: win.attending; ink: win.onAccent; visible: win.checkedCount > 0 && win.canEmptyTrash; name: "trash"; tip: Facteur.tr("Empty Trash"); enabledState: parent.on; onClicked: win.askEmptyTrash(win.account) }
             IconButton { accented: win.attending; ink: win.onAccent; visible: win.checkedCount > 0; name: "spam"; tip: Facteur.tr("Mark as spam"); enabledState: parent.on; onClicked: win.actOnSelection("spam") }
             IconButton { accented: win.attending; ink: win.onAccent; visible: win.checkedCount > 0; name: "star"; filled: parent.starredNow; tip: parent.starredNow ? Facteur.tr("Remove star") : Facteur.tr("Star message"); enabledState: parent.on; onClicked: win.actOnSelection(parent.starredNow ? "unstar" : "star") }
             Rectangle { visible: win.checkedCount > 0; width: 1; height: 18; anchors.verticalCenter: parent.verticalCenter; color: win.attending ? win.tintBorder : FiliTheme.border }
@@ -1616,6 +1684,9 @@ ApplicationWindow {
                     selectedId: win.selectedId
                     onAct: operation => win.actOnSelection(operation)
                     onRowAct: (operation, id) => win.doAct(operation, id)
+                    inTrash: win.inTrash
+                    canEmptyTrash: win.canEmptyTrash
+                    onEmptyTrash: win.askEmptyTrash(win.account)
                     onCheck: (index, mode) => win.check(index, mode)
                     onCheckAll: win.checkAll()
                     onClearChecks: win.clearChecks()
@@ -1644,10 +1715,14 @@ ApplicationWindow {
                 Reader {
                     id: reader
                     onAct: operation => win.doAct(operation, win.selectedId)
+                    inTrash: win.inTrash
+                    canEmptyTrash: win.canEmptyTrash
+                    onEmptyTrash: win.askEmptyTrash(win.account)
                     onReply: win.startCompose("reply")
                     onForward: win.startCompose("forward")
                     onReplyAll: win.startCompose("replyall")
                     onUnsubscribe: url => Qt.openUrlExternally(url)
+                    onAddToAgenda: win.addToAgenda()
                     onLeave: win.focusPane(1)
                     onOpenAttachment: index => Facteur.openAttachment(win.selectedRef.acct, win.selectedRef.id, reader.attachments[index].attachmentId, reader.attachments[index].filename)
                     onSaveAllAttachments: Facteur.saveAllAttachments(win.selectedRef.acct, win.selectedRef.id, JSON.stringify(reader.attachments.filter(a => !!a.attachmentId).map(a => ({ attachmentId: a.attachmentId, filename: a.filename }))))
@@ -1688,6 +1763,7 @@ ApplicationWindow {
             TextButton { label: Facteur.tr("Cancel"); onClicked: win.removing = "" }
         }
     }
+    EmptyTrashDialog { id: trashDialog; anchors.fill: parent; onConfirmed: win.doEmptyTrash() }
     // Debug panel (View > Debug Logs, Ctrl+Alt+L: Ctrl+Shift+L is the labels here): the log of the window process, above the footer
     DebugPanel {
         id: debug

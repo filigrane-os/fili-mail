@@ -16,20 +16,29 @@ Item {
     property real textWidth: 0
     function measure() {
         let w = 0;
-        for (let i = 0; i < metrics.count; i++) w = Math.max(w, metrics.itemAt(i).advanceWidth);
+        for (let i = 0; i < metrics.count; i++) {
+            const m = metrics.itemAt(i);
+            if (m) w = Math.max(w, m.advance);
+        }
         textWidth = w;
     }
+    // A Repeater delegate must be an Item (a bare TextMetrics is not: itemAt() would answer null)
     Repeater {
         id: metrics
         model: menu.items
         onCountChanged: menu.measure()
-        TextMetrics {
+        Item {
+            id: row
             required property var modelData
-            text: modelData.label
-            font.family: FiliTheme.font
-            font.pixelSize: FiliTheme.size
+            readonly property real advance: tm.advanceWidth
+            onAdvanceChanged: menu.measure()
             Component.onCompleted: menu.measure()
-            onAdvanceWidthChanged: menu.measure()
+            TextMetrics {
+                id: tm
+                text: row.modelData.label
+                font.family: FiliTheme.font
+                font.pixelSize: FiliTheme.size
+            }
         }
     }
     function openAt(x, y, entries) {

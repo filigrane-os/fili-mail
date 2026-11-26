@@ -303,3 +303,120 @@ async fn invalid_draft_replacement_id_is_refused_before_append() {
             .is_err()
     );
 }
+
+/// Fake server for `imap.emptyTrash`: the answer to SELECT says how many messages the Trash holds.
+async fn empty_trash_server(exists: u32, batch: u32) -> (u16, tokio::task::JoinHandle<()>) {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let peer = tokio::spawn(async move {
+        let (socket, _) = listener.accept().await.unwrap();
+        let mut w: Wire = BufReader::new(Box::new(socket));
+        write(&mut w, b"* OK ready\r\n").await.unwrap();
+        assert!(line(&mut w).await.unwrap().starts_with(b"O1 LOGIN"));
+        write(&mut w, b"O1 OK login\r\n").await.unwrap();
+        for _ in 0..2 {
+            assert_eq!(line(&mut w).await.unwrap(), b"O1 CAPABILITY\r\n");
+            write(&mut w, b"* CAPABILITY IMAP4rev1\r\nO1 OK capabilities\r\n").await.unwrap();
+        }
+        assert_eq!(line(&mut w).await.unwrap(), b"O1 LIST \"\" \"*\"\r\n");
+        write(&mut w, b"* LIST () \"/\" INBOX\r\n* LIST (\\Trash) \"/\" Bin\r\nO1 OK folders\r\n").await.unwrap();
+        // Only the folder with the Trash role is touched, never INBOX
+        assert_eq!(line(&mut w).await.unwrap(), b"O1 SELECT \"Bin\"\r\n");
+        write(&mut w, format!("* {exists} EXISTS\r\nO1 OK selected\r\n").as_bytes()).await.unwrap();
+        if exists > 0 {
+            assert_eq!(line(&mut w).await.unwrap(), format!("O1 STORE 1:{batch} +FLAGS.SILENT (\\Deleted)\r\n").as_bytes());
+            write(&mut w, b"O1 OK flagged\r\n").await.unwrap();
+            assert_eq!(line(&mut w).await.unwrap(), b"O1 EXPUNGE\r\n");
+            write(&mut w, b"O1 OK expunged\r\n").await.unwrap();
+        }
+        // Nothing else is sent (no STORE on an empty Trash)
+        // (the connection goes back to the pool, so it stays open: no data is the answer)
+        let mut byte = [0];
+        match tokio::time::timeout(Duration::from_millis(100), w.read(&mut byte)).await {
+            Err(_) | Ok(Ok(0)) => {}
+            other => panic!("unexpected command after the expunge: {other:?}"),
+        }
+    });
+    (port, peer)
+}
+
+#[tokio::test]
+async fn empty_trash_deletes_everything_in_the_trash_folder_only() {
+    let (port, peer) = empty_trash_server(3, 3).await;
+    let p = params(port);
+    let result = call("imap.emptyTrash", &p, &std::sync::atomic::AtomicBool::new(false)).await.unwrap();
+    assert_eq!(result["deleted"], 3);
+    assert_eq!(result["remaining"], 0);
+    peer.await.unwrap();
+}
+
+#[tokio::test]
+async fn empty_trash_works_by_batches_of_500() {
+    let (port, peer) = empty_trash_server(1200, 500).await;
+    let p = params(port);
+    let result = call("imap.emptyTrash", &p, &std::sync::atomic::AtomicBool::new(false)).await.unwrap();
+    assert_eq!(result["deleted"], 500);
+    assert_eq!(result["remaining"], 700);
+    peer.await.unwrap();
+}
+
+#[tokio::test]
+async fn empty_trash_on_an_empty_trash_sends_no_store() {
+    let (port, peer) = empty_trash_server(0, 0).await;
+    let p = params(port);
+    let result = call("imap.emptyTrash", &p, &std::sync::atomic::AtomicBool::new(false)).await.unwrap();
+    assert_eq!(result["deleted"], 0);
+    peer.await.unwrap();
+}
+
+/// Fake server for a trash from "All Mail": `accepts_move` says whether the server takes the MOVE.
+async fn all_mail_trash(accepts_move: bool) -> Value {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let peer = tokio::spawn(async move {
+        let (socket, _) = listener.accept().await.unwrap();
+        let mut w: Wire = BufReader::new(Box::new(socket));
+        write(&mut w, b"* OK ready\r\n").await.unwrap();
+        assert!(line(&mut w).await.unwrap().starts_with(b"O1 LOGIN"));
+        write(&mut w, b"O1 OK login\r\n").await.unwrap();
+        assert_eq!(line(&mut w).await.unwrap(), b"O1 CAPABILITY\r\n");
+        write(&mut w, b"* CAPABILITY IMAP4rev1 MOVE\r\nO1 OK capabilities\r\n").await.unwrap();
+        assert_eq!(line(&mut w).await.unwrap(), b"O1 SELECT \"All Mail\"\r\n");
+        write(&mut w, b"O1 OK done\r\n").await.unwrap();
+        // The MOVE is always tried first
+        assert_eq!(line(&mut w).await.unwrap(), b"O1 UID MOVE 7,9 \"Trash\"\r\n");
+        if accepts_move {
+            write(&mut w, b"O1 OK moved\r\n").await.unwrap();
+        } else {
+            write(&mut w, b"O1 NO operation not allowed\r\n").await.unwrap();
+            assert_eq!(line(&mut w).await.unwrap(), b"O1 UID COPY 7,9 \"Trash\"\r\n");
+            write(&mut w, b"O1 OK copied\r\n").await.unwrap();
+        }
+        // (the connection goes back to the pool and stays open: no data is the answer)
+        let mut byte = [0];
+        match tokio::time::timeout(Duration::from_millis(100), w.read(&mut byte)).await {
+            Err(_) | Ok(Ok(0)) => {}
+            other => panic!("unexpected command: {other:?}"),
+        }
+    });
+    let mut p = params(port);
+    p["ids"] = json!(["7:All Mail", "9:All Mail"]);
+    let context = json!({"folders":[],"special":{"\\trash":"Trash","\\all":"All Mail"},"capabilities":["MOVE"]});
+    let result = super::super::execute_planned_action("imap.trash", &p, &context).await.unwrap();
+    peer.await.unwrap();
+    result
+}
+
+#[tokio::test]
+async fn trashing_from_all_mail_moves_when_the_server_allows_it() {
+    let result = all_mail_trash(true).await;
+    assert_eq!(result["succeededIds"], json!(["7:All Mail", "9:All Mail"]));
+}
+
+/// Proton Bridge refuses to MOVE out of "All Mail" ("operation not allowed"): only then, a COPY.
+#[tokio::test]
+async fn trashing_from_all_mail_copies_when_the_server_refuses_the_move() {
+    let result = all_mail_trash(false).await;
+    assert_eq!(result["succeededIds"], json!(["7:All Mail", "9:All Mail"]));
+    assert_eq!(result["failedIds"], json!([]));
+}

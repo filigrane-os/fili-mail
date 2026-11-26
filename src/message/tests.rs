@@ -154,3 +154,16 @@ fn html_body_goes_out_as_text_and_html_alternatives() {
     assert_eq!(parsed.subparts[1].ctype.mimetype, "text/html");
     assert_eq!(parsed.subparts[1].get_body().unwrap(), "<p>Hello <b>bold</b></p>");
 }
+
+#[test]
+fn an_invitation_gives_its_calendar_text() {
+    let raw = b"Subject: Invitation\r\nContent-Type: multipart/alternative; boundary=x\r\n\r\n--x\r\nContent-Type: text/plain\r\n\r\nSee you\r\n--x\r\nContent-Type: text/calendar; method=REQUEST; charset=utf-8\r\n\r\nBEGIN:VCALENDAR\r\nMETHOD:REQUEST\r\nBEGIN:VEVENT\r\nSUMMARY:Point\r\nDTSTART:20261203T133000Z\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n--x--\r\n";
+    let payload = super::parse(raw).unwrap();
+    let message = serde_json::json!({"id": "m1", "payload": payload});
+    let content = super::content::prepare(&message, 0).unwrap();
+    let calendar = content["calendar"].as_str().unwrap();
+    assert!(calendar.contains("SUMMARY:Point"), "{calendar}");
+    assert_eq!(content["body"]["text"].as_str().unwrap().trim(), "See you");
+    let plain = serde_json::json!({"id": "m2", "payload": super::parse(b"Subject: hi\r\n\r\nhello").unwrap()});
+    assert_eq!(super::content::prepare(&plain, 0).unwrap()["calendar"], "");
+}

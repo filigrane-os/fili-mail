@@ -27,6 +27,10 @@ Rectangle {
     property bool loadingNext: false
     onSummaryChanged: scroller.contentY = scroller.originY
     signal act(string operation)
+    // In the Trash the trash button empties it (when the account can); nothing is "moved to the trash" there
+    property bool inTrash: false
+    property bool canEmptyTrash: false
+    signal emptyTrash()
     signal reply()
     signal replyAll()
     signal forward()
@@ -35,6 +39,24 @@ Rectangle {
     signal trashSender()
     signal loadImages()
     signal unsubscribe(string url)
+    // A meeting found in the message (message::event: kind invite, file or meeting; null: none); its button hands it to Agenda
+    property var meeting: null
+    signal addToAgenda()
+    // The line of the meeting banner: the invitation's title and day, the .ics file, or the service of the link
+    function meetingText() {
+        const m = reader.meeting;
+        if (!m)
+            return "";
+        if (m.kind === "meeting")
+            return Facteur.tr("%1 video meeting link in this message.").replace("%1", m.service);
+        if (m.kind === "file")
+            return Facteur.tr("An event is attached (%1).").replace("%1", m.filename);
+        const p = /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?/.exec(m.start || "");
+        const when = !p ? "" : p[4] !== undefined
+            ? Qt.formatDateTime(new Date(+p[1], +p[2] - 1, +p[3], +p[4], +p[5]), "dddd d MMMM yyyy, HH:mm")
+            : Qt.formatDate(new Date(+p[1], +p[2] - 1, +p[3]), "dddd d MMMM yyyy");
+        return (m.invite ? Facteur.tr("Invitation: %1") : Facteur.tr("Event: %1")).replace("%1", m.title) + (when !== "" ? " · " + when : "");
+    }
     // Files attached to the message ({filename, mimeType, size, attachmentId}); clicking one opens it, its arrow saves it
     property var attachments: []
     signal saveAttachment(int index)
@@ -122,7 +144,7 @@ Rectangle {
             else if (plain && event.key === Qt.Key_A) reader.replyAll();
             else if (plain && event.key === Qt.Key_F) reader.forward();
             else if (plain && event.key === Qt.Key_E) reader.act("archive");
-            else if (plain && (event.key === Qt.Key_NumberSign || event.key === Qt.Key_Delete)) reader.act("trash");
+            else if (plain && (event.key === Qt.Key_NumberSign || event.key === Qt.Key_Delete)) { if (!reader.inTrash) reader.act("trash"); }
             else if (plain && event.key === Qt.Key_S) reader.act(reader.starred ? "unstar" : "star");
             else if (plain && event.key === Qt.Key_U) reader.act(reader.unread ? "read" : "unread");
             else return;
@@ -193,6 +215,7 @@ Rectangle {
                             onClicked: { const p = senderMore.mapToItem(null, 0, senderMore.height); reader.senderMenu(p.x, p.y) }
                         }
                         IconButton {
+                            visible: !reader.inTrash
                             name: "trash"
                             width: 24
                             height: 22
@@ -256,6 +279,33 @@ Rectangle {
                             anchors { right: parent.right; rightMargin: FiliTheme.space2; verticalCenter: parent.verticalCenter }
                             label: Facteur.tr("Unsubscribe")
                             onClicked: reader.unsubscribe(reader.unsubscribeUrl)
+                        }
+                    }
+                    // A meeting (an invitation, an .ics file, a video conference link): Agenda adds it once the user saves there
+                    Rectangle {
+                        visible: reader.meeting !== null
+                        width: parent.width
+                        height: 30
+                        radius: FiliTheme.radiusControl
+                        color: FiliTheme.surface
+                        border.width: FiliTheme.borderWidth
+                        border.color: FiliTheme.border
+                        Icon { x: FiliTheme.space3; anchors.verticalCenter: parent.verticalCenter; name: "calendar"; size: 14; color: FiliTheme.textSecondary }
+                        Text {
+                            x: FiliTheme.space3 + 14 + FiliTheme.space2
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: Math.max(0, parent.width - x - agendaButton.width - 2 * FiliTheme.space2)
+                            elide: Text.ElideRight
+                            text: reader.meetingText()
+                            font.family: FiliTheme.font
+                            font.pixelSize: FiliTheme.sizeList
+                            color: FiliTheme.textSecondary
+                        }
+                        TextButton {
+                            id: agendaButton
+                            anchors { right: parent.right; rightMargin: FiliTheme.space2; verticalCenter: parent.verticalCenter }
+                            label: Facteur.tr("Add to Agenda")
+                            onClicked: reader.addToAgenda()
                         }
                     }
                     Flow {
@@ -330,7 +380,8 @@ Rectangle {
                                 x: FiliTheme.space1
                                 anchors.verticalCenter: parent.verticalCenter
                                 IconButton { name: reader.unread ? "mail-open" : "mail"; tip: reader.unread ? Facteur.tr("Mark as read") : Facteur.tr("Mark as unread"); onClicked: reader.act(reader.unread ? "read" : "unread") }
-                                IconButton { name: "trash"; tip: Facteur.tr("Move to trash"); onClicked: reader.act("trash") }
+                                IconButton { visible: !reader.inTrash; name: "trash"; tip: Facteur.tr("Move to trash"); onClicked: reader.act("trash") }
+                                IconButton { visible: reader.canEmptyTrash; name: "trash"; tip: Facteur.tr("Empty Trash"); onClicked: reader.emptyTrash() }
                                 IconButton { name: "archive"; tip: Facteur.tr("Archive message"); onClicked: reader.act("archive") }
                                 IconButton { name: "spam"; tip: Facteur.tr("Mark as spam"); onClicked: reader.act("spam") }
                                 IconButton { name: "star"; filled: reader.starred; tip: reader.starred ? Facteur.tr("Remove star") : Facteur.tr("Star message"); onClicked: reader.act(reader.starred ? "unstar" : "star") }

@@ -136,6 +136,10 @@
       "label": "Trash"
     },
     {
+      "name": "empty-trash",
+      "label": "Empty Trash…"
+    },
+    {
       "name": "window-actions",
       "label": "Window Actions…",
       "keys": "Ctrl+Shift+W"
@@ -171,6 +175,10 @@
     },
     {
       "name": "load-pictures"
+    },
+    {
+      "name": "add-to-agenda",
+      "label": "Add to Agenda"
     },
     {
       "name": "debug",

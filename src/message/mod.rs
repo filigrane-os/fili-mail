@@ -6,6 +6,7 @@ pub mod compose;
 pub mod content;
 pub mod direction;
 pub(crate) mod envelope;
+pub mod event;
 pub mod html;
 pub mod picture;
 pub mod rich;

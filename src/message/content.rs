@@ -429,6 +429,18 @@ fn walk(
     }
     Ok(())
 }
+/// The iCalendar text of the first text/calendar part that carries its bytes (an invitation: Facteur offers to add it to
+/// Agenda). Parts known only by an attachment id are listed with the attachments instead.
+fn calendar_text(part: &Value, depth: usize) -> Option<String> {
+    if depth > 12 {
+        return None;
+    }
+    let mime = text(&part["mimeType"]).split(';').next().unwrap_or("").trim().to_ascii_lowercase();
+    if mime == "text/calendar" && !text(&part["body"]["data"]).is_empty() && text(&part["body"]["data"]).len() <= 512 * 1024 {
+        return decode_part(part).ok().filter(|t| t.contains("BEGIN:VEVENT"));
+    }
+    part["parts"].as_array().into_iter().flatten().find_map(|child| calendar_text(child, depth + 1))
+}
 // Be conservative: angle-bracket prose is a legitimate plain alternative.
 // Require nested markup, not merely a document-root name or closing tag in text.
 fn markup_as_text(plain: &str) -> bool {
@@ -550,8 +562,9 @@ fn prepare_content(message: &Value, now: i64, read_html: bool) -> Result<Value> 
     } else {
         String::new()
     };
+    let calendar = calendar_text(&message["payload"], 0).unwrap_or_default();
     Ok(
-        json!({"summary":summarize(message,now)?,"body":{"text":body,"source":source,"bodyDirection":super::direction::resolve_body(&body,super::direction::AUTO)},"html":html,"attachments":files}),
+        json!({"summary":summarize(message,now)?,"body":{"text":body,"source":source,"bodyDirection":super::direction::resolve_body(&body,super::direction::AUTO)},"html":html,"attachments":files,"calendar":calendar}),
     )
 }
 pub fn request(method: &str, params: &Value) -> Result<Value> {
