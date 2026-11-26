@@ -215,10 +215,14 @@ pub(crate) async fn mutate_plan(
                 }
             }
         };
-        succeeded.extend(confirmed_ids(
-            adapter.call(method, params, &plan.provider_context).await,
-            ids,
-        ));
+        let reply = adapter.call(method, params, &plan.provider_context).await;
+        // The reason a provider refused goes to the log (never the ids or the content): the answer to the user is generic
+        match &reply {
+            Err(e) => log::warn!("{method} failed: {e}"),
+            Ok(v) if v["error"].is_string() => log::warn!("{method} stopped: {}", v["error"].as_str().unwrap_or("")),
+            _ => {}
+        }
+        succeeded.extend(confirmed_ids(reply, ids));
     }
     succeeded
 }

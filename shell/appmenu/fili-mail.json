@@ -38,6 +38,7 @@
         { "label": "Reply", "keys": "Ctrl+Shift+R", "exec": "fili-mail ctl --pid %pid action reply" },
         { "label": "Reply All", "keys": "Ctrl+Alt+R", "exec": "fili-mail ctl --pid %pid action reply-all" },
         { "label": "Forward", "keys": "Ctrl+Shift+F", "exec": "fili-mail ctl --pid %pid action forward" },
+        { "label": "Add to Agenda", "exec": "fili-mail ctl --pid %pid action add-to-agenda" },
         { "sep": true },
         { "label": "Archive", "keys": "E", "exec": "fili-mail ctl --pid %pid action archive" },
         { "label": "Move to Trash", "keys": "Delete", "exec": "fili-mail ctl --pid %pid action trash" },
@@ -62,7 +63,9 @@
         { "label": "Drafts", "exec": "fili-mail ctl --pid %pid action drafts" },
         { "label": "Archive", "exec": "fili-mail ctl --pid %pid action archive-box" },
         { "label": "Spam", "exec": "fili-mail ctl --pid %pid action spam-box" },
-        { "label": "Trash", "exec": "fili-mail ctl --pid %pid action trash-box" }
+        { "label": "Trash", "exec": "fili-mail ctl --pid %pid action trash-box" },
+        { "sep": true },
+        { "label": "Empty Trash…", "exec": "fili-mail ctl --pid %pid action empty-trash" }
       ]
     }
   ]

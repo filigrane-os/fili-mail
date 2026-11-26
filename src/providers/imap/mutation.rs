@@ -3,6 +3,8 @@ use super::read::{Mailboxes, mailboxes, message_id, resolve};
 use super::*;
 use base64::engine::general_purpose::{STANDARD_NO_PAD, URL_SAFE_NO_PAD};
 use std::collections::BTreeMap;
+/// Messages `imap.emptyTrash` deletes per call
+pub(crate) const EMPTY_TRASH_BATCH: u32 = 500;
 fn ids(p: &Value) -> Result<BTreeMap<String, Vec<u32>>> {
     let entries = p["ids"].as_array().ok_or("invalid_params")?;
     if entries.len() > 500 {
@@ -356,12 +358,26 @@ pub(super) async fn call_planned(
                 if let Some(target) = &destination
                     && target != &folder
                 {
-                    if boxes
+                    // "All Mail" (special use \All) holds every message: some servers (Proton Bridge) refuse to MOVE out of it
+                    // ("operation not allowed"). Only then, a copy into the destination is what moving from it means.
+                    // Everywhere else, and on every server that accepts the MOVE, nothing changes.
+                    let from_all = boxes.special.get("\\all").is_some_and(|all| all == &folder);
+                    let can_move = boxes.capabilities.iter().any(|v| v.eq_ignore_ascii_case("MOVE"));
+                    if from_all && can_move {
+                        let moved = command(&mut w, &format!("UID MOVE {set} {}", quote(target)?)).await;
+                        if moved == Err("imap_command_failed") {
+                            command(&mut w, &format!("UID COPY {set} {}", quote(target)?)).await?;
+                        } else {
+                            moved?;
+                        }
+                    } else if boxes
                         .capabilities
                         .iter()
                         .any(|v| v.eq_ignore_ascii_case("MOVE"))
                     {
-                        command(&mut w, &format!("UID MOVE {set} {}", quote(target)?)).await?;
+                        command(&mut w, &format!("UID MOVE {set} {}", quote(target)?)).await.inspect_err(|_| {
+                            log::warn!("IMAP move refused: from {folder:?} to {target:?}, {} messages", uids.len())
+                        })?;
                     } else {
                         command(&mut w, &format!("UID COPY {set} {}", quote(target)?)).await?;
                         command(
@@ -404,6 +420,23 @@ pub(super) async fn call_planned(
                 ""
             };
             json!({"saved":true,"warning":warning})
+        } else if method == "imap.emptyTrash" {
+            // Only ever the server's Trash folder (resolved by its special-use role), never a folder named by the caller
+            let folder = resolve(&boxes, "\\Trash")?;
+            let selected = command(&mut w, &format!("SELECT {}", quote(&folder)?)).await?;
+            let exists = String::from_utf8_lossy(&selected)
+                .lines()
+                .find_map(|l| l.strip_prefix("* ")?.trim_end().strip_suffix(" EXISTS")?.trim().parse::<u32>().ok())
+                .unwrap_or(0);
+            // One batch per call (the oldest 500 by position): a big Trash would not fit in the call's time budget.
+            // The caller repeats while `remaining` is not 0.
+            let batch = exists.min(EMPTY_TRASH_BATCH);
+            if batch > 0 {
+                command(&mut w, &format!("STORE 1:{batch} +FLAGS.SILENT (\\Deleted)")).await?;
+                command(&mut w, "EXPUNGE").await?;
+            }
+            read::invalidate().await;
+            json!({"deleted":batch,"remaining":exists - batch})
         } else if let Some((uid, folder)) = deleting {
             command(&mut w, &format!("SELECT {}", quote(&folder)?)).await?;
             delete_uid(&mut w, uid).await?;

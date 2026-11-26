@@ -188,9 +188,22 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "markBoxRead"]
         fn mark_box_read(self: Pin<&mut Facteur>, account: &QString, mailbox: &QString);
+        // Delete for good everything in the account's Trash (IMAP only), answered by `bulkActed` with the operation
+        // "empty-trash" and `{count}`
+        #[qinvokable]
+        #[cxx_name = "emptyTrash"]
+        fn empty_trash(self: Pin<&mut Facteur>, account: &QString);
+        // Emptying the trash, batch after batch: messages deleted so far, and how many are left
+        #[qsignal]
+        #[cxx_name = "trashProgress"]
+        fn trash_progress(self: Pin<&mut Facteur>, account: &QString, deleted: i32, remaining: i32);
         #[qsignal]
         #[cxx_name = "bulkProgress"]
         fn bulk_progress(self: Pin<&mut Facteur>, account: &QString, found: i32);
+        // The messages found are being changed, batch after batch: how many are done out of how many
+        #[qsignal]
+        #[cxx_name = "bulkApplying"]
+        fn bulk_applying(self: Pin<&mut Facteur>, account: &QString, operation: &QString, done: i32, total: i32);
         #[qsignal]
         #[cxx_name = "bulkActed"]
         fn bulk_acted(self: Pin<&mut Facteur>, account: &QString, operation: &QString, email: &QString, result: &QString);
@@ -275,6 +288,15 @@ pub mod qobject {
         #[qsignal]
         #[cxx_name = "attachmentSaved"]
         fn attachment_saved(self: Pin<&mut Facteur>, result: &QString);
+        // Hand the meeting of a message (its `event`, JSON, see message::event) to Agenda: the import preview of an invitation
+        // or an .ics file, the filled editor of a link. Nothing is added before the user saves there. Answered by
+        // `agendaOpened` ({ok: true} or {error})
+        #[qinvokable]
+        #[cxx_name = "addToAgenda"]
+        fn add_to_agenda(self: Pin<&mut Facteur>, account: &QString, id: &QString, event: &QString);
+        #[qsignal]
+        #[cxx_name = "agendaOpened"]
+        fn agenda_opened(self: Pin<&mut Facteur>, result: &QString);
         // Send a message: fields = JSON {to, cc, bcc, subject, body} (address lists as strings);
         // answered by `sent` (JSON result or {error})
         #[qinvokable]
@@ -377,6 +399,52 @@ fn read_accent() -> String {
 /// Most messages one bulk action takes (the engine refuses more than 2000 at once, and a runaway sender stays bounded)
 const BULK_MAX: usize = 4_000;
 
+/// Messages changed per call: a call has its own time budget, so a big set goes in small batches
+const BULK_BATCH: usize = 100;
+
+/// Changes `ids` batch after batch and reports each step. A failing batch stops the work but never hides what is
+/// already done: the answer carries `count` (changed), `total` (found), `truncated` and, if it stopped, `error`.
+async fn apply_in_batches(
+    session: &Session,
+    qt: &cxx_qt::CxxQtThread<qobject::Facteur>,
+    account: &str,
+    operation: &str,
+    ids: &[String],
+    truncated: bool,
+) -> Value {
+    let total = ids.len();
+    let mut done = 0usize;
+    // A hard error (network, timeout) stops the work; a refusal of some messages does not: the others still go
+    let mut error: Option<&'static str> = None;
+    let mut refused = false;
+    for chunk in ids.chunks(BULK_BATCH) {
+        let params = json!({"account": account, "operation": operation, "ids": chunk, "execute": true});
+        match session.dispatch("mail.act", &params).await {
+            Ok(v) => {
+                // What the provider refused is `failedIds`. The confirmed ones cannot be compared with the batch: an action
+                // works on whole conversations (Gmail), so several messages of one thread make fewer targets than ids.
+                let failed = v["failedIds"].as_array().map_or(0, Vec::len);
+                done += chunk.len().saturating_sub(failed);
+                refused |= failed > 0;
+            }
+            Err(e) => error = Some(e),
+        }
+        let _ = qt.queue({
+            let (account, operation) = (account.to_owned(), operation.to_owned());
+            let (d, t) = (i32::try_from(done).unwrap_or(i32::MAX), i32::try_from(total).unwrap_or(i32::MAX));
+            move |f| f.bulk_applying(&QString::from(&account), &QString::from(&operation), d, t)
+        });
+        if error.is_some() {
+            break;
+        }
+    }
+    let mut out = json!({"count": done, "total": total, "truncated": truncated});
+    if let Some(e) = error.or(refused.then_some("mail_action_partial")) {
+        out["error"] = json!(e);
+    }
+    out
+}
+
 /// Finds every message of `email` outside the destination (pages of 50, every mailbox and, on IMAP, every folder),
 /// then changes them 500 at a time. Returns how many were changed.
 async fn act_sender_run(
@@ -385,7 +453,7 @@ async fn act_sender_run(
     account: &str,
     operation: &str,
     email: &str,
-) -> Result<usize, &'static str> {
+) -> Result<Value, &'static str> {
     if !matches!(operation, "archive" | "trash" | "spam") || email.is_empty() || email.contains(['"', '\\']) {
         return Err("invalid_params");
     }
@@ -401,7 +469,9 @@ async fn act_sender_run(
         if let Ok(answer) = session.dispatch("imap.folders", &json!({"accountId": account})).await {
             for l in answer["labels"].as_array().cloned().unwrap_or_default() {
                 let raw = l["rawName"].as_str().unwrap_or("");
-                if l["system"] == false && !raw.is_empty() && !matches!(raw, "Labels" | "Folders" | "All Mail" | "INBOX" | "Starred") {
+                // "Labels/…" (Proton Bridge) are labels on messages that also sit in a real folder: the server refuses to move
+                // a message out of one ("operation not allowed"), and the real folder is searched anyway
+                if l["system"] == false && !raw.is_empty() && !raw.starts_with("Labels/") && !matches!(raw, "Labels" | "Folders" | "All Mail" | "INBOX" | "Starred") {
                     places.push(("inbox", Some(raw.to_owned())));
                 }
             }
@@ -450,13 +520,11 @@ async fn act_sender_run(
     }
     if ids.is_empty() {
         // Nothing found because every place failed is an error, not "no message"
-        return if failed == asked { Err("mail_list_failed") } else { Ok(0) };
+        return if failed == asked { Err("mail_list_failed") } else { Ok(json!({"count": 0, "total": 0, "truncated": false})) };
     }
-    for chunk in ids.chunks(500) {
-        let params = json!({"account": account, "operation": operation, "ids": chunk, "execute": true});
-        session.dispatch("mail.act", &params).await?;
-    }
-    Ok(ids.len())
+    // Some place failed to answer, or the cap was reached: the answer says the job may not be complete
+    let truncated = ids.len() >= BULK_MAX || failed > 0;
+    Ok(apply_in_batches(session, qt, account, operation, &ids, truncated).await)
 }
 
 /// Reads every page of a mailbox and marks the unread messages as read (500 at a time).
@@ -465,9 +533,10 @@ async fn mark_box_read_run(
     qt: &cxx_qt::CxxQtThread<qobject::Facteur>,
     account: &str,
     mailbox: &str,
-) -> Result<usize, &'static str> {
+) -> Result<Value, &'static str> {
     let mut ids: Vec<String> = Vec::new();
     let mut token = String::new();
+    let mut truncated = false;
     loop {
         let mut params = match mailbox.strip_prefix("folder:") {
             Some(folder) => json!({"account": account, "mailbox": "inbox", "folder": folder, "query": "", "limit": 50}),
@@ -489,14 +558,11 @@ async fn mark_box_read_run(
         });
         token = page["nextPageToken"].as_str().unwrap_or("").to_owned();
         if token.is_empty() || ids.len() >= BULK_MAX {
+            truncated = !token.is_empty();
             break;
         }
     }
-    for chunk in ids.chunks(500) {
-        let params = json!({"account": account, "operation": "read", "ids": chunk, "execute": true});
-        session.dispatch("mail.act", &params).await?;
-    }
-    Ok(ids.len())
+    Ok(apply_in_batches(session, qt, account, "read", &ids, truncated).await)
 }
 
 fn error_json(error: &str) -> String {
@@ -1004,7 +1070,7 @@ impl qobject::Facteur {
         let (runtime, session) = engine();
         runtime.spawn(async move {
             let out = match act_sender_run(session, &qt, &account, &operation, &email).await {
-                Ok(count) => json!({"count": count}).to_string(),
+                Ok(result) => result.to_string(),
                 Err(e) => error_json(e),
             };
             let _ = qt.queue(move |f| {
@@ -1019,7 +1085,7 @@ impl qobject::Facteur {
         let (runtime, session) = engine();
         runtime.spawn(async move {
             let out = match mark_box_read_run(session, &qt, &account, &mailbox).await {
-                Ok(count) => json!({"count": count}).to_string(),
+                Ok(result) => result.to_string(),
                 Err(e) => error_json(e),
             };
             let _ = qt.queue(move |f| {
@@ -1048,6 +1114,34 @@ impl qobject::Facteur {
                     &QString::from(&ids),
                     &QString::from(&out),
                 )
+            });
+        });
+    }
+
+    pub fn empty_trash(self: Pin<&mut Self>, account: &QString) {
+        let account = account.to_string();
+        let qt = self.qt_thread();
+        let (runtime, session) = engine();
+        runtime.spawn(async move {
+            // Batch after batch (each call has its own time budget); what is already deleted stays deleted if one fails
+            let mut total: u64 = 0;
+            let out = loop {
+                match session.dispatch("imap.emptyTrash", &json!({"accountId": account})).await {
+                    Ok(v) => {
+                        let (deleted, remaining) = (v["deleted"].as_u64().unwrap_or(0), v["remaining"].as_u64().unwrap_or(0));
+                        total += deleted;
+                        let (a, t, r) = (account.clone(), i32::try_from(total).unwrap_or(i32::MAX), i32::try_from(remaining).unwrap_or(i32::MAX));
+                        let _ = qt.queue(move |f| f.trash_progress(&QString::from(&a), t, r));
+                        // No progress with messages left: stop rather than loop
+                        if remaining == 0 || deleted == 0 {
+                            break if remaining > 0 { error_json("imap_command_failed") } else { json!({"count": total}).to_string() };
+                        }
+                    }
+                    Err(e) => break error_json(e),
+                }
+            };
+            let _ = qt.queue(move |f| {
+                f.bulk_acted(&QString::from(&account), &QString::from("empty-trash"), &QString::from(""), &QString::from(&out))
             });
         });
     }
@@ -1244,6 +1338,31 @@ impl qobject::Facteur {
         });
     }
 
+    pub fn add_to_agenda(self: Pin<&mut Self>, account: &QString, id: &QString, event: &QString) {
+        let (account, id) = (account.to_string(), id.to_string());
+        let event: Value = serde_json::from_str(&event.to_string()).unwrap_or(Value::Null);
+        let qt = self.qt_thread();
+        let (runtime, session) = engine();
+        runtime.spawn(async move {
+            let args: Result<Vec<String>, &'static str> = match event["kind"].as_str() {
+                Some("invite") => write_invitation(event["ics"].as_str().unwrap_or("")).map(|p| vec![p]),
+                Some("file") => {
+                    let (attachment, filename) = (event["attachmentId"].as_str().unwrap_or(""), event["filename"].as_str().unwrap_or("invite.ics"));
+                    store_attachment(session, &account, &id, attachment, filename, true)
+                        .await
+                        .and_then(|v| v["path"].as_str().map(|p| vec![p.to_owned()]).ok_or("attachment_unavailable"))
+                }
+                Some("meeting") => Ok(vec!["--new".into(), fili_mail::message::event::proposal(&event)]),
+                _ => Err("invalid_params"),
+            };
+            let out = match args.and_then(|args| launch_agenda(&args)) {
+                Ok(()) => json!({"ok": true}).to_string(),
+                Err(e) => error_json(e),
+            };
+            let _ = qt.queue(move |f| f.agenda_opened(&QString::from(&out)));
+        });
+    }
+
     pub fn save_all_attachments(self: Pin<&mut Self>, account: &QString, id: &QString, list: &QString) {
         let (account, id, list) = (account.to_string(), id.to_string(), list.to_string());
         let qt = self.qt_thread();
@@ -1333,6 +1452,42 @@ async fn store_attachment(session: &Session, account: &str, id: &str, attachment
     session
         .dispatch("attachment.store", &json!({"filename": filename, "data": data, "open": open}))
         .await
+}
+
+/// An invitation's iCalendar text written for Agenda: $XDG_RUNTIME_DIR/fili-mail/invites/<hash>.ics, readable by the user only
+/// (it names the guests). The runtime directory is emptied at logout.
+fn write_invitation(ics: &str) -> Result<String, &'static str> {
+    use std::hash::{Hash, Hasher};
+    use std::io::Write;
+    use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
+    if !ics.contains("BEGIN:VEVENT") {
+        return Err("invalid_params");
+    }
+    let base = env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from).filter(|p| p.is_absolute()).ok_or("attachment_open_failed")?;
+    let dir = base.join("fili-mail/invites");
+    std::fs::DirBuilder::new().recursive(true).mode(0o700).create(&dir).map_err(|_| "attachment_open_failed")?;
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    ics.hash(&mut h);
+    let path = dir.join(format!("{:016x}.ics", h.finish()));
+    let mut file = std::fs::OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).open(&path).map_err(|_| "attachment_open_failed")?;
+    file.write_all(ics.as_bytes()).map_err(|_| "attachment_open_failed")?;
+    Ok(path.display().to_string())
+}
+
+/// Start Agenda (`fili-cal ARGS`): it brings its open window forward or opens one. Waited for in a thread of its own, so that
+/// it never stays a zombie.
+fn launch_agenda(args: &[String]) -> Result<(), &'static str> {
+    let mut child = std::process::Command::new("fili-cal")
+        .args(args)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map_err(|_| "agenda_missing")?;
+    std::thread::spawn(move || {
+        let _ = child.wait();
+    });
+    Ok(())
 }
 
 /// Where the first page of a mailbox is kept between runs (private: subjects and senders).
@@ -1540,6 +1695,9 @@ async fn read_message(session: &Session, account: &str, id: &str, load: bool) ->
         message["rich"] = json!(rich);
     }
     message["remoteImages"] = json!(pending);
+    // A mail about a meeting: the reader offers "Add to Agenda" (the iCalendar text travels inside `event`)
+    message["event"] = fili_mail::message::event::detect(message);
+    message["calendar"] = Value::Null;
     // The document tree (with picture data) stays on this side
     message["nativeRender"] = Value::Null;
     Ok(value)
