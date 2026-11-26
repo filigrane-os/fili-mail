@@ -240,7 +240,8 @@ Rectangle {
     clip: true
 
     Keys.onEscapePressed: compose.cancelled()
-    Shortcut { sequences: ["Ctrl+Return", "Ctrl+Enter"]; enabled: compose.current && !compose.minimized; onActivated: compose.submit() }
+    // Shift+Enter sends, as in every message composer of Filigrane (Enter makes a new line); Ctrl+Enter too
+    Shortcut { sequences: ["Shift+Return", "Shift+Enter", "Ctrl+Return", "Ctrl+Enter"]; enabled: compose.current && !compose.minimized; onActivated: compose.submit() }
     Shortcut { sequences: ["Ctrl+Shift+C"]; enabled: compose.current && !compose.minimized; onActivated: { compose.showCc = true; cc.forceActiveFocus() } }
     Shortcut { sequences: ["Ctrl+Shift+B"]; enabled: compose.current && !compose.minimized; onActivated: { compose.showBcc = true; bcc.forceActiveFocus() } }
     Shortcut { sequences: ["Ctrl+Shift+H"]; enabled: compose.current && !compose.minimized; onActivated: compose.setHtml(!compose.html) }
@@ -442,6 +443,13 @@ Rectangle {
         }
         TextArea {
             id: body
+            // The text area takes Shift+Enter as a new line before any Shortcut sees it: it sends here
+            Keys.onPressed: event => {
+                if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && (event.modifiers & Qt.ShiftModifier)) {
+                    compose.submit();
+                    event.accepted = true;
+                }
+            }
             width: bodyScroll.width - 14
             // The minimum leaves room for the "…" button only: using quoteBox.height would loop (the quotation's page is placed from body.height)
             height: Math.max(implicitHeight, bodyScroll.height - (compose.hasQuote ? 20 + FiliTheme.space2 : 0) - FiliTheme.space2)

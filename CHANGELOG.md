@@ -17,6 +17,10 @@
 - IMAP errors say what happened (the server took too long, refused the command, refused some messages).
 - The bar module shows new mail in the normal text colour instead of the warning yellow.
 
+## 1.8.1 (2026-11-26)
+
+- Shift+Enter sends the message being written, as in every message composer of Filigrane (Enter makes a new line; Ctrl+Enter still sends). The shortcuts card says so.
+
 ## 1.8.0 (2026-11-24)
 
 - The interface controls (theme, buttons, menus, text fields, progress bar, tab row, window and debug panels, About and shortcuts cards) come from the shared `fili-ui` kit instead of local copies.
